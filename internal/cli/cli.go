@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/tpisel/memento/internal/manifest"
+	"github.com/tpisel/memento/internal/note"
 	"github.com/tpisel/memento/internal/vault"
 )
 
@@ -19,7 +21,7 @@ Usage:
   memento version
   memento compile [--dir <vault>] [--print]
   memento init
-  memento read <key>
+  memento read [--dir <vault>] <key>
   memento write <key>
   memento serve
 
@@ -28,7 +30,7 @@ Commands:
   version   Print the memento version.
   compile   Compile a memory vault manifest.
   init      Adopt or create a memory vault. Not implemented in this scaffold.
-  read      Read a memory note. Not implemented in this scaffold.
+  read      Read a memory note.
   write     Write to a memory note. Not implemented in this scaffold.
   serve     Run the MCP server. Not implemented in this scaffold.
 `
@@ -49,6 +51,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "compile":
 		return runCompile(args[1:], stdout, stderr)
+	case "read":
+		return runRead(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "memento: unknown command %q\n\n", args[0])
 		fmt.Fprint(stderr, "Run 'memento help' for usage.\n")
@@ -100,7 +104,49 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func runRead(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("read", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dir := flags.String("dir", "", "memory vault directory")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 1 {
+		fmt.Fprint(stderr, "memento read: expected exactly one key\n")
+		return 2
+	}
+
+	v, err := resolveVault(*dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "memento read: %v\n", err)
+		return 1
+	}
+
+	data, err := note.Read(v, flags.Arg(0))
+	if err != nil {
+		switch {
+		case errors.Is(err, note.ErrInvalidKey):
+			fmt.Fprintf(stderr, "memento read: %v\n", err)
+		case errors.Is(err, note.ErrNotFound):
+			fmt.Fprintf(stderr, "memento read: key not found: %s\n", flags.Arg(0))
+		default:
+			fmt.Fprintf(stderr, "memento read: %v\n", err)
+		}
+		return 1
+	}
+
+	if _, err := stdout.Write(data); err != nil {
+		fmt.Fprintf(stderr, "memento read: write stdout: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
 func compileVault(dir string) (vault.Vault, error) {
+	return resolveVault(dir)
+}
+
+func resolveVault(dir string) (vault.Vault, error) {
 	if dir != "" {
 		return vault.Open(dir)
 	}

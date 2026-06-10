@@ -134,6 +134,63 @@ func TestCompileWritesDiscoveredManifest(t *testing.T) {
 	}
 }
 
+func TestReadPrintsRequestedMarkdownForExplicitDir(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "notes/deep.md", "# Deep\n\nNested content.\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"read", "--dir", root, "notes/deep.md"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read --dir notes/deep.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(read) stderr = %q, want empty", stderr.String())
+	}
+
+	want := "# Deep\n\nNested content.\n"
+	if stdout.String() != want {
+		t.Fatalf("Run(read) stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestReadFailsClearlyForMissingOrIgnoredKey(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, ".mementoignore", "ignored.md\n")
+	writeCLIFile(t, root, "ignored.md", "# Ignored\n")
+
+	for _, key := range []string{"missing.md", "ignored.md"} {
+		t.Run(key, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := Run([]string{"read", "--dir", root, key}, &stdout, &stderr)
+			if code != 1 {
+				t.Fatalf("Run(read %s) exit code = %d, want 1", key, code)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("Run(read %s) stdout = %q, want empty", key, stdout.String())
+			}
+			if !strings.Contains(stderr.String(), "not found") {
+				t.Fatalf("Run(read %s) stderr = %q, want not found message", key, stderr.String())
+			}
+		})
+	}
+}
+
+func TestReadRejectsTraversalKey(t *testing.T) {
+	root := makeCLIVault(t)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"read", "--dir", root, "../outside.md"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(read traversal) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(read traversal) stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid key") {
+		t.Fatalf("Run(read traversal) stderr = %q, want invalid key message", stderr.String())
+	}
+}
+
 func makeCLIVault(t *testing.T) string {
 	t.Helper()
 
