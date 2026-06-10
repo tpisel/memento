@@ -161,6 +161,191 @@ func TestParseRejectsPartialRecursiveWildcardSegment(t *testing.T) {
 	}
 }
 
+func TestMatchesAnywhereFilePattern(t *testing.T) {
+	patterns := mustParse(t, "foo.md")
+
+	tests := []struct {
+		name  string
+		path  string
+		isDir bool
+		want  bool
+	}{
+		{name: "root file", path: "foo.md", want: true},
+		{name: "nested file", path: "notes/foo.md", want: true},
+		{name: "deep nested file", path: "notes/archive/foo.md", want: true},
+		{name: "different filename", path: "notes/bar.md", want: false},
+		{name: "directory with same name", path: "foo.md", isDir: true, want: false},
+		{name: "descendant under same name", path: "foo.md/child.md", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Matches(patterns, tt.path, tt.isDir); got != tt.want {
+				t.Fatalf("Matches(%q, isDir=%v) = %v, want %v", tt.path, tt.isDir, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesRootRelativeFilePattern(t *testing.T) {
+	patterns := mustParse(t, "/foo.md")
+
+	tests := []struct {
+		name  string
+		path  string
+		isDir bool
+		want  bool
+	}{
+		{name: "root file", path: "foo.md", want: true},
+		{name: "normalized root file", path: "./foo.md", want: true},
+		{name: "nested file", path: "notes/foo.md", want: false},
+		{name: "directory with same name", path: "foo.md", isDir: true, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Matches(patterns, tt.path, tt.isDir); got != tt.want {
+				t.Fatalf("Matches(%q, isDir=%v) = %v, want %v", tt.path, tt.isDir, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesAnywhereDirectoryPatternRecursively(t *testing.T) {
+	patterns := mustParse(t, "drafts/")
+
+	tests := []struct {
+		name  string
+		path  string
+		isDir bool
+		want  bool
+	}{
+		{name: "root directory", path: "drafts", isDir: true, want: true},
+		{name: "root descendant file", path: "drafts/note.md", want: true},
+		{name: "nested directory", path: "notes/drafts", isDir: true, want: true},
+		{name: "nested descendant file", path: "notes/drafts/note.md", want: true},
+		{name: "file with directory name", path: "drafts", want: false},
+		{name: "partial segment", path: "old-drafts/note.md", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Matches(patterns, tt.path, tt.isDir); got != tt.want {
+				t.Fatalf("Matches(%q, isDir=%v) = %v, want %v", tt.path, tt.isDir, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesRootRelativeDirectoryPatternRecursively(t *testing.T) {
+	patterns := mustParse(t, "/private/")
+
+	tests := []struct {
+		name  string
+		path  string
+		isDir bool
+		want  bool
+	}{
+		{name: "root directory", path: "private", isDir: true, want: true},
+		{name: "root descendant file", path: "private/note.md", want: true},
+		{name: "nested directory", path: "notes/private", isDir: true, want: false},
+		{name: "nested descendant file", path: "notes/private/note.md", want: false},
+		{name: "file with directory name", path: "private", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Matches(patterns, tt.path, tt.isDir); got != tt.want {
+				t.Fatalf("Matches(%q, isDir=%v) = %v, want %v", tt.path, tt.isDir, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesSegmentGlobs(t *testing.T) {
+	patterns := mustParse(t, "*.tmp\nnotes/*-draft.md")
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "root suffix glob", path: "scratch.tmp", want: true},
+		{name: "nested suffix glob", path: "notes/scratch.tmp", want: true},
+		{name: "multi segment glob", path: "notes/spec-draft.md", want: true},
+		{name: "multi segment glob nested anywhere", path: "archive/notes/spec-draft.md", want: true},
+		{name: "glob does not cross segment", path: "notes/deep/spec-draft.md", want: false},
+		{name: "wrong suffix", path: "notes/spec-final.md", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Matches(patterns, tt.path, false); got != tt.want {
+				t.Fatalf("Matches(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesRecursiveWildcard(t *testing.T) {
+	patterns := mustParse(t, "archive/**/scratch.md")
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "zero recursive segments", path: "archive/scratch.md", want: true},
+		{name: "one recursive segment", path: "archive/2026/scratch.md", want: true},
+		{name: "many recursive segments", path: "archive/2026/june/scratch.md", want: true},
+		{name: "unrooted pattern matches nested suffix", path: "notes/archive/2026/scratch.md", want: true},
+		{name: "different leaf", path: "archive/2026/other.md", want: false},
+		{name: "different prefix", path: "archives/2026/scratch.md", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Matches(patterns, tt.path, false); got != tt.want {
+				t.Fatalf("Matches(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesNormalizesVaultRelativePaths(t *testing.T) {
+	patterns := mustParse(t, "/notes/scratch.md")
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "clean path", path: "notes/./daily/../scratch.md", want: true},
+		{name: "windows separators", path: `notes\scratch.md`, want: true},
+		{name: "absolute path rejected", path: "/notes/scratch.md", want: false},
+		{name: "parent escape rejected", path: "../notes/scratch.md", want: false},
+		{name: "empty path rejected", path: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Matches(patterns, tt.path, false); got != tt.want {
+				t.Fatalf("Matches(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func mustParse(t *testing.T, input string) []Pattern {
+	t.Helper()
+
+	patterns, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("Parse(%q) error = %v, want nil", input, err)
+	}
+	return patterns
+}
+
 func assertPattern(t *testing.T, got []Pattern, want Pattern) {
 	t.Helper()
 

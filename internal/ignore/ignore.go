@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 )
 
@@ -83,6 +84,59 @@ func Parse(r io.Reader) ([]Pattern, error) {
 	return patterns, nil
 }
 
+// Matches reports whether any parsed ignore pattern matches a vault-relative path.
+func Matches(patterns []Pattern, vaultRelativePath string, isDir bool) bool {
+	normalized, ok := NormalizePath(vaultRelativePath)
+	if !ok {
+		return false
+	}
+
+	for _, pattern := range patterns {
+		if pattern.Matches(normalized, isDir) {
+			return true
+		}
+	}
+	return false
+}
+
+// Matches reports whether a single ignore pattern matches a normalized vault-relative path.
+func (p Pattern) Matches(vaultRelativePath string, isDir bool) bool {
+	normalized, ok := NormalizePath(vaultRelativePath)
+	if !ok {
+		return false
+	}
+	pathSegments := strings.Split(normalized, "/")
+
+	if p.RootRelative {
+		return p.matchesFrom(pathSegments, isDir)
+	}
+
+	for start := range pathSegments {
+		if p.matchesFrom(pathSegments[start:], isDir) {
+			return true
+		}
+	}
+	return false
+}
+
+// NormalizePath converts a path to memento's deterministic vault-relative slash form.
+func NormalizePath(vaultRelativePath string) (string, bool) {
+	if vaultRelativePath == "" {
+		return "", false
+	}
+
+	slashed := strings.ReplaceAll(vaultRelativePath, `\`, "/")
+	if strings.HasPrefix(slashed, "/") {
+		return "", false
+	}
+
+	normalized := path.Clean(slashed)
+	if normalized == "." || normalized == ".." || strings.HasPrefix(normalized, "../") {
+		return "", false
+	}
+	return normalized, true
+}
+
 func parseLine(line int, raw string) (Pattern, error) {
 	if strings.HasPrefix(raw, "!") {
 		return Pattern{}, lineError(line, raw, ErrUnsupportedNegation)
@@ -144,6 +198,70 @@ func parseSegments(pattern string) ([]Segment, error) {
 	}
 
 	return segments, nil
+}
+
+func (p Pattern) matchesFrom(pathSegments []string, isDir bool) bool {
+	matchLengths := segmentMatchLengths(p.Segments, pathSegments)
+	switch p.Kind {
+	case FilePattern:
+		for _, length := range matchLengths {
+			if length == len(pathSegments) && !isDir {
+				return true
+			}
+		}
+	case DirectoryPattern:
+		for _, length := range matchLengths {
+			if length == 0 {
+				continue
+			}
+			if length < len(pathSegments) || isDir {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func segmentMatchLengths(patternSegments []Segment, pathSegments []string) []int {
+	if len(patternSegments) == 0 {
+		return []int{0}
+	}
+
+	head := patternSegments[0]
+	tail := patternSegments[1:]
+	if head.Kind == RecursiveSegment {
+		var lengths []int
+		for consumed := 0; consumed <= len(pathSegments); consumed++ {
+			for _, tailLength := range segmentMatchLengths(tail, pathSegments[consumed:]) {
+				lengths = append(lengths, consumed+tailLength)
+			}
+		}
+		return lengths
+	}
+
+	if len(pathSegments) == 0 || !segmentMatches(head, pathSegments[0]) {
+		return nil
+	}
+
+	var lengths []int
+	for _, tailLength := range segmentMatchLengths(tail, pathSegments[1:]) {
+		lengths = append(lengths, 1+tailLength)
+	}
+	return lengths
+}
+
+func segmentMatches(pattern Segment, pathSegment string) bool {
+	switch pattern.Kind {
+	case LiteralSegment:
+		return pattern.Raw == pathSegment
+	case GlobSegment:
+		matched, err := path.Match(pattern.Raw, pathSegment)
+		return err == nil && matched
+	case RecursiveSegment:
+		return true
+	default:
+		return false
+	}
 }
 
 func lineError(line int, pattern string, err error) error {
