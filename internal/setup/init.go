@@ -13,7 +13,10 @@ import (
 )
 
 const (
-	ConfigFileName = "config.toml"
+	ConfigFileName           = "config.toml"
+	defaultAgentInstructions = "AGENTS.md"
+	bootloaderStartSentinel  = "<!-- memento:start -->"
+	bootloaderEndSentinel    = "<!-- memento:end -->"
 )
 
 const defaultConfig = `# memento vault configuration
@@ -32,8 +35,17 @@ const defaultIgnore = `# memento operational files
 .DS_Store
 `
 
+type InitOptions struct {
+	AgentInstructionsPath string
+}
+
 // Init creates or adopts a memory vault under repoRoot.
 func Init(repoRoot, dir string) (vault.Vault, error) {
+	return InitWithOptions(repoRoot, dir, InitOptions{})
+}
+
+// InitWithOptions creates or adopts a memory vault under repoRoot.
+func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error) {
 	root, err := filepath.Abs(repoRoot)
 	if err != nil {
 		return vault.Vault{}, fmt.Errorf("resolve repository root %q: %w", repoRoot, err)
@@ -63,6 +75,9 @@ func Init(repoRoot, dir string) (vault.Vault, error) {
 		return vault.Vault{}, fmt.Errorf("create %s: %w", vault.IgnoreFileName, err)
 	}
 	if err := ensureManifest(v); err != nil {
+		return vault.Vault{}, err
+	}
+	if err := ensureBootloader(root, v, opts); err != nil {
 		return vault.Vault{}, err
 	}
 
@@ -125,6 +140,123 @@ func ensureManifest(v vault.Vault) error {
 
 	if err := manifest.Write(v); err != nil {
 		return fmt.Errorf("create manifest: %w", err)
+	}
+	return nil
+}
+
+func ensureBootloader(repoRoot string, v vault.Vault, opts InitOptions) error {
+	path, err := agentInstructionsPath(repoRoot, opts.AgentInstructionsPath)
+	if err != nil {
+		return err
+	}
+
+	block := bootloaderBlock(repoRoot, v)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return writeNewFile(path, []byte(block+"\n"), 0o644)
+		}
+		return fmt.Errorf("read agent instructions: %w", err)
+	}
+
+	updated, err := insertOrReplaceBootloader(string(data), block)
+	if err != nil {
+		return err
+	}
+	if updated == string(data) {
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("write agent instructions: %w", err)
+	}
+	return nil
+}
+
+func agentInstructionsPath(repoRoot, configured string) (string, error) {
+	if configured == "" {
+		configured = defaultAgentInstructions
+	}
+	if filepath.IsAbs(configured) {
+		return filepath.Clean(configured), nil
+	}
+	if filepath.Clean(configured) == "." {
+		return "", fmt.Errorf("agent instructions path must name a file")
+	}
+	return filepath.Join(repoRoot, configured), nil
+}
+
+func bootloaderBlock(repoRoot string, v vault.Vault) string {
+	memoryPath := displayPath(repoRoot, v.Root)
+	manifestPath := displayPath(repoRoot, v.ManifestPath)
+	writingGuidePath := filepath.ToSlash(filepath.Join(memoryPath, "writing_guide.md"))
+
+	return strings.Join([]string{
+		bootloaderStartSentinel,
+		fmt.Sprintf("Durable project knowledge lives in `%s`.", memoryPath),
+		fmt.Sprintf("The manifest is at `%s`.", manifestPath),
+		"Before a task: scan the manifest's titles, summaries, tags, and headings to identify relevant entries.",
+		"Read only the bodies or sections that plausibly apply.",
+		fmt.Sprintf("Working state lives in beads (`bd ready`); discoveries that outlive a task go to `%s/`, not beads notes.", memoryPath),
+		fmt.Sprintf("Write back according to `%s` once it exists.", writingGuidePath),
+		bootloaderEndSentinel,
+	}, "\n")
+}
+
+func displayPath(base, target string) string {
+	rel, err := filepath.Rel(base, target)
+	if err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != ".." {
+		return filepath.ToSlash(rel)
+	}
+	return filepath.ToSlash(filepath.Clean(target))
+}
+
+func insertOrReplaceBootloader(contents, block string) (string, error) {
+	start := strings.Index(contents, bootloaderStartSentinel)
+	end := strings.Index(contents, bootloaderEndSentinel)
+	startCount := strings.Count(contents, bootloaderStartSentinel)
+	endCount := strings.Count(contents, bootloaderEndSentinel)
+
+	switch {
+	case start == -1 && end == -1:
+		return appendBootloader(contents, block), nil
+	case start == -1 || end == -1 || end < start:
+		return "", fmt.Errorf("agent instructions contain an incomplete memento bootloader block")
+	case startCount != 1 || endCount != 1:
+		return "", fmt.Errorf("agent instructions contain multiple memento bootloader blocks")
+	}
+
+	end += len(bootloaderEndSentinel)
+	return contents[:start] + block + contents[end:], nil
+}
+
+func appendBootloader(contents, block string) string {
+	if contents == "" {
+		return block + "\n"
+	}
+	separator := "\n\n"
+	if strings.HasSuffix(contents, "\n\n") {
+		separator = ""
+	} else if strings.HasSuffix(contents, "\n") {
+		separator = "\n"
+	}
+	return contents + separator + block + "\n"
+}
+
+func writeNewFile(path string, contents []byte, perm os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create agent instructions directory: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil
+		}
+		return fmt.Errorf("create agent instructions: %w", err)
+	}
+	defer file.Close()
+
+	if _, err := file.Write(contents); err != nil {
+		return fmt.Errorf("write agent instructions: %w", err)
 	}
 	return nil
 }
