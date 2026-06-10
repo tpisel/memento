@@ -24,6 +24,182 @@ func TestReadReturnsNestedMarkdownByVaultRelativeKey(t *testing.T) {
 	}
 }
 
+func TestReadReturnsSectionByExactHeadingText(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "spec.md", `# Spec
+
+Intro.
+
+## API, Read & Write!
+
+Target content.
+
+### Child Detail
+
+Child content.
+
+## Next
+
+Other content.
+`)
+
+	got, err := Read(vaultFromRoot(root), "spec.md#API, Read & Write!")
+	if err != nil {
+		t.Fatalf("Read(section) error = %v, want nil", err)
+	}
+
+	want := `## API, Read & Write!
+
+Target content.
+
+### Child Detail
+
+Child content.
+
+`
+	if string(got) != want {
+		t.Fatalf("Read(section) = %q, want %q", string(got), want)
+	}
+}
+
+func TestReadReturnsSectionByNormalizedSlug(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "spec.md", `# Spec
+
+## API, Read & Write!
+
+Target content.
+
+## Next
+
+Other content.
+`)
+
+	got, err := Read(vaultFromRoot(root), "spec.md#api-read--write")
+	if err != nil {
+		t.Fatalf("Read(slug section) error = %v, want nil", err)
+	}
+
+	want := `## API, Read & Write!
+
+Target content.
+
+`
+	if string(got) != want {
+		t.Fatalf("Read(slug section) = %q, want %q", string(got), want)
+	}
+}
+
+func TestReadReturnsNestedSectionBySlug(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "spec.md", `# Spec
+
+## Parent
+
+Parent content.
+
+### Child
+
+Child content.
+
+### Sibling
+
+Sibling content.
+`)
+
+	got, err := Read(vaultFromRoot(root), "spec.md#child")
+	if err != nil {
+		t.Fatalf("Read(nested section) error = %v, want nil", err)
+	}
+
+	want := `### Child
+
+Child content.
+
+`
+	if string(got) != want {
+		t.Fatalf("Read(nested section) = %q, want %q", string(got), want)
+	}
+}
+
+func TestReadReturnsDuplicateHeadingSectionsBySlugSuffix(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "spec.md", `# Spec
+
+## Context
+
+First.
+
+## Context
+
+Second.
+
+## Context!
+
+Third.
+
+## End
+
+Done.
+`)
+
+	got, err := Read(vaultFromRoot(root), "spec.md#context-2")
+	if err != nil {
+		t.Fatalf("Read(duplicate section) error = %v, want nil", err)
+	}
+
+	want := `## Context!
+
+Third.
+
+`
+	if string(got) != want {
+		t.Fatalf("Read(duplicate section) = %q, want %q", string(got), want)
+	}
+}
+
+func TestReadSectionIgnoresFrontmatterForHeadingOffsets(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "spec.md", `---
+title: Spec
+mode: read-only
+---
+# Spec
+
+## Target
+
+Target content.
+
+## Next
+
+Other content.
+`)
+
+	got, err := Read(vaultFromRoot(root), "spec.md#target")
+	if err != nil {
+		t.Fatalf("Read(frontmatter section) error = %v, want nil", err)
+	}
+
+	want := `## Target
+
+Target content.
+
+`
+	if string(got) != want {
+		t.Fatalf("Read(frontmatter section) = %q, want %q", string(got), want)
+	}
+}
+
+func TestReadUnknownSectionFailsClearly(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "spec.md", "# Spec\n\n## Present\n\nContent.\n")
+
+	_, err := Read(vaultFromRoot(root), "spec.md#missing")
+	if !errors.Is(err, ErrSectionNotFound) {
+		t.Fatalf("Read(unknown section) error = %v, want ErrSectionNotFound", err)
+	}
+}
+
 func TestReadTreatsIgnoredMarkdownAsMissing(t *testing.T) {
 	root := makeVault(t)
 	writeFile(t, root, ".mementoignore", "ignored.md\n")

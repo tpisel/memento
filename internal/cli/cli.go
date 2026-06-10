@@ -127,6 +127,8 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		switch {
 		case errors.Is(err, note.ErrInvalidKey):
 			fmt.Fprintf(stderr, "memento read: %v\n", err)
+		case errors.Is(err, note.ErrSectionNotFound):
+			fmt.Fprintf(stderr, "memento read: section not found: %s\n", flags.Arg(0))
 		case errors.Is(err, note.ErrNotFound):
 			fmt.Fprintf(stderr, "memento read: key not found: %s\n", flags.Arg(0))
 		default:

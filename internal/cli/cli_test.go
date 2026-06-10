@@ -153,6 +153,42 @@ func TestReadPrintsRequestedMarkdownForExplicitDir(t *testing.T) {
 	}
 }
 
+func TestReadPrintsRequestedSection(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "spec.md", "# Spec\n\n## Target Heading\n\nTarget content.\n\n## Next\n\nOther content.\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"read", "--dir", root, "spec.md#target-heading"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read section) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(read section) stderr = %q, want empty", stderr.String())
+	}
+
+	want := "## Target Heading\n\nTarget content.\n\n"
+	if stdout.String() != want {
+		t.Fatalf("Run(read section) stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestReadFailsClearlyForUnknownSection(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "spec.md", "# Spec\n\n## Present\n\nContent.\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"read", "--dir", root, "spec.md#missing"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(read unknown section) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(read unknown section) stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "section not found") {
+		t.Fatalf("Run(read unknown section) stderr = %q, want section not found message", stderr.String())
+	}
+}
+
 func TestReadFailsClearlyForMissingOrIgnoredKey(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, ".mementoignore", "ignored.md\n")
