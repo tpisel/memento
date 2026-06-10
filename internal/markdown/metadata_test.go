@@ -250,6 +250,43 @@ summary_hash: `+bodyHash+`
 	}
 }
 
+func TestBodyHashUsesEntireSourceWhenFrontmatterAbsent(t *testing.T) {
+	source := []byte("# Title\n\nBody text.\n")
+
+	got, err := ExtractMetadata("hash.md", source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+
+	if got.BodyHash != hashBody(source) {
+		t.Fatalf("BodyHash = %q, want hash of markdown source %q", got.BodyHash, hashBody(source))
+	}
+}
+
+func TestSummaryStaleChangesWhenBodyNoLongerMatchesStoredHash(t *testing.T) {
+	originalBody := []byte("# Title\n\nOriginal body.\n")
+	storedHash := hashBody(originalBody)
+
+	got, err := ExtractMetadata("hash.md", []byte(`---
+summary: Summary
+summary_hash: `+storedHash+`
+---
+# Title
+
+Changed body.
+`))
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+
+	if got.BodyHash == storedHash {
+		t.Fatalf("BodyHash = stored hash %q, want changed body to hash differently", storedHash)
+	}
+	if !got.SummaryStale {
+		t.Fatal("SummaryStale = false, want true when body hash differs from stored summary_hash")
+	}
+}
+
 func TestExtractMetadataRejectsMalformedFrontmatter(t *testing.T) {
 	tests := []struct {
 		name string
