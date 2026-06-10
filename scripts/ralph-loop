@@ -131,13 +131,11 @@ Loop contract:
 8. If the bead is not complete, add a bead comment with what was attempted, what blocked progress, useful task-scoped discoveries, and exact failing commands or errors.
 9. If a discovery changes durable project understanding, update memento-memory/ in the same change set.
 
-Commit policy (required):
-After closing the bead, create exactly one new commit for the bead's changes.
-- Stage only files you modified for this bead. Do not run 'git add -A' or 'git add .'.
-- Include .beads/interactions.jsonl in the commit if your bead closure modified it.
-- Commit message: first line '$bead_id: <short summary>', body optional.
-- Do not amend prior commits; do not push.
-- If the agent declines to commit (e.g. unrecoverable failure), leave a bead comment explaining why instead.
+Commit handling:
+The Ralph wrapper commits your bead's changes after you close it.
+Do not run 'git add', 'git commit', 'git push', or any other git write commands.
+You may read git state freely (git status, git diff, git log).
+The agent sandbox blocks writes to .git/ anyway; attempts will fail.
 
 Do not use built-in agent memories as a source of project truth.
 EOF
@@ -224,19 +222,38 @@ run_iteration() {
   fi
 
   head_after="$(git -C "$repo" rev-parse HEAD)"
-  if [ "$head_before" = "$head_after" ]; then
-    echo "scripts/ralph-loop: HEAD did not advance during iteration on $bead_id; the agent did not commit. Stopping to avoid coalescing multiple beads into one diff." >&2
-    bd comment "$bead_id" --stdin <<EOF >/dev/null 2>&1 || true
-Ralph loop stopped: agent finished without producing a commit.
+  if [ "$head_before" != "$head_after" ]; then
+    echo "scripts/ralph-loop: bead $bead_id was committed by the agent (unexpected; sandbox should block this)" >&2
+    current_bead=""
+    return 0
+  fi
 
-HEAD at start: $head_before
-HEAD at end:   $head_after
+  # Agent didn't commit (expected — sandbox blocks .git writes). Wrapper commits.
+  if git -C "$repo" diff --quiet HEAD && [ -z "$(git -C "$repo" ls-files --others --exclude-standard)" ]; then
+    echo "scripts/ralph-loop: bead $bead_id closed with no working-tree changes; no commit needed" >&2
+    current_bead=""
+    return 0
+  fi
 
-Inspect the working tree for uncommitted bead output before resuming.
-EOF
+  bead_title="$(bd show "$bead_id" 2>/dev/null \
+    | awk 'NR==1 { sub(/^[^·]*· */, ""); sub(/[[:space:]]+\[.*$/, ""); print }')"
+  [ -z "$bead_title" ] && bead_title="closed via ralph"
+
+  msg="$bead_id: $bead_title"
+  if ! git -C "$repo" add -A; then
+    echo "scripts/ralph-loop: 'git add -A' failed for $bead_id" >&2
     current_bead=""
     return 1
   fi
+  if ! git -C "$repo" commit -m "$msg" \
+    -m "Wrapper-committed by scripts/ralph-loop after agent close. See bd show $bead_id for close reason." \
+    >/dev/null; then
+    echo "scripts/ralph-loop: 'git commit' failed for $bead_id" >&2
+    current_bead=""
+    return 1
+  fi
+  new_head="$(git -C "$repo" rev-parse --short HEAD)"
+  echo "scripts/ralph-loop: wrapper-committed $bead_id as $new_head ($msg)" >&2
 
   current_bead=""
   return 0

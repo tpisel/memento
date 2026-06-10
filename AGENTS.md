@@ -51,7 +51,7 @@ Before closing a beads task:
 2. Update the task with what changed, what was verified, and any remaining follow-up.
 3. Move durable learnings into `memento-memory/` when they meet the writing threshold.
 4. Leave beads close notes concise; do not turn them into long-term design docs.
-5. After closing the bead, create exactly one new commit for the bead's work. First line must start with the bead id (e.g. `memento-2nb.3: parse .mementoignore rules`). Stage explicit paths only; do not `git add -A`. Include `.beads/interactions.jsonl` if your close updated it. Do not amend or push.
+5. Commit the bead's changes. Inside the Ralph loop wrapper, the wrapper commits for you (codex's sandbox blocks `.git/` writes anyway); do not run `git add`, `git commit`, or `git push`. Outside the loop, create one commit with first line `<bead-id>: <summary>` (e.g. `memento-2nb.3: parse .mementoignore rules`), staging explicit paths.
 
 If a loop does not clear its selected bead, add a bead comment before stopping. Include what was attempted, what blocked progress, useful task-scoped discoveries, and exact failing commands or errors when relevant. If the discovery changes durable project understanding, also update `memento-memory/`.
 
