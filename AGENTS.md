@@ -37,6 +37,7 @@ Discoveries that outlive the current task go to `memento-memory/`, not transient
 - Prefer small, deterministic slices with observable CLI behavior.
 - Prefer test-first development for deterministic core behavior: discovery, ignore parsing and matching, heading slugs, body hashes, manifest ordering, section extraction, and sentinel replacement.
 - For CLI and integration work, write the acceptance test or fixture first when practical.
+- Use `just check` for the default verification pass. Use narrower `just fmt`, `just test`, `just vet`, or `just build` commands while iterating.
 - Keep implementation choices aligned with the accepted ADRs.
 - Do not store transient debugging notes in `memento-memory/`.
 - If a task reveals a durable constraint, rejected alternative, or design correction, add or update a memory note or ADR in the same change set.
@@ -50,6 +51,7 @@ Before closing a beads task:
 2. Update the task with what changed, what was verified, and any remaining follow-up.
 3. Move durable learnings into `memento-memory/` when they meet the writing threshold.
 4. Leave beads close notes concise; do not turn them into long-term design docs.
+5. After closing the bead, create exactly one new commit for the bead's work. First line must start with the bead id (e.g. `memento-2nb.3: parse .mementoignore rules`). Stage explicit paths only; do not `git add -A`. Include `.beads/interactions.jsonl` if your close updated it. Do not amend or push.
 
 If a loop does not clear its selected bead, add a bead comment before stopping. Include what was attempted, what blocked progress, useful task-scoped discoveries, and exact failing commands or errors when relevant. If the discovery changes durable project understanding, also update `memento-memory/`.
 

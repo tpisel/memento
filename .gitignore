@@ -25,6 +25,12 @@ go.work.sum
 .idea/
 .vscode/
 
+# Local tool caches
+.cache/
+
+# Ralph loop run logs
+logs/
+
 # os cruft
 .DS_Store
 
