@@ -74,6 +74,100 @@ func TestUnknownCommand(t *testing.T) {
 	}
 }
 
+func TestInitCreatesDefaultVaultForEmptyProject(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "sample-app")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	chdirCLI(t, repo)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"init"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(init) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(init) stderr = %q, want empty", stderr.String())
+	}
+
+	root := filepath.Join(repo, "sample-app-memory")
+	for _, relPath := range []string{
+		".memento",
+		".memento/config.toml",
+		".memento/manifest.json",
+		".mementoignore",
+	} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relPath))); err != nil {
+			t.Fatalf("stat %s: %v", relPath, err)
+		}
+	}
+
+	manifest := readCLIFile(t, root, ".memento/manifest.json")
+	if !strings.Contains(manifest, `"entries": []`) {
+		t.Fatalf("manifest = %q, want empty entries placeholder", manifest)
+	}
+	if !strings.Contains(stdout.String(), root) {
+		t.Fatalf("Run(init) stdout = %q, want initialized vault path %q", stdout.String(), root)
+	}
+}
+
+func TestInitAdoptsNonEmptyExplicitDir(t *testing.T) {
+	repo := t.TempDir()
+	root := filepath.Join(repo, "existing-memory")
+	writeCLIFile(t, root, "note.md", "# Adopted\n\nExisting note.\n")
+	chdirCLI(t, repo)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"init", "--dir", "existing-memory"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(init --dir existing-memory) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() == 0 {
+		t.Fatalf("Run(init --dir existing-memory) stdout = empty, want initialized path")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(init --dir existing-memory) stderr = %q, want empty", stderr.String())
+	}
+	if got := readCLIFile(t, root, "note.md"); got != "# Adopted\n\nExisting note.\n" {
+		t.Fatalf("adopted note changed to %q", got)
+	}
+
+	manifest := readCLIFile(t, root, ".memento/manifest.json")
+	if !strings.Contains(manifest, `"key": "note.md"`) {
+		t.Fatalf("manifest = %q, want adopted note entry", manifest)
+	}
+}
+
+func TestInitDoesNotClobberExistingFilesystemArtifacts(t *testing.T) {
+	repo := t.TempDir()
+	root := filepath.Join(repo, "existing-memory")
+	writeCLIFile(t, root, ".memento/config.toml", "custom config\n")
+	writeCLIFile(t, root, ".memento/manifest.json", "custom manifest\n")
+	writeCLIFile(t, root, ".mementoignore", "custom ignore\n")
+	chdirCLI(t, repo)
+
+	for i := 0; i < 2; i++ {
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"init", "--dir", "existing-memory"}, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("Run(init --dir existing-memory) iteration %d exit code = %d, want 0; stderr = %q", i+1, code, stderr.String())
+		}
+		if stderr.Len() != 0 {
+			t.Fatalf("Run(init --dir existing-memory) iteration %d stderr = %q, want empty", i+1, stderr.String())
+		}
+	}
+
+	if got := readCLIFile(t, root, ".memento/config.toml"); got != "custom config\n" {
+		t.Fatalf("config clobbered: %q", got)
+	}
+	if got := readCLIFile(t, root, ".memento/manifest.json"); got != "custom manifest\n" {
+		t.Fatalf("manifest clobbered: %q", got)
+	}
+	if got := readCLIFile(t, root, ".mementoignore"); got != "custom ignore\n" {
+		t.Fatalf("ignore clobbered: %q", got)
+	}
+}
+
 func TestCompilePrintsManifestForExplicitDir(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
@@ -247,4 +341,32 @@ func writeCLIFile(t *testing.T, root, relPath, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %q: %v", relPath, err)
 	}
+}
+
+func readCLIFile(t *testing.T, root, relPath string) string {
+	t.Helper()
+
+	path := filepath.Join(root, filepath.FromSlash(relPath))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %q: %v", relPath, err)
+	}
+	return string(data)
+}
+
+func chdirCLI(t *testing.T, dir string) {
+	t.Helper()
+
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir %q: %v", dir, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
 }

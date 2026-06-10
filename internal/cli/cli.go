@@ -9,6 +9,7 @@ import (
 
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/note"
+	"github.com/tpisel/memento/internal/setup"
 	"github.com/tpisel/memento/internal/vault"
 )
 
@@ -20,7 +21,7 @@ Usage:
   memento help
   memento version
   memento compile [--dir <vault>] [--print]
-  memento init
+  memento init [--dir <vault>]
   memento read [--dir <vault>] <key>
   memento write <key>
   memento serve
@@ -29,7 +30,7 @@ Commands:
   help      Show this help text.
   version   Print the memento version.
   compile   Compile a memory vault manifest.
-  init      Adopt or create a memory vault. Not implemented in this scaffold.
+  init      Adopt or create a memory vault.
   read      Read a memory note.
   write     Write to a memory note. Not implemented in this scaffold.
   serve     Run the MCP server. Not implemented in this scaffold.
@@ -51,6 +52,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "compile":
 		return runCompile(args[1:], stdout, stderr)
+	case "init":
+		return runInit(args[1:], stdout, stderr)
 	case "read":
 		return runRead(args[1:], stdout, stderr)
 	default:
@@ -101,6 +104,33 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "memento compile: %v\n", err)
 		return 1
 	}
+	return 0
+}
+
+func runInit(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("init", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dir := flags.String("dir", "", "memory vault directory")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintf(stderr, "memento init: unexpected argument %q\n", flags.Arg(0))
+		return 2
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(stderr, "memento init: get current directory: %v\n", err)
+		return 1
+	}
+
+	v, err := setup.Init(wd, *dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "memento init: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "Initialized memento vault: %s\n", v.Root)
 	return 0
 }
 
