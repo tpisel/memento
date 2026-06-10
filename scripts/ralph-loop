@@ -50,10 +50,33 @@ reasoning_effort="${RALPH_REASONING_EFFORT:-high}"
 sandbox="${RALPH_SANDBOX:-workspace-write}"
 approval_policy="${RALPH_APPROVAL_POLICY:-never}"
 
-if [ -n "$bead_id" ]; then
-  selection="Use bead '$bead_id'. Do not select a different bead unless this id is invalid or blocked; if that happens, stop and explain."
-else
-  selection="Run 'bd ready' and select the first ready non-epic implementation bead. If only the epic is ready, stop and explain."
+if [ -z "$bead_id" ]; then
+  bead_id="$(bd list --ready --exclude-type epic --flat --limit 1 | awk 'NR == 1 { print $2 }')"
+  if [ -z "$bead_id" ]; then
+    echo "scripts/ralph-loop: no ready non-epic bead found" >&2
+    bd ready >&2 || true
+    exit 1
+  fi
+fi
+
+cleanup_comment() {
+  code="$1"
+  reason="$2"
+  bd comment "$bead_id" --stdin <<EOF >/dev/null 2>&1 || true
+Ralph loop did not complete cleanly.
+
+Reason: $reason
+Exit code: $code
+
+The bead may still be claimed or in progress. Inspect the worktree and bead state before resuming or resetting it.
+EOF
+}
+
+trap 'cleanup_comment 130 "interrupted"; exit 130' INT
+trap 'cleanup_comment 143 "terminated"; exit 143' TERM
+
+if [ "${RALPH_DRY_RUN:-0}" != "1" ]; then
+  bd update "$bead_id" --claim >/dev/null
 fi
 
 prompt="$(cat <<EOF
@@ -62,19 +85,18 @@ You are running a Ralph loop for the memento repository.
 Follow AGENTS.md exactly. This is a single-bead implementation loop.
 
 Bead selection:
-$selection
+Use bead '$bead_id'. The Ralph wrapper has already claimed it. Do not select or claim a different bead. If this bead is invalid or blocked, add a bead comment and stop.
 
 Loop contract:
 1. Read AGENTS.md.
 2. Inspect the selected bead with bd show.
-3. Claim the bead if the command is available and appropriate.
-4. Read linked durable context in memento-memory/ before editing.
-5. Work only on the selected bead.
-6. Prefer test-first development for deterministic core behavior.
-7. Run the relevant verification commands.
-8. If the bead is complete, close it with a concise note listing what changed and what was verified.
-9. If the bead is not complete, add a bead comment with what was attempted, what blocked progress, useful task-scoped discoveries, and exact failing commands or errors.
-10. If a discovery changes durable project understanding, update memento-memory/ in the same change set.
+3. Read linked durable context in memento-memory/ before editing.
+4. Work only on the selected bead.
+5. Prefer test-first development for deterministic core behavior.
+6. Run the relevant verification commands.
+7. If the bead is complete, close it with a concise note listing what changed and what was verified.
+8. If the bead is not complete, add a bead comment with what was attempted, what blocked progress, useful task-scoped discoveries, and exact failing commands or errors.
+9. If a discovery changes durable project understanding, update memento-memory/ in the same change set.
 
 Do not commit changes unless the selected bead or the user explicitly asks for a commit.
 Do not use built-in Codex memories as a source of project truth.
@@ -90,7 +112,8 @@ EOF
   exit 0
 fi
 
-exec codex exec \
+set +e
+codex exec \
   --cd "$repo" \
   --ephemeral \
   --ignore-user-config \
@@ -101,4 +124,11 @@ exec codex exec \
   -c "approval_policy=\"$approval_policy\"" \
   -c 'web_search="disabled"' \
   "$prompt"
+status="$?"
+set -e
 
+if [ "$status" -ne 0 ]; then
+  cleanup_comment "$status" "codex exec exited non-zero"
+fi
+
+exit "$status"
