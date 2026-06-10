@@ -117,6 +117,87 @@ The first paragraph should be used.
 	}
 }
 
+func TestExtractMetadataExtractsH2H3HeadingsInSourceOrder(t *testing.T) {
+	source := []byte(`# Document Title
+
+## Context
+
+### Prior Art
+
+#### Too Deep
+
+## Decision
+
+# Ignored H1
+
+### Consequences
+`)
+
+	got, err := ExtractMetadata("headings.md", source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+
+	want := []Heading{
+		{Level: 2, Text: "Context", Slug: "context"},
+		{Level: 3, Text: "Prior Art", Slug: "prior-art"},
+		{Level: 2, Text: "Decision", Slug: "decision"},
+		{Level: 3, Text: "Consequences", Slug: "consequences"},
+	}
+	if !reflect.DeepEqual(got.Headings, want) {
+		t.Fatalf("Headings = %#v, want %#v", got.Headings, want)
+	}
+}
+
+func TestExtractMetadataNormalizesHeadingSlugs(t *testing.T) {
+	source := []byte(`## API, Read & Write!
+
+### Use ` + "`Code Spans`" + ` Here
+`)
+
+	got, err := ExtractMetadata("slugs.md", source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+
+	want := []Heading{
+		{Level: 2, Text: "API, Read & Write!", Slug: "api-read--write"},
+		{Level: 3, Text: "Use Code Spans Here", Slug: "use-code-spans-here"},
+	}
+	if !reflect.DeepEqual(got.Headings, want) {
+		t.Fatalf("Headings = %#v, want %#v", got.Headings, want)
+	}
+}
+
+func TestExtractMetadataAddsDuplicateHeadingSlugSuffixes(t *testing.T) {
+	source := []byte(`## Context
+
+### Context
+
+## Context!
+
+## Context-1
+
+## Context
+`)
+
+	got, err := ExtractMetadata("duplicates.md", source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+
+	want := []Heading{
+		{Level: 2, Text: "Context", Slug: "context"},
+		{Level: 3, Text: "Context", Slug: "context-1"},
+		{Level: 2, Text: "Context!", Slug: "context-2"},
+		{Level: 2, Text: "Context-1", Slug: "context-1-1"},
+		{Level: 2, Text: "Context", Slug: "context-3"},
+	}
+	if !reflect.DeepEqual(got.Headings, want) {
+		t.Fatalf("Headings = %#v, want %#v", got.Headings, want)
+	}
+}
+
 func TestExtractMetadataParsesBlockTags(t *testing.T) {
 	source := []byte(`---
 tags:

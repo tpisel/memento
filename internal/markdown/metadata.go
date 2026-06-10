@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -35,11 +36,18 @@ type Metadata struct {
 	Title        string
 	Summary      string
 	Tags         []string
+	Headings     []Heading
 	Mode         WriteMode
 	Updated      time.Time
 	SummaryHash  string
 	BodyHash     string
 	SummaryStale bool
+}
+
+type Heading struct {
+	Level int
+	Text  string
+	Slug  string
 }
 
 type frontmatter struct {
@@ -82,6 +90,7 @@ func ExtractMetadata(relPath string, source []byte) (Metadata, error) {
 		Title:        title,
 		Summary:      summary,
 		Tags:         fm.tags,
+		Headings:     extractHeadings(doc, body),
 		Mode:         mode,
 		Updated:      fm.updated,
 		SummaryHash:  fm.summaryHash,
@@ -319,6 +328,64 @@ func firstParagraphText(doc ast.Node, source []byte) string {
 		return ast.WalkStop, nil
 	})
 	return paragraph
+}
+
+func extractHeadings(doc ast.Node, source []byte) []Heading {
+	var headings []Heading
+	nextSuffix := map[string]int{}
+	used := map[string]bool{}
+
+	_ = ast.Walk(doc, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		h, ok := node.(*ast.Heading)
+		if !ok || h.Level < 2 || h.Level > 3 {
+			return ast.WalkContinue, nil
+		}
+
+		text := strings.TrimSpace(nodeText(h, source))
+		if text == "" {
+			return ast.WalkContinue, nil
+		}
+		headings = append(headings, Heading{
+			Level: h.Level,
+			Text:  text,
+			Slug:  uniqueHeadingSlug(headingSlug(text), nextSuffix, used),
+		})
+		return ast.WalkContinue, nil
+	})
+
+	return headings
+}
+
+func uniqueHeadingSlug(base string, nextSuffix map[string]int, used map[string]bool) string {
+	if !used[base] {
+		used[base] = true
+		return base
+	}
+
+	for {
+		nextSuffix[base]++
+		slug := fmt.Sprintf("%s-%d", base, nextSuffix[base])
+		if !used[slug] {
+			used[slug] = true
+			return slug
+		}
+	}
+}
+
+func headingSlug(text string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(text) {
+		switch {
+		case unicode.IsSpace(r):
+			b.WriteByte('-')
+		case unicode.IsLetter(r), unicode.IsDigit(r), r == '-', r == '_':
+			b.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return b.String()
 }
 
 func nodeText(node ast.Node, source []byte) string {
