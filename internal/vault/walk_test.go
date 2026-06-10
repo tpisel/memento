@@ -39,6 +39,7 @@ func TestWalkMarkdownExcludesOperationalFiles(t *testing.T) {
 	writeFile(t, root, ".mementoignore", "")
 	writeFile(t, root, ".memento/manifest.md", "# Not content\n")
 	writeFile(t, root, ".memento/deep/config.md", "# Not content\n")
+	writeFile(t, root, "writing_guide.md", "# Operational\n")
 	writeFile(t, root, "content.md", "# Content\n")
 
 	got := walkPaths(t, vault)

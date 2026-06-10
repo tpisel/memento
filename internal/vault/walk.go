@@ -11,6 +11,7 @@ import (
 )
 
 const IgnoreFileName = ".mementoignore"
+const WritingGuideFileName = "writing_guide.md"
 
 // WalkMarkdown visits markdown content files in deterministic vault-relative order.
 func WalkMarkdown(vault Vault, visit func(relPath, absPath string) error) error {
@@ -44,7 +45,7 @@ func WalkMarkdown(vault Vault, visit func(relPath, absPath string) error) error 
 			}
 		}
 
-		if relPath == IgnoreFileName {
+		if relPath == IgnoreFileName || relPath == WritingGuideFileName {
 			return nil
 		}
 		if ignore.Matches(patterns, relPath, false) {
