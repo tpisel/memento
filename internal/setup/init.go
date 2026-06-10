@@ -17,6 +17,8 @@ const (
 	defaultAgentInstructions = "AGENTS.md"
 	bootloaderStartSentinel  = "<!-- memento:start -->"
 	bootloaderEndSentinel    = "<!-- memento:end -->"
+	hookStartSentinel        = "# memento:start"
+	hookEndSentinel          = "# memento:end"
 )
 
 const defaultConfig = `# memento vault configuration
@@ -80,6 +82,9 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensureBootloader(root, v, opts); err != nil {
 		return vault.Vault{}, err
 	}
+	if err := ensurePreCommitHook(root, v); err != nil {
+		return vault.Vault{}, err
+	}
 
 	return v, nil
 }
@@ -126,6 +131,57 @@ func ensureFile(path string, contents []byte, perm os.FileMode) error {
 		return err
 	}
 	return nil
+}
+
+func ensurePreCommitHook(repoRoot string, v vault.Vault) error {
+	path := filepath.Join(repoRoot, ".git", "hooks", "pre-commit")
+	block := preCommitHookBlock(repoRoot, v)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return writeNewFile(path, []byte("#!/bin/sh\nset -eu\n\n"+block+"\n"), 0o755)
+		}
+		return fmt.Errorf("read pre-commit hook: %w", err)
+	}
+
+	updated, err := insertOrReplaceHookBlock(string(data), block)
+	if err != nil {
+		return err
+	}
+	if updated != string(data) {
+		if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+			return fmt.Errorf("write pre-commit hook: %w", err)
+		}
+	}
+	if err := ensureExecutable(path); err != nil {
+		return fmt.Errorf("make pre-commit hook executable: %w", err)
+	}
+	return nil
+}
+
+func preCommitHookBlock(repoRoot string, v vault.Vault) string {
+	memoryPath := displayPath(repoRoot, v.Root)
+	manifestPath := displayPath(repoRoot, v.ManifestPath)
+
+	return strings.Join([]string{
+		hookStartSentinel,
+		"memento compile --dir " + shellQuote(memoryPath),
+		"git add -- " + shellQuote(manifestPath),
+		hookEndSentinel,
+	}, "\n")
+}
+
+func ensureExecutable(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	mode := info.Mode().Perm()
+	if mode&0o100 != 0 {
+		return nil
+	}
+	return os.Chmod(path, mode|0o100)
 }
 
 func ensureManifest(v vault.Vault) error {
@@ -211,25 +267,33 @@ func displayPath(base, target string) string {
 }
 
 func insertOrReplaceBootloader(contents, block string) (string, error) {
-	start := strings.Index(contents, bootloaderStartSentinel)
-	end := strings.Index(contents, bootloaderEndSentinel)
-	startCount := strings.Count(contents, bootloaderStartSentinel)
-	endCount := strings.Count(contents, bootloaderEndSentinel)
+	return insertOrReplaceSentinelBlock(contents, block, bootloaderStartSentinel, bootloaderEndSentinel, "agent instructions", "bootloader")
+}
+
+func insertOrReplaceHookBlock(contents, block string) (string, error) {
+	return insertOrReplaceSentinelBlock(contents, block, hookStartSentinel, hookEndSentinel, "pre-commit hook", "memento")
+}
+
+func insertOrReplaceSentinelBlock(contents, block, startSentinel, endSentinel, target, blockName string) (string, error) {
+	start := strings.Index(contents, startSentinel)
+	end := strings.Index(contents, endSentinel)
+	startCount := strings.Count(contents, startSentinel)
+	endCount := strings.Count(contents, endSentinel)
 
 	switch {
 	case start == -1 && end == -1:
-		return appendBootloader(contents, block), nil
+		return appendSentinelBlock(contents, block), nil
 	case start == -1 || end == -1 || end < start:
-		return "", fmt.Errorf("agent instructions contain an incomplete memento bootloader block")
+		return "", fmt.Errorf("%s contains an incomplete %s block", target, blockName)
 	case startCount != 1 || endCount != 1:
-		return "", fmt.Errorf("agent instructions contain multiple memento bootloader blocks")
+		return "", fmt.Errorf("%s contains multiple %s blocks", target, blockName)
 	}
 
-	end += len(bootloaderEndSentinel)
+	end += len(endSentinel)
 	return contents[:start] + block + contents[end:], nil
 }
 
-func appendBootloader(contents, block string) string {
+func appendSentinelBlock(contents, block string) string {
 	if contents == "" {
 		return block + "\n"
 	}
@@ -259,6 +323,13 @@ func writeNewFile(path string, contents []byte, perm os.FileMode) error {
 		return fmt.Errorf("write agent instructions: %w", err)
 	}
 	return nil
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 func defaultVaultDirName(repoRoot string) string {

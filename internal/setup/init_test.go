@@ -114,18 +114,26 @@ func TestInitBootloaderIsIdempotent(t *testing.T) {
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("first Init() error = %v, want nil", err)
 	}
-	first := readSetupFile(t, repo, "AGENTS.md")
+	firstAgents := readSetupFile(t, repo, "AGENTS.md")
+	firstHook := readSetupFile(t, repo, ".git/hooks/pre-commit")
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("second Init() error = %v, want nil", err)
 	}
-	second := readSetupFile(t, repo, "AGENTS.md")
+	secondAgents := readSetupFile(t, repo, "AGENTS.md")
+	secondHook := readSetupFile(t, repo, ".git/hooks/pre-commit")
 
-	if second != first {
-		t.Fatalf("AGENTS.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", first, second)
+	if secondAgents != firstAgents {
+		t.Fatalf("AGENTS.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstAgents, secondAgents)
 	}
-	if count := strings.Count(second, "<!-- memento:start -->"); count != 1 {
-		t.Fatalf("AGENTS.md start sentinel count = %d, want 1; contents = %q", count, second)
+	if secondHook != firstHook {
+		t.Fatalf("pre-commit hook changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstHook, secondHook)
+	}
+	if count := strings.Count(secondAgents, "<!-- memento:start -->"); count != 1 {
+		t.Fatalf("AGENTS.md start sentinel count = %d, want 1; contents = %q", count, secondAgents)
+	}
+	if count := strings.Count(secondHook, "# memento:start"); count != 1 {
+		t.Fatalf("pre-commit hook start sentinel count = %d, want 1; contents = %q", count, secondHook)
 	}
 }
 
@@ -142,6 +150,84 @@ func TestInitCanUseConfiguredAgentInstructionFile(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("AGENTS.md stat err = %v, want file not to exist", err)
+	}
+}
+
+func TestInitCreatesPreCommitHookWhenAbsent(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, ".git/hooks/pre-commit")
+	if !strings.HasPrefix(got, "#!/bin/sh\nset -eu\n\n") {
+		t.Fatalf("pre-commit hook = %q, want minimal shell header", got)
+	}
+	for _, want := range []string{
+		"# memento:start",
+		`memento compile --dir 'memory'`,
+		`git add -- 'memory/.memento/manifest.json'`,
+		"# memento:end",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("pre-commit hook = %q, want it to contain %q", got, want)
+		}
+	}
+
+	info, err := os.Stat(filepath.Join(repo, ".git/hooks/pre-commit"))
+	if err != nil {
+		t.Fatalf("stat pre-commit hook: %v", err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("pre-commit hook mode = %v, want executable bit set", info.Mode().Perm())
+	}
+}
+
+func TestInitAppendsMementoBlockToExistingPreCommitHook(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, ".git/hooks/pre-commit", "#!/bin/sh\nset -eu\n\necho existing\n")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, ".git/hooks/pre-commit")
+	if !strings.HasPrefix(got, "#!/bin/sh\nset -eu\n\necho existing\n") {
+		t.Fatalf("pre-commit hook = %q, want existing content preserved at start", got)
+	}
+	if count := strings.Count(got, "# memento:start"); count != 1 {
+		t.Fatalf("pre-commit start sentinel count = %d, want 1; contents = %q", count, got)
+	}
+	if !strings.Contains(got, `git add -- 'memory/.memento/manifest.json'`) {
+		t.Fatalf("pre-commit hook = %q, want manifest staging command", got)
+	}
+}
+
+func TestInitReplacesExistingMementoBlockInPreCommitHook(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, ".git/hooks/pre-commit", "#!/bin/sh\nset -eu\n\n# memento:start\nold block\n# memento:end\n\necho keep\n")
+
+	if _, err := Init(repo, "project-memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, ".git/hooks/pre-commit")
+	for _, want := range []string{
+		"#!/bin/sh\nset -eu\n\n",
+		"\n\necho keep\n",
+		`memento compile --dir 'project-memory'`,
+		`git add -- 'project-memory/.memento/manifest.json'`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("pre-commit hook = %q, want it to contain %q", got, want)
+		}
+	}
+	if strings.Contains(got, "old block") {
+		t.Fatalf("pre-commit hook = %q, want old memento block removed", got)
+	}
+	if count := strings.Count(got, "# memento:start"); count != 1 {
+		t.Fatalf("pre-commit start sentinel count = %d, want 1; contents = %q", count, got)
 	}
 }
 
