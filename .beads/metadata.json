@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "memento",
+  "project_id": "6fbe919f-1829-4385-b85e-0583774c53d8"
+}
