@@ -1,0 +1,104 @@
+#!/bin/sh
+set -eu
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/ralph-loop [bead-id]
+
+Run one bounded Ralph agent loop against this repository.
+
+Environment overrides:
+  RALPH_MODEL             Codex model to use (default: gpt-5.5)
+  RALPH_REASONING_EFFORT  Reasoning effort (default: high)
+  RALPH_SANDBOX           Codex sandbox (default: workspace-write)
+  RALPH_APPROVAL_POLICY   Approval policy (default: never)
+  RALPH_DRY_RUN           If 1, print the codex command and prompt
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
+
+if [ "$#" -gt 1 ]; then
+  usage >&2
+  exit 2
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "scripts/ralph-loop: codex is not on PATH" >&2
+  exit 127
+fi
+
+if ! command -v bd >/dev/null 2>&1; then
+  echo "scripts/ralph-loop: bd is not on PATH" >&2
+  exit 127
+fi
+
+repo="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$repo" ]; then
+  echo "scripts/ralph-loop: must be run inside a git repository" >&2
+  exit 1
+fi
+
+bead_id="${1:-}"
+model="${RALPH_MODEL:-gpt-5.5}"
+reasoning_effort="${RALPH_REASONING_EFFORT:-high}"
+sandbox="${RALPH_SANDBOX:-workspace-write}"
+approval_policy="${RALPH_APPROVAL_POLICY:-never}"
+
+if [ -n "$bead_id" ]; then
+  selection="Use bead '$bead_id'. Do not select a different bead unless this id is invalid or blocked; if that happens, stop and explain."
+else
+  selection="Run 'bd ready' and select the first ready non-epic implementation bead. If only the epic is ready, stop and explain."
+fi
+
+prompt="$(cat <<EOF
+You are running a Ralph loop for the memento repository.
+
+Follow AGENTS.md exactly. This is a single-bead implementation loop.
+
+Bead selection:
+$selection
+
+Loop contract:
+1. Read AGENTS.md.
+2. Inspect the selected bead with bd show.
+3. Claim the bead if the command is available and appropriate.
+4. Read linked durable context in memento-memory/ before editing.
+5. Work only on the selected bead.
+6. Prefer test-first development for deterministic core behavior.
+7. Run the relevant verification commands.
+8. If the bead is complete, close it with a concise note listing what changed and what was verified.
+9. If the bead is not complete, add a bead comment with what was attempted, what blocked progress, useful task-scoped discoveries, and exact failing commands or errors.
+10. If a discovery changes durable project understanding, update memento-memory/ in the same change set.
+
+Do not commit changes unless the selected bead or the user explicitly asks for a commit.
+Do not use built-in Codex memories as a source of project truth.
+EOF
+)"
+
+if [ "${RALPH_DRY_RUN:-0}" = "1" ]; then
+  cat <<EOF
+codex exec --cd "$repo" --ephemeral --ignore-user-config --disable memories --sandbox "$sandbox" --model "$model" -c model_reasoning_effort="$reasoning_effort" -c approval_policy="$approval_policy" -c web_search="disabled" <prompt>
+
+$prompt
+EOF
+  exit 0
+fi
+
+exec codex exec \
+  --cd "$repo" \
+  --ephemeral \
+  --ignore-user-config \
+  --disable memories \
+  --sandbox "$sandbox" \
+  --model "$model" \
+  -c "model_reasoning_effort=\"$reasoning_effort\"" \
+  -c "approval_policy=\"$approval_policy\"" \
+  -c 'web_search="disabled"' \
+  "$prompt"
+

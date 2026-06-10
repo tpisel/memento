@@ -5,17 +5,18 @@ This project is being developed with two separate memory substrates:
 - **beads** holds task state, implementation sequencing, blockers, and working notes.
 - **memento memory** holds durable project knowledge: design decisions, specs, constraints, and discoveries that should survive a task.
 
-Keep that boundary clear. Task progress belongs in beads. Durable semantic knowledge belongs in `memento-memory/`.
+Keep that boundary clear. Task progress belongs in beads. Durable semantic knowledge belongs in `memento-memory/`. Do not use `bd remember`.
 
 ## Start of Task
 
 1. Run `bd ready` and choose the next ready task unless the user has already named a task.
-2. Read the selected task and any linked context before editing code.
-3. Check `memento-memory/` for relevant durable context:
+2. Claim the selected bead before editing when the command is available and appropriate.
+3. Read the selected task and any linked context before editing code.
+4. Check `memento-memory/` for relevant durable context:
    - start with `memento-memory/spec.md`;
    - read ADRs linked from the task;
    - scan other ADRs when the task touches architecture, storage layout, CLI behavior, or agent workflow.
-4. Keep the task loop small. Prefer finishing one beads task with tests and a close note over starting several partial threads.
+5. Keep the task loop small. Prefer finishing one beads task with tests and a close note over starting several partial threads.
 
 When memento CLI support exists, replace the manual memory scan with the manifest/read workflow below.
 
@@ -27,16 +28,19 @@ Before a task: scan the manifest when present, using titles, summaries, tags, an
 
 Until the CLI and manifest exist, manually read the relevant files in `memento-memory/`, especially `spec.md` and the Architecture decision record directory.
 
-Working state lives in beads (`bd ready`). Discoveries that outlive a task go to `memento-memory/`, not beads close notes. Write back according to `memento-memory/writing_guide.md` once it exists.
+Discoveries that outlive the current task go to `memento-memory/`, not transient task notes. Write back according to `memento-memory/writing_guide.md` once it exists.
 <!-- memento:end -->
 
 ## During Implementation
 
 - Let existing code and tests define the current behavior once code exists.
 - Prefer small, deterministic slices with observable CLI behavior.
+- Prefer test-first development for deterministic core behavior: discovery, ignore parsing and matching, heading slugs, body hashes, manifest ordering, section extraction, and sentinel replacement.
+- For CLI and integration work, write the acceptance test or fixture first when practical.
 - Keep implementation choices aligned with the accepted ADRs.
 - Do not store transient debugging notes in `memento-memory/`.
 - If a task reveals a durable constraint, rejected alternative, or design correction, add or update a memory note or ADR in the same change set.
+- If the selected bead is too large or incorrectly shaped, split it or leave a bead comment with the proposed adjustment rather than forcing an oversized loop.
 
 ## End of Task
 
@@ -47,18 +51,8 @@ Before closing a beads task:
 3. Move durable learnings into `memento-memory/` when they meet the writing threshold.
 4. Leave beads close notes concise; do not turn them into long-term design docs.
 
-## Current Implementation Plan
+If a loop does not clear its selected bead, add a bead comment before stopping. Include what was attempted, what blocked progress, useful task-scoped discoveries, and exact failing commands or errors when relevant. If the discovery changes durable project understanding, also update `memento-memory/`.
 
-Initial work should be decomposed into beads tasks around these slices:
+## Interfaces
 
-1. Scaffold Go module and CLI skeleton.
-2. Implement vault discovery via `.memento/`.
-3. Implement `.mementoignore` parser and matcher.
-4. Implement markdown/frontmatter extraction.
-5. Emit deterministic manifest.
-6. Implement `read <key>`.
-7. Implement `read <key>#<section>`.
-8. Implement `init` adopt/create flow.
-9. Install or update the pre-commit sentinel block.
-10. Add minimal v0 write support for new files and append-only writes.
-
+Use justfile for testing, linting, and formatting commands. Add them if they do not exist.
