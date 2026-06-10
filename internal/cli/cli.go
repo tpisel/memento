@@ -23,7 +23,7 @@ Usage:
   memento compile [--dir <vault>] [--print]
   memento init [--dir <vault>]
   memento read [--dir <vault>] <key>
-  memento write <key>
+  memento write [--dir <vault>] <key>
   memento serve
 
 Commands:
@@ -32,12 +32,17 @@ Commands:
   compile   Compile a memory vault manifest.
   init      Adopt or create a memory vault.
   read      Read a memory note.
-  write     Write to a memory note. Not implemented in this scaffold.
+  write     Create or append to a memory note from stdin.
   serve     Run the MCP server. Not implemented in this scaffold.
 `
 
 // Run dispatches the CLI and returns a process-style exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
+	return RunWithInput(args, os.Stdin, stdout, stderr)
+}
+
+// RunWithInput dispatches the CLI using stdin for commands that consume a body.
+func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stdout, helpText)
 		return 0
@@ -56,6 +61,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runInit(args[1:], stdout, stderr)
 	case "read":
 		return runRead(args[1:], stdout, stderr)
+	case "write":
+		return runWrite(args[1:], stdin, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "memento: unknown command %q\n\n", args[0])
 		fmt.Fprint(stderr, "Run 'memento help' for usage.\n")
@@ -169,6 +176,44 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 
 	if _, err := stdout.Write(data); err != nil {
 		fmt.Fprintf(stderr, "memento read: write stdout: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("write", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dir := flags.String("dir", "", "memory vault directory")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 1 {
+		fmt.Fprint(stderr, "memento write: expected exactly one key\n")
+		return 2
+	}
+
+	v, err := resolveVault(*dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "memento write: %v\n", err)
+		return 1
+	}
+
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "memento write: read stdin: %v\n", err)
+		return 1
+	}
+
+	if err := note.Write(v, flags.Arg(0), data, note.WriteOptions{}); err != nil {
+		switch {
+		case errors.Is(err, note.ErrInvalidKey):
+			fmt.Fprintf(stderr, "memento write: %v\n", err)
+		case errors.Is(err, note.ErrUnsupportedWriteOperation):
+			fmt.Fprintf(stderr, "memento write: %v\n", err)
+		default:
+			fmt.Fprintf(stderr, "memento write: %v\n", err)
+		}
 		return 1
 	}
 	return 0

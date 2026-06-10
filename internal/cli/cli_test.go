@@ -321,6 +321,105 @@ func TestReadRejectsTraversalKey(t *testing.T) {
 	}
 }
 
+func TestWriteCreatesMarkdownFromStdin(t *testing.T) {
+	root := makeCLIVault(t)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--dir", root, "notes/new.md"},
+		strings.NewReader("# New\n\nDurable note.\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write create) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write create) stdout = %q, want empty", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(write create) stderr = %q, want empty", stderr.String())
+	}
+
+	want := "# New\n\nDurable note.\n"
+	if got := readCLIFile(t, root, "notes/new.md"); got != want {
+		t.Fatalf("written note = %q, want %q", got, want)
+	}
+}
+
+func TestWriteAppendsMarkdownFromStdin(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nExisting.\n")
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--dir", root, "note.md"},
+		strings.NewReader("\nAppended.\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write append) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write append) stdout = %q, want empty", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(write append) stderr = %q, want empty", stderr.String())
+	}
+
+	want := "# Note\n\nExisting.\n\nAppended.\n"
+	if got := readCLIFile(t, root, "note.md"); got != want {
+		t.Fatalf("appended note = %q, want %q", got, want)
+	}
+}
+
+func TestWriteRejectsTraversalKey(t *testing.T) {
+	root := makeCLIVault(t)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--dir", root, "../outside.md"},
+		strings.NewReader("# Outside\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write traversal) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write traversal) stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid key") {
+		t.Fatalf("Run(write traversal) stderr = %q, want invalid key message", stderr.String())
+	}
+}
+
+func TestWriteDoesNotOfferDeferredMutationFlags(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nOriginal.\n")
+
+	for _, args := range [][]string{
+		{"write", "--dir", root, "--overwrite", "note.md"},
+		{"write", "--dir", root, "--section", "context", "note.md"},
+		{"write", "--dir", root, "--upsert", "key", "note.md"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := RunWithInput(args, strings.NewReader("replacement\n"), &stdout, &stderr)
+			if code != 2 {
+				t.Fatalf("Run(%v) exit code = %d, want 2", args, code)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("Run(%v) stdout = %q, want empty", args, stdout.String())
+			}
+			if got := readCLIFile(t, root, "note.md"); got != "# Note\n\nOriginal.\n" {
+				t.Fatalf("note changed after unsupported mutation flag: %q", got)
+			}
+		})
+	}
+}
+
 func makeCLIVault(t *testing.T) string {
 	t.Helper()
 

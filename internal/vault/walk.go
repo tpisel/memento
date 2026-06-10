@@ -75,6 +75,15 @@ func loadIgnorePatterns(root string) ([]ignore.Pattern, error) {
 	return patterns, nil
 }
 
+// IsIgnored reports whether relPath is excluded by the vault's .mementoignore.
+func IsIgnored(vault Vault, relPath string, isDir bool) (bool, error) {
+	patterns, err := loadIgnorePatterns(vault.Root)
+	if err != nil {
+		return false, err
+	}
+	return ignore.Matches(patterns, relPath, isDir), nil
+}
+
 func vaultRelative(root, path string) (string, error) {
 	relPath, err := filepath.Rel(root, path)
 	if err != nil {
