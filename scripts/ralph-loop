@@ -279,8 +279,10 @@ while [ "$iteration" -lt "$max_iterations" ]; do
   fi
   iteration=$((iteration + 1))
   echo "scripts/ralph-loop: iteration $iteration/$max_iterations on $bead_id ($agent)" >&2
-  if ! run_iteration "$bead_id"; then
-    exit "$?"
+  run_iteration "$bead_id"
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    exit "$status"
   fi
   last_bead="$bead_id"
 done
