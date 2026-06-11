@@ -90,6 +90,8 @@ Canonical form is **JSON** (deterministic to parse). An optional second derived 
 - **updated** — timestamp.
 - **summary_stale** — detection flag (§8).
 - **links** — out + in (computed at compile time; consumed at v3, §7).
+  - outlinks are objects with `target`, `type`, and `resolved`; resolved targets use the manifest key, unresolved targets keep the raw wikilink target.
+  - inlinks are inverted resolved edges with `source` and `type`.
 
 ### Global
 

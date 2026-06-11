@@ -158,6 +158,113 @@ func TestCompileEmptyVaultSerializesEntriesArray(t *testing.T) {
 	}
 }
 
+func TestCompileExtractsWikiLinkGraph(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "source.md", `# Source
+
+Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and [[source]].
+`)
+	writeFile(t, root, "Target.md", "# Target\n")
+	writeFile(t, root, "Embeds/Thing.md", "# Thing\n")
+
+	m, err := Compile(vaultFromRoot(root))
+	if err != nil {
+		t.Fatalf("Compile() error = %v, want nil", err)
+	}
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v, want nil", err)
+	}
+
+	want := `{
+  "entries": [
+    {
+      "key": "Embeds/Thing.md",
+      "title": "Thing",
+      "summary": "",
+      "tags": [],
+      "headings": [],
+      "mode": "append-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": [
+          {
+            "source": "source.md",
+            "type": "embed"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Target.md",
+      "title": "Target",
+      "summary": "",
+      "tags": [],
+      "headings": [],
+      "mode": "append-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": [
+          {
+            "source": "source.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "source.md",
+      "title": "Source",
+      "summary": "Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and [[source]].",
+      "tags": [],
+      "headings": [],
+      "mode": "append-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "Embeds/Thing.md",
+            "type": "embed",
+            "resolved": true
+          },
+          {
+            "target": "Missing",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "Target.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "source.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "source.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    }
+  ]
+}
+`
+	if string(data) != want {
+		t.Fatalf("manifest JSON =\n%s\nwant:\n%s", data, want)
+	}
+}
+
 func makeVault(t *testing.T) string {
 	t.Helper()
 
