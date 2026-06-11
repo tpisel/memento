@@ -184,8 +184,31 @@ func TestExtractMetadataNormalizesHeadingSlugs(t *testing.T) {
 	}
 
 	want := []Heading{
-		{Level: 2, Text: "API, Read & Write!", Slug: "api-read--write"},
+		{Level: 2, Text: "API, Read & Write!", Slug: "api-read-write"},
 		{Level: 3, Text: "Use Code Spans Here", Slug: "use-code-spans-here"},
+	}
+	if !reflect.DeepEqual(got.Headings, want) {
+		t.Fatalf("Headings = %#v, want %#v", got.Headings, want)
+	}
+}
+
+func TestExtractMetadataCollapsesConsecutiveHeadingSlugSeparators(t *testing.T) {
+	source := []byte(`## Foo  Bar
+
+## Foo - Bar
+
+## Foo  - -- Bar!!! Baz
+`)
+
+	got, err := ExtractMetadata("separators.md", source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+
+	want := []Heading{
+		{Level: 2, Text: "Foo Bar", Slug: "foo-bar"},
+		{Level: 2, Text: "Foo - Bar", Slug: "foo-bar-1"},
+		{Level: 2, Text: "Foo - -- Bar!!! Baz", Slug: "foo-bar-baz"},
 	}
 	if !reflect.DeepEqual(got.Headings, want) {
 		t.Fatalf("Headings = %#v, want %#v", got.Headings, want)

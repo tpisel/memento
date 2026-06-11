@@ -416,15 +416,21 @@ func uniqueHeadingSlug(base string, nextSuffix map[string]int, used map[string]b
 
 func headingSlug(text string) string {
 	var b strings.Builder
+	lastWasSeparator := false
 	for _, r := range strings.TrimSpace(text) {
 		switch {
-		case unicode.IsSpace(r):
+		case unicode.IsSpace(r), r == '-':
+			if b.Len() == 0 || lastWasSeparator {
+				continue
+			}
 			b.WriteByte('-')
-		case unicode.IsLetter(r), unicode.IsDigit(r), r == '-', r == '_':
+			lastWasSeparator = true
+		case unicode.IsLetter(r), unicode.IsDigit(r), r == '_':
 			b.WriteRune(unicode.ToLower(r))
+			lastWasSeparator = false
 		}
 	}
-	return b.String()
+	return strings.TrimSuffix(b.String(), "-")
 }
 
 func nodeText(node ast.Node, source []byte) string {

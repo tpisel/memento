@@ -75,7 +75,7 @@ Target content.
 Other content.
 `)
 
-	got, err := Read(vaultFromRoot(root), "spec.md#api-read--write")
+	got, err := Read(vaultFromRoot(root), "spec.md#api-read-write")
 	if err != nil {
 		t.Fatalf("Read(slug section) error = %v, want nil", err)
 	}
