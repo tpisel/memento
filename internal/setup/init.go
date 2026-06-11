@@ -13,12 +13,13 @@ import (
 )
 
 const (
-	ConfigFileName           = "config.toml"
-	defaultAgentInstructions = "AGENTS.md"
-	bootloaderStartSentinel  = "<!-- memento:start -->"
-	bootloaderEndSentinel    = "<!-- memento:end -->"
-	hookStartSentinel        = "# memento:start"
-	hookEndSentinel          = "# memento:end"
+	ConfigFileName          = "config.toml"
+	agentsInstructionsFile  = "AGENTS.md"
+	claudeInstructionsFile  = "CLAUDE.md"
+	bootloaderStartSentinel = "<!-- memento:start -->"
+	bootloaderEndSentinel   = "<!-- memento:end -->"
+	hookStartSentinel       = "# memento:start"
+	hookEndSentinel         = "# memento:end"
 )
 
 const defaultConfig = `# memento vault configuration
@@ -201,37 +202,63 @@ func ensureManifest(v vault.Vault) error {
 }
 
 func ensureBootloader(repoRoot string, v vault.Vault, opts InitOptions) error {
-	path, err := agentInstructionsPath(repoRoot, opts.AgentInstructionsPath)
+	paths, err := agentInstructionsPaths(repoRoot, opts.AgentInstructionsPath)
 	if err != nil {
 		return err
 	}
 
 	block := bootloaderBlock(repoRoot, v)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return writeNewFile(path, []byte(block+"\n"), 0o644)
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				if err := writeNewFile(path, []byte(block+"\n"), 0o644); err != nil {
+					return err
+				}
+				continue
+			}
+			return fmt.Errorf("read agent instructions %s: %w", path, err)
 		}
-		return fmt.Errorf("read agent instructions: %w", err)
-	}
 
-	updated, err := insertOrReplaceBootloader(string(data), block)
-	if err != nil {
-		return err
-	}
-	if updated == string(data) {
-		return nil
-	}
-	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
-		return fmt.Errorf("write agent instructions: %w", err)
+		updated, err := insertOrReplaceBootloader(string(data), block)
+		if err != nil {
+			return err
+		}
+		if updated == string(data) {
+			continue
+		}
+		if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+			return fmt.Errorf("write agent instructions %s: %w", path, err)
+		}
 	}
 	return nil
 }
 
-func agentInstructionsPath(repoRoot, configured string) (string, error) {
-	if configured == "" {
-		configured = defaultAgentInstructions
+func agentInstructionsPaths(repoRoot, configured string) ([]string, error) {
+	if configured != "" {
+		path, err := agentInstructionsPath(repoRoot, configured)
+		if err != nil {
+			return nil, err
+		}
+		return []string{path}, nil
 	}
+
+	var paths []string
+	for _, relPath := range []string{agentsInstructionsFile, claudeInstructionsFile} {
+		path := filepath.Join(repoRoot, relPath)
+		if _, err := os.Stat(path); err == nil {
+			paths = append(paths, path)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("stat agent instructions %s: %w", path, err)
+		}
+	}
+	if len(paths) == 0 {
+		paths = append(paths, filepath.Join(repoRoot, agentsInstructionsFile))
+	}
+	return paths, nil
+}
+
+func agentInstructionsPath(repoRoot, configured string) (string, error) {
 	if filepath.IsAbs(configured) {
 		return filepath.Clean(configured), nil
 	}

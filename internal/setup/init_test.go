@@ -67,6 +67,49 @@ func TestInitAppendsBootloaderToExistingAgentInstructions(t *testing.T) {
 	}
 }
 
+func TestInitAppendsBootloaderToExistingClaudeInstructions(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, "CLAUDE.md", "# Claude Instructions\n\nKeep existing rules.\n")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, "CLAUDE.md")
+	if !strings.HasPrefix(got, "# Claude Instructions\n\nKeep existing rules.\n") {
+		t.Fatalf("CLAUDE.md = %q, want existing content preserved at start", got)
+	}
+	if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
+		t.Fatalf("CLAUDE.md start sentinel count = %d, want 1; contents = %q", count, got)
+	}
+	if !strings.Contains(got, "The manifest is at `memory/.memento/manifest.json`.") {
+		t.Fatalf("CLAUDE.md = %q, want memory manifest path", got)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("AGENTS.md stat err = %v, want file not to exist", err)
+	}
+}
+
+func TestInitInjectsBootloaderIntoAgentsAndClaudeWhenBothExist(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, "AGENTS.md", "# Agent Instructions\n\nKeep agent rules.\n")
+	writeSetupFile(t, repo, "CLAUDE.md", "# Claude Instructions\n\nKeep Claude rules.\n")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	for _, relPath := range []string{"AGENTS.md", "CLAUDE.md"} {
+		got := readSetupFile(t, repo, relPath)
+		if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
+			t.Fatalf("%s start sentinel count = %d, want 1; contents = %q", relPath, count, got)
+		}
+		if !strings.Contains(got, "The manifest is at `memory/.memento/manifest.json`.") {
+			t.Fatalf("%s = %q, want memory manifest path", relPath, got)
+		}
+	}
+}
+
 func TestInitReplacesExistingBootloaderBlock(t *testing.T) {
 	repo := t.TempDir()
 	writeSetupFile(t, repo, "AGENTS.md", "# Rules\n\n<!-- memento:start -->\nold block\n<!-- memento:end -->\n\nKeep this too.\n")
@@ -86,6 +129,29 @@ func TestInitReplacesExistingBootloaderBlock(t *testing.T) {
 	}
 	if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
 		t.Fatalf("AGENTS.md start sentinel count = %d, want 1; contents = %q", count, got)
+	}
+}
+
+func TestInitReplacesExistingBootloaderBlockInEveryPresentInstructionFile(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, "AGENTS.md", "# Agent Rules\n\n<!-- memento:start -->\nold agents block\n<!-- memento:end -->\n\nKeep this too.\n")
+	writeSetupFile(t, repo, "CLAUDE.md", "# Claude Rules\n\n<!-- memento:start -->\nold claude block\n<!-- memento:end -->\n\nKeep this too.\n")
+
+	if _, err := Init(repo, "project-memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	for _, relPath := range []string{"AGENTS.md", "CLAUDE.md"} {
+		got := readSetupFile(t, repo, relPath)
+		if !strings.Contains(got, "project-memory/.memento/manifest.json") {
+			t.Fatalf("%s = %q, want project-memory manifest path", relPath, got)
+		}
+		if strings.Contains(got, "old agents block") || strings.Contains(got, "old claude block") {
+			t.Fatalf("%s = %q, want old bootloader removed", relPath, got)
+		}
+		if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
+			t.Fatalf("%s start sentinel count = %d, want 1; contents = %q", relPath, count, got)
+		}
 	}
 }
 
@@ -110,27 +176,37 @@ func TestInitBootloaderUsesCustomMemoryDirectoryPath(t *testing.T) {
 
 func TestInitBootloaderIsIdempotent(t *testing.T) {
 	repo := t.TempDir()
+	writeSetupFile(t, repo, "AGENTS.md", "# Agent Instructions\n")
+	writeSetupFile(t, repo, "CLAUDE.md", "# Claude Instructions\n")
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("first Init() error = %v, want nil", err)
 	}
 	firstAgents := readSetupFile(t, repo, "AGENTS.md")
+	firstClaude := readSetupFile(t, repo, "CLAUDE.md")
 	firstHook := readSetupFile(t, repo, ".git/hooks/pre-commit")
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("second Init() error = %v, want nil", err)
 	}
 	secondAgents := readSetupFile(t, repo, "AGENTS.md")
+	secondClaude := readSetupFile(t, repo, "CLAUDE.md")
 	secondHook := readSetupFile(t, repo, ".git/hooks/pre-commit")
 
 	if secondAgents != firstAgents {
 		t.Fatalf("AGENTS.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstAgents, secondAgents)
+	}
+	if secondClaude != firstClaude {
+		t.Fatalf("CLAUDE.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstClaude, secondClaude)
 	}
 	if secondHook != firstHook {
 		t.Fatalf("pre-commit hook changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstHook, secondHook)
 	}
 	if count := strings.Count(secondAgents, "<!-- memento:start -->"); count != 1 {
 		t.Fatalf("AGENTS.md start sentinel count = %d, want 1; contents = %q", count, secondAgents)
+	}
+	if count := strings.Count(secondClaude, "<!-- memento:start -->"); count != 1 {
+		t.Fatalf("CLAUDE.md start sentinel count = %d, want 1; contents = %q", count, secondClaude)
 	}
 	if count := strings.Count(secondHook, "# memento:start"); count != 1 {
 		t.Fatalf("pre-commit hook start sentinel count = %d, want 1; contents = %q", count, secondHook)
