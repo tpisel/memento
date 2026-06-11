@@ -19,6 +19,15 @@ type Manifest struct {
 	Tags    map[string]int `json:"tags,omitempty"`
 }
 
+type Warning struct {
+	Path string
+	Err  error
+}
+
+func (w Warning) Error() string {
+	return fmt.Sprintf("%s: %v", w.Path, w.Err)
+}
+
 type Entry struct {
 	Key          string             `json:"key"`
 	Title        string             `json:"title"`
@@ -55,7 +64,17 @@ type InLink struct {
 }
 
 func Compile(v vault.Vault) (Manifest, error) {
+	m, _, err := compile(v)
+	return m, err
+}
+
+func CompileWithWarnings(v vault.Vault) (Manifest, []Warning, error) {
+	return compile(v)
+}
+
+func compile(v vault.Vault) (Manifest, []Warning, error) {
 	entries := []Entry{}
+	warnings := []Warning{}
 	tagCounts := map[string]int{}
 	sources := map[string][]byte{}
 
@@ -65,9 +84,12 @@ func Compile(v vault.Vault) (Manifest, error) {
 			return fmt.Errorf("read %s: %w", relPath, err)
 		}
 
-		meta, err := markdown.ExtractMetadata(relPath, source)
+		meta, metadataWarnings, err := markdown.ExtractMetadataLenient(relPath, source)
 		if err != nil {
 			return fmt.Errorf("extract metadata from %s: %w", relPath, err)
+		}
+		for _, warning := range metadataWarnings {
+			warnings = append(warnings, Warning{Path: relPath, Err: warning})
 		}
 
 		tags := sortedUnique(meta.Tags)
@@ -93,7 +115,7 @@ func Compile(v vault.Vault) (Manifest, error) {
 		return nil
 	})
 	if err != nil {
-		return Manifest{}, err
+		return Manifest{}, nil, err
 	}
 
 	sort.Slice(entries, func(i, j int) bool {
@@ -105,7 +127,7 @@ func Compile(v vault.Vault) (Manifest, error) {
 	if len(tagCounts) > 0 {
 		manifest.Tags = tagCounts
 	}
-	return manifest, nil
+	return manifest, warnings, nil
 }
 
 func Marshal(m Manifest) ([]byte, error) {
@@ -117,21 +139,26 @@ func Marshal(m Manifest) ([]byte, error) {
 }
 
 func Write(v vault.Vault) error {
-	m, err := Compile(v)
+	_, err := WriteWithWarnings(v)
+	return err
+}
+
+func WriteWithWarnings(v vault.Vault) ([]Warning, error) {
+	m, warnings, err := CompileWithWarnings(v)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	data, err := Marshal(m)
 	if err != nil {
-		return fmt.Errorf("marshal manifest: %w", err)
+		return nil, fmt.Errorf("marshal manifest: %w", err)
 	}
 	if err := os.MkdirAll(v.MarkerDir, 0o755); err != nil {
-		return fmt.Errorf("create marker directory: %w", err)
+		return nil, fmt.Errorf("create marker directory: %w", err)
 	}
 	if err := os.WriteFile(v.ManifestPath, data, 0o644); err != nil {
-		return fmt.Errorf("write manifest: %w", err)
+		return nil, fmt.Errorf("write manifest: %w", err)
 	}
-	return nil
+	return warnings, nil
 }
 
 func sortedUnique(tags []string) []string {

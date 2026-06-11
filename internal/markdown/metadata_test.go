@@ -88,6 +88,29 @@ Second paragraph.
 	}
 }
 
+func TestExtractMetadataTreatsHorizontalRuleSandwichAsBareMarkdown(t *testing.T) {
+	source := []byte(`---
+# Foo
+---
+Body.
+`)
+
+	got, err := ExtractMetadata("notes/foo.md", source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+
+	if got.Title != "Foo" {
+		t.Fatalf("Title = %q, want H1 fallback", got.Title)
+	}
+	if got.Summary != "Body." {
+		t.Fatalf("Summary = %q, want body paragraph fallback", got.Summary)
+	}
+	if got.BodyHash != hashBody(source) {
+		t.Fatalf("BodyHash = %q, want hash of whole source %q", got.BodyHash, hashBody(source))
+	}
+}
+
 func TestTitleFallbackUsesFilenameWhenNoFrontmatterOrH1(t *testing.T) {
 	got, err := ExtractMetadata("design/long-lived-note.md", []byte("A paragraph without a heading.\n"))
 	if err != nil {
@@ -293,11 +316,6 @@ func TestExtractMetadataRejectsMalformedFrontmatter(t *testing.T) {
 		src  string
 		err  error
 	}{
-		{
-			name: "unterminated",
-			src:  "---\ntitle: Missing close\n# Title\n",
-			err:  ErrUnterminatedFrontmatter,
-		},
 		{
 			name: "missing colon",
 			src:  "---\ntitle\n---\n# Title\n",

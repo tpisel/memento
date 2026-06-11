@@ -188,6 +188,32 @@ func TestCompilePrintsManifestForExplicitDir(t *testing.T) {
 	}
 }
 
+func TestCompilePrintWarnsForMalformedFrontmatter(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "broken.md", `---
+title
+---
+# Fallback
+
+Summary.
+`)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root, "--print"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(compile --print) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"title": "Fallback"`) {
+		t.Fatalf("Run(compile --print) stdout = %q, want fallback title", stdout.String())
+	}
+	errOut := stderr.String()
+	for _, want := range []string{"warning", "broken.md", "malformed frontmatter"} {
+		if !strings.Contains(errOut, want) {
+			t.Fatalf("Run(compile --print) stderr = %q, want %q", errOut, want)
+		}
+	}
+}
+
 func TestCompileWritesDiscoveredManifest(t *testing.T) {
 	repo := t.TempDir()
 	root := filepath.Join(repo, "project-memory")

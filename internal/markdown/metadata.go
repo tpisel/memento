@@ -59,12 +59,27 @@ type frontmatter struct {
 	summaryHash string
 }
 
+const frontmatterFenceLookaheadLines = 64
+
 func ExtractMetadata(relPath string, source []byte) (Metadata, error) {
 	fm, body, err := splitAndParseFrontmatter(source)
 	if err != nil {
 		return Metadata{}, err
 	}
 
+	return metadataFromParts(relPath, fm, body), nil
+}
+
+func ExtractMetadataLenient(relPath string, source []byte) (Metadata, []error, error) {
+	fm, body, err := splitAndParseFrontmatter(source)
+	if err != nil {
+		return metadataFromParts(relPath, frontmatter{}, body), []error{err}, nil
+	}
+
+	return metadataFromParts(relPath, fm, body), nil, nil
+}
+
+func metadataFromParts(relPath string, fm frontmatter, body []byte) Metadata {
 	doc := goldmark.DefaultParser().Parse(text.NewReader(body))
 	bodyHash := hashBody(body)
 
@@ -96,22 +111,35 @@ func ExtractMetadata(relPath string, source []byte) (Metadata, error) {
 		SummaryHash:  fm.summaryHash,
 		BodyHash:     bodyHash,
 		SummaryStale: summary == "" || fm.summaryHash == "" || fm.summaryHash != bodyHash,
-	}, nil
+	}
 }
 
 func splitAndParseFrontmatter(source []byte) (frontmatter, []byte, error) {
-	if !hasOpeningFrontmatterFence(source) {
+	raw, body, ok := splitFrontmatterBlock(source)
+	if !ok {
 		return frontmatter{}, source, nil
+	}
+
+	fm, err := parseFrontmatter(string(raw))
+	if err != nil {
+		return frontmatter{}, body, err
+	}
+	return fm, body, nil
+}
+
+func splitFrontmatterBlock(source []byte) ([]byte, []byte, bool) {
+	if !hasOpeningFrontmatterFence(source) {
+		return nil, nil, false
 	}
 
 	lineEnd := bytes.IndexByte(source, '\n')
 	if lineEnd == -1 {
-		return frontmatter{}, nil, ErrUnterminatedFrontmatter
+		return nil, nil, false
 	}
 
 	start := lineEnd + 1
 	pos := start
-	for pos <= len(source) {
+	for scanned := 0; pos <= len(source) && scanned < frontmatterFenceLookaheadLines; scanned++ {
 		next := bytes.IndexByte(source[pos:], '\n')
 		lineEnd := len(source)
 		if next >= 0 {
@@ -124,11 +152,11 @@ func splitAndParseFrontmatter(source []byte) (frontmatter, []byte, error) {
 			if next >= 0 {
 				bodyStart++
 			}
-			fm, err := parseFrontmatter(string(source[start:pos]))
-			if err != nil {
-				return frontmatter{}, nil, err
+			raw := source[start:pos]
+			if !hasFrontmatterContent(raw) {
+				return nil, nil, false
 			}
-			return fm, source[bodyStart:], nil
+			return raw, source[bodyStart:], true
 		}
 		if next < 0 {
 			break
@@ -136,7 +164,7 @@ func splitAndParseFrontmatter(source []byte) (frontmatter, []byte, error) {
 		pos = lineEnd + 1
 	}
 
-	return frontmatter{}, nil, ErrUnterminatedFrontmatter
+	return nil, nil, false
 }
 
 func hasOpeningFrontmatterFence(source []byte) bool {
@@ -144,6 +172,17 @@ func hasOpeningFrontmatterFence(source []byte) bool {
 		return false
 	}
 	return len(source) == 3 || source[3] == '\n' || source[3] == '\r'
+}
+
+func hasFrontmatterContent(raw []byte) bool {
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func parseFrontmatter(raw string) (frontmatter, error) {

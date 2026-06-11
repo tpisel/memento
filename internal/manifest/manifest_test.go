@@ -265,6 +265,43 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
 	}
 }
 
+func TestCompileWarnsAndFallsBackForMalformedFrontmatter(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "broken.md", `---
+title
+---
+# Fallback Title
+
+Fallback summary.
+`)
+
+	m, warnings, err := CompileWithWarnings(vaultFromRoot(root))
+	if err != nil {
+		t.Fatalf("CompileWithWarnings() error = %v, want nil", err)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("CompileWithWarnings() warnings = %d, want 1: %#v", len(warnings), warnings)
+	}
+	if warnings[0].Path != "broken.md" {
+		t.Fatalf("warning path = %q, want broken.md", warnings[0].Path)
+	}
+
+	if len(m.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(m.Entries))
+	}
+	entry := m.Entries[0]
+	if entry.Title != "Fallback Title" {
+		t.Fatalf("Title = %q, want fallback H1", entry.Title)
+	}
+	if entry.Summary != "Fallback summary." {
+		t.Fatalf("Summary = %q, want fallback paragraph", entry.Summary)
+	}
+
+	if _, err := Compile(vaultFromRoot(root)); err != nil {
+		t.Fatalf("Compile() error = %v, want nil despite malformed frontmatter", err)
+	}
+}
+
 func makeVault(t *testing.T) string {
 	t.Helper()
 

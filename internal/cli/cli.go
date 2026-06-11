@@ -90,11 +90,12 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *printOnly {
-		m, err := manifest.Compile(v)
+		m, warnings, err := manifest.CompileWithWarnings(v)
 		if err != nil {
 			fmt.Fprintf(stderr, "memento compile: %v\n", err)
 			return 1
 		}
+		printCompileWarnings(stderr, warnings)
 		data, err := manifest.Marshal(m)
 		if err != nil {
 			fmt.Fprintf(stderr, "memento compile: %v\n", err)
@@ -107,11 +108,19 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	if err := manifest.Write(v); err != nil {
+	warnings, err := manifest.WriteWithWarnings(v)
+	if err != nil {
 		fmt.Fprintf(stderr, "memento compile: %v\n", err)
 		return 1
 	}
+	printCompileWarnings(stderr, warnings)
 	return 0
+}
+
+func printCompileWarnings(stderr io.Writer, warnings []manifest.Warning) {
+	for _, warning := range warnings {
+		fmt.Fprintf(stderr, "memento compile: warning: %v\n", warning)
+	}
 }
 
 func runInit(args []string, stdout, stderr io.Writer) int {
