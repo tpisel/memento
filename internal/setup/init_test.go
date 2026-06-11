@@ -213,6 +213,97 @@ func TestInitBootloaderIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, ".gitignore", "build/\n")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("first Init() error = %v, want nil", err)
+	}
+	first := readSetupFile(t, repo, ".gitignore")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("second Init() error = %v, want nil", err)
+	}
+	second := readSetupFile(t, repo, ".gitignore")
+
+	if second != first {
+		t.Fatalf(".gitignore changed on rerun:\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+	if !strings.HasPrefix(second, "build/\n") {
+		t.Fatalf(".gitignore = %q, want existing content preserved at start", second)
+	}
+	for _, want := range []string{
+		"# memento:gitignore:start",
+		"memory/.obsidian/workspace*",
+		"memory/.obsidian/cache",
+		"# memento:gitignore:end",
+	} {
+		if !strings.Contains(second, want) {
+			t.Fatalf(".gitignore = %q, want it to contain %q", second, want)
+		}
+	}
+	if count := strings.Count(second, "# memento:gitignore:start"); count != 1 {
+		t.Fatalf(".gitignore start sentinel count = %d, want 1; contents = %q", count, second)
+	}
+
+	ignore := readSetupFile(t, repo, "memory/.mementoignore")
+	if strings.Contains(ignore, ".obsidian/workspace") || strings.Contains(ignore, ".obsidian/cache") {
+		t.Fatalf(".mementoignore = %q, want Obsidian UI noise excluded from memento ignore", ignore)
+	}
+}
+
+func TestInitCreatesExampleNoteForGreenfieldVault(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, "memory/example.md")
+	for _, want := range []string{
+		"title: Example memory note",
+		"summary: A short example showing the frontmatter memento indexes.",
+		"tags: [memento, example]",
+		"mode: append-only",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("example.md = %q, want it to contain %q", got, want)
+		}
+	}
+
+	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
+	if !strings.Contains(manifest, `"key": "example.md"`) {
+		t.Fatalf("manifest = %q, want example.md entry", manifest)
+	}
+}
+
+func TestInitDoesNotClobberExistingExampleWhenAdopting(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, "memory/example.md", "# Existing example\n\nKeep this.\n")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	if got := readSetupFile(t, repo, "memory/example.md"); got != "# Existing example\n\nKeep this.\n" {
+		t.Fatalf("example.md changed to %q", got)
+	}
+}
+
+func TestInitDoesNotCreateExampleWhenAdoptingNonEmptyVault(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, "memory/note.md", "# Existing note\n\nKeep this.\n")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repo, "memory", "example.md")); !os.IsNotExist(err) {
+		t.Fatalf("example.md stat err = %v, want file not to exist", err)
+	}
+}
+
 func TestInitCanUseConfiguredAgentInstructionFile(t *testing.T) {
 	repo := t.TempDir()
 

@@ -96,6 +96,7 @@ func TestInitCreatesDefaultVaultForEmptyProject(t *testing.T) {
 		".memento/config.toml",
 		".memento/manifest.json",
 		".mementoignore",
+		"example.md",
 	} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relPath))); err != nil {
 			t.Fatalf("stat %s: %v", relPath, err)
@@ -103,8 +104,8 @@ func TestInitCreatesDefaultVaultForEmptyProject(t *testing.T) {
 	}
 
 	manifest := readCLIFile(t, root, ".memento/manifest.json")
-	if !strings.Contains(manifest, `"entries": []`) {
-		t.Fatalf("manifest = %q, want empty entries placeholder", manifest)
+	if !strings.Contains(manifest, `"key": "example.md"`) {
+		t.Fatalf("manifest = %q, want example note entry", manifest)
 	}
 	if !strings.Contains(stdout.String(), root) {
 		t.Fatalf("Run(init) stdout = %q, want initialized vault path %q", stdout.String(), root)
@@ -130,6 +131,9 @@ func TestInitAdoptsNonEmptyExplicitDir(t *testing.T) {
 	}
 	if got := readCLIFile(t, root, "note.md"); got != "# Adopted\n\nExisting note.\n" {
 		t.Fatalf("adopted note changed to %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "example.md")); !os.IsNotExist(err) {
+		t.Fatalf("example.md stat err = %v, want file not to exist for adopted vault", err)
 	}
 
 	manifest := readCLIFile(t, root, ".memento/manifest.json")

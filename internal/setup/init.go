@@ -20,6 +20,8 @@ const (
 	bootloaderEndSentinel   = "<!-- memento:end -->"
 	hookStartSentinel       = "# memento:start"
 	hookEndSentinel         = "# memento:end"
+	gitignoreStartSentinel  = "# memento:gitignore:start"
+	gitignoreEndSentinel    = "# memento:gitignore:end"
 )
 
 const defaultConfig = `# memento vault configuration
@@ -30,12 +32,20 @@ const defaultIgnore = `# memento operational files
 .memento/
 .mementoignore
 
-# Obsidian per-machine state
-.obsidian/workspace*
-.obsidian/cache/
-
 # macOS Finder metadata
 .DS_Store
+`
+
+const defaultExampleNote = `---
+title: Example memory note
+summary: A short example showing the frontmatter memento indexes.
+tags: [memento, example]
+mode: append-only
+---
+
+# Example memory note
+
+Use notes like this for durable project knowledge: decisions, constraints, and discoveries that should survive a task.
 `
 
 type InitOptions struct {
@@ -60,6 +70,11 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 		return vault.Vault{}, err
 	}
 
+	greenfield, err := isGreenfieldVault(vaultRoot)
+	if err != nil {
+		return vault.Vault{}, err
+	}
+
 	marker := filepath.Join(vaultRoot, vault.MarkerDirName)
 	if err := os.MkdirAll(marker, 0o755); err != nil {
 		return vault.Vault{}, fmt.Errorf("create memento marker directory: %w", err)
@@ -77,10 +92,18 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensureFile(filepath.Join(vaultRoot, vault.IgnoreFileName), []byte(defaultIgnore), 0o644); err != nil {
 		return vault.Vault{}, fmt.Errorf("create %s: %w", vault.IgnoreFileName, err)
 	}
+	if greenfield {
+		if err := ensureFile(filepath.Join(vaultRoot, "example.md"), []byte(defaultExampleNote), 0o644); err != nil {
+			return vault.Vault{}, fmt.Errorf("create example note: %w", err)
+		}
+	}
 	if err := ensureManifest(v); err != nil {
 		return vault.Vault{}, err
 	}
 	if err := ensureBootloader(root, v, opts); err != nil {
+		return vault.Vault{}, err
+	}
+	if err := ensureGitignore(root, v); err != nil {
 		return vault.Vault{}, err
 	}
 	if err := ensurePreCommitHook(root, v); err != nil {
@@ -109,6 +132,17 @@ func resolveInitRoot(repoRoot, dir string) (string, error) {
 	return filepath.Join(repoRoot, defaultVaultDirName(repoRoot)), nil
 }
 
+func isGreenfieldVault(vaultRoot string) (bool, error) {
+	entries, err := os.ReadDir(vaultRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return true, nil
+		}
+		return false, fmt.Errorf("read memory vault directory: %w", err)
+	}
+	return len(entries) == 0, nil
+}
+
 func ensureFile(path string, contents []byte, perm os.FileMode) error {
 	if info, err := os.Stat(path); err == nil {
 		if info.IsDir() {
@@ -132,6 +166,54 @@ func ensureFile(path string, contents []byte, perm os.FileMode) error {
 		return err
 	}
 	return nil
+}
+
+func ensureGitignore(repoRoot string, v vault.Vault) error {
+	path := filepath.Join(repoRoot, ".gitignore")
+	block := gitignoreBlock(repoRoot, v)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return writeNewFile(path, []byte(block+"\n"), 0o644)
+		}
+		return fmt.Errorf("read .gitignore: %w", err)
+	}
+
+	updated, err := insertOrReplaceGitignoreBlock(string(data), block)
+	if err != nil {
+		return err
+	}
+	if updated == string(data) {
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("write .gitignore: %w", err)
+	}
+	return nil
+}
+
+func gitignoreBlock(repoRoot string, v vault.Vault) string {
+	prefix := gitignoreVaultPrefix(repoRoot, v.Root)
+
+	return strings.Join([]string{
+		gitignoreStartSentinel,
+		"# Obsidian per-machine UI state",
+		prefix + ".obsidian/workspace*",
+		prefix + ".obsidian/cache",
+		gitignoreEndSentinel,
+	}, "\n")
+}
+
+func gitignoreVaultPrefix(repoRoot, vaultRoot string) string {
+	rel, err := filepath.Rel(repoRoot, vaultRoot)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	if rel == "." {
+		return ""
+	}
+	return filepath.ToSlash(rel) + "/"
 }
 
 func ensurePreCommitHook(repoRoot string, v vault.Vault) error {
@@ -299,6 +381,10 @@ func insertOrReplaceBootloader(contents, block string) (string, error) {
 
 func insertOrReplaceHookBlock(contents, block string) (string, error) {
 	return insertOrReplaceSentinelBlock(contents, block, hookStartSentinel, hookEndSentinel, "pre-commit hook", "memento")
+}
+
+func insertOrReplaceGitignoreBlock(contents, block string) (string, error) {
+	return insertOrReplaceSentinelBlock(contents, block, gitignoreStartSentinel, gitignoreEndSentinel, ".gitignore", "memento gitignore")
 }
 
 func insertOrReplaceSentinelBlock(contents, block, startSentinel, endSentinel, target, blockName string) (string, error) {
