@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/tpisel/memento/internal/markdown"
 	"github.com/tpisel/memento/internal/vault"
 )
 
@@ -35,6 +36,74 @@ func TestWriteAppendsExistingMarkdownFile(t *testing.T) {
 	want := "# Note\n\nExisting.\n\nAppended.\n"
 	if got := readFile(t, root, "note.md"); got != want {
 		t.Fatalf("appended file = %q, want %q", got, want)
+	}
+}
+
+func TestWriteRejectsReadOnlyModeWithoutChangingFile(t *testing.T) {
+	root := makeVault(t)
+	original := "---\nmode: read-only\n---\n# Note\n\nOriginal.\n"
+	writeFile(t, root, "note.md", original)
+
+	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	if !errors.Is(err, ErrReadOnly) {
+		t.Fatalf("Write(read-only) error = %v, want ErrReadOnly", err)
+	}
+
+	if got := readFile(t, root, "note.md"); got != original {
+		t.Fatalf("read-only file changed to %q, want %q", got, original)
+	}
+}
+
+func TestWriteAppendsExistingFilesWithNonReadOnlyModes(t *testing.T) {
+	for _, mode := range []markdown.WriteMode{
+		markdown.ModeAppendOnly,
+		markdown.ModeSectionReplace,
+		markdown.ModeKeyedUpsert,
+	} {
+		t.Run(string(mode), func(t *testing.T) {
+			root := makeVault(t)
+			writeFile(t, root, "note.md", "---\nmode: "+string(mode)+"\n---\n# Note\n\nOriginal.\n")
+
+			err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+			if err != nil {
+				t.Fatalf("Write(%s) error = %v, want nil", mode, err)
+			}
+
+			want := "---\nmode: " + string(mode) + "\n---\n# Note\n\nOriginal.\n\nAppended.\n"
+			if got := readFile(t, root, "note.md"); got != want {
+				t.Fatalf("appended file = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestWriteAppendsExistingFileWithMissingMode(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "note.md", "---\ntitle: Note\n---\n# Note\n\nOriginal.\n")
+
+	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	if err != nil {
+		t.Fatalf("Write(missing mode) error = %v, want nil", err)
+	}
+
+	want := "---\ntitle: Note\n---\n# Note\n\nOriginal.\n\nAppended.\n"
+	if got := readFile(t, root, "note.md"); got != want {
+		t.Fatalf("appended file = %q, want %q", got, want)
+	}
+}
+
+func TestWriteRejectsUnreadableFrontmatterWithoutChangingFile(t *testing.T) {
+	root := makeVault(t)
+	original := "---\ntitle\n---\n# Note\n\nOriginal.\n"
+	writeFile(t, root, "note.md", original)
+
+	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	if !errors.Is(err, markdown.ErrMalformedFrontmatter) {
+		t.Fatalf("Write(malformed frontmatter) error = %v, want ErrMalformedFrontmatter", err)
+	}
+
+	if got := readFile(t, root, "note.md"); got != original {
+		t.Fatalf("malformed-frontmatter file changed to %q, want %q", got, original)
 	}
 }
 

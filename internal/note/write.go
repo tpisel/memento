@@ -7,10 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tpisel/memento/internal/markdown"
 	"github.com/tpisel/memento/internal/vault"
 )
 
-var ErrUnsupportedWriteOperation = errors.New("unsupported write operation")
+var (
+	ErrUnsupportedWriteOperation = errors.New("unsupported write operation")
+	ErrReadOnly                  = errors.New("read-only note")
+)
 
 type WriteOperation string
 
@@ -40,6 +44,10 @@ func Write(v vault.Vault, key string, content []byte, opts WriteOptions) error {
 
 	path, err := writablePath(v, key)
 	if err != nil {
+		return err
+	}
+
+	if err := validateAppendMode(key, path); err != nil {
 		return err
 	}
 
@@ -91,6 +99,25 @@ func normalizeWritableKey(v vault.Vault, key string) (string, error) {
 		return "", fmt.Errorf("%w: ignored path is not writable: %s", ErrInvalidKey, key)
 	}
 	return key, nil
+}
+
+func validateAppendMode(key, path string) error {
+	source, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read %s metadata: %w", key, err)
+	}
+
+	meta, err := markdown.ExtractMetadata(key, source)
+	if err != nil {
+		return fmt.Errorf("extract metadata from %s: %w", key, err)
+	}
+	if meta.Mode == markdown.ModeReadOnly {
+		return fmt.Errorf("%w: %s", ErrReadOnly, key)
+	}
+	return nil
 }
 
 func writablePath(v vault.Vault, key string) (string, error) {

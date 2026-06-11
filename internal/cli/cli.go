@@ -211,6 +211,8 @@ func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "memento write: %v\n", err)
 		case errors.Is(err, note.ErrUnsupportedWriteOperation):
 			fmt.Fprintf(stderr, "memento write: %v\n", err)
+		case errors.Is(err, note.ErrReadOnly):
+			fmt.Fprintf(stderr, "memento write: %v\n", err)
 		default:
 			fmt.Fprintf(stderr, "memento write: %v\n", err)
 		}
