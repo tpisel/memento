@@ -1,8 +1,9 @@
 ---
 title: memento — design specification
 status: draft
-version: 0.1
-updated: 2026-06-10
+version: 0.2
+updated: 2026-06-13
+summary: Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.
 ---
 
 # memento
@@ -23,9 +24,9 @@ memento targets the **durable semantic layer** specifically, and leaves the othe
 |---|---|---|---|
 | `AGENTS.md` / `CLAUDE.md` | Invariants, hard rules, bootloader | Unconditional push, every session | hand-authored |
 | beads | Task state, working memory | Scheduled pull at checkpoints (`bd ready`) | agent + human |
-| **memento** (`memory/`) | Decisions, discoveries, learnings, specs, ADRs | Conditional, agent-initiated pull, front-loaded to task-start | human-first, agent-augmented |
+| **memento** (resolved vault; `<project>-memory/` by default) | Decisions, discoveries, learnings, specs, ADRs | Conditional, agent-initiated pull, front-loaded to task-start | human-first, agent-augmented |
 
-Note that "always-load slice" is **not** a third kind of content — it is a *loading policy* (a pin) applied to a slice of the durable layer, and in practice it lives in `AGENTS.md` as the bootloader. The bootloader's single most important job is to teach the agent how to use the other two substrates: *current work lives in beads (`bd ready`); durable knowledge lives in `memory/`, here is the manifest and how to query it.* If `AGENTS.md` does nothing else well it must do this — it is the load-bearing member, and the only thing that degrades everything downstream at once if it bloats or goes stale.
+Note that "always-load slice" is **not** a third kind of content — it is a *loading policy* (a pin) applied to a slice of the durable layer, and in practice it lives in `AGENTS.md` as the bootloader. The bootloader's single most important job is to teach the agent how to use the other two substrates: *current work lives in beads (`bd ready`); durable knowledge lives in the resolved memento vault, here is the brief and how to query it.* If `AGENTS.md` does nothing else well it must do this — it is the load-bearing member, and the only thing that degrades everything downstream at once if it bloats or goes stale.
 
 ### Code is prime memory
 
@@ -67,17 +68,18 @@ CLI subcommands and MCP tool registrations both call exactly these. Neither cont
 
 ## 3. The memory directory & vault model
 
-- **Default directory: `memory/`**, parametrised (`--dir`, config). Deliberately **not** `docs/`, which already means published documentation, API-doc output, and doc-site sources (mkdocs/docusaurus/sphinx); landing agent memory there tangles it with human-published docs and gets caught by site builders. A dotfolder (`.agent/`) would avoid collision but Obsidian hides dot-prefixed folders, breaking the human-first browse — so the default is a plain, Obsidian-visible, low-collision name.
-- **The human opens `memory/` itself as the Obsidian vault root**, not the repo root. This bounds the wikilink graph to the memory store; opening the repo root would let links leak into source files and pollute the out/in-link surface. (Human-setup note for the docs; the tool only walks what it is pointed at.)
+- **Default directory: `<project>-memory/`**, parametrised (`--dir`, config), per ADR-0001. `<project>` is derived at `init` time from the git remote basename, falling back to the repository directory name; if no project name can be derived, fall back to `memory/`. The default remains deliberately **not** `docs/`, which already means published documentation, API-doc output, and doc-site sources (mkdocs/docusaurus/sphinx); landing agent memory there tangles it with human-published docs and gets caught by site builders. A dotfolder (`.agent/`) would avoid collision but Obsidian hides dot-prefixed folders, breaking the human-first browse.
+- **Discovery is marker-based**, per ADR-0002. Commands discover the repository vault by finding exactly one `<memory-dir>/.memento/` marker directory; ambiguity is a hard error. Discovery does not depend on the vault directory name, so a vault can be renamed as long as its marker moves with it.
+- **The human opens the resolved memory directory itself as the Obsidian vault root**, not the repo root. This bounds the wikilink graph to the memory store; opening the repo root would let links leak into source files and pollute the out/in-link surface. (Human-setup note for the docs; the tool only walks what it is pointed at.)
 - The store is **in-repo** so it version-locks to the code and travels with branches.
 
 ---
 
 ## 4. The manifest
 
-A compiled, **committed** artifact — the canonical agent load-target. Committing it makes changes to project semantic memory show up in review (the beads-in-git property applied to the durable layer) and means the agent loads a static file with zero build step. Regenerated via a pre-commit hook (sub-second, so invisible); stale-committed-manifest is the obvious risk and the hook closes it, while a diffable manifest lets a human catch rot in PR.
+A compiled, **committed** artifact — the canonical machine index and review surface. Committing it makes changes to project semantic memory show up in review (the beads-in-git property applied to the durable layer) and means the agent-facing brief can be derived from a static file with zero build step. Regenerated via a pre-commit hook (sub-second, so invisible); stale-committed-manifest is the obvious risk and the hook closes it, while a diffable manifest lets a human catch rot in PR.
 
-Canonical form is **JSON** (deterministic to parse). An optional second derived human-facing `INDEX.md` (a Map-of-Content note with wikilinks) may be emitted later, but JSON is canonical — one file should not serve two masters that pull in different directions.
+Canonical machine form is **JSON** (deterministic to parse), emitted at `<vault>/.memento/manifest.json` per ADR-0002. Per ADR-0008, `compile` also emits `<vault>/_memento/brief.md`: a derived, gitignored, markdown projection of the manifest for agent context. The bootloader injects `memento brief` output rather than raw JSON. The brief is not a second source of truth; it is regenerated from the canonical manifest.
 
 ### Per-file fields
 
@@ -117,13 +119,13 @@ Three states, not two:
 
 1. **Content** — indexed, readable. The normal case.
 2. **Human-only** — ignored entirely (daily notes, scratch, meeting jots). Listed in the ignore file.
-3. **Operational** — excluded from the *content* manifest but read by the tool at specific moments (`writing_guide.md`, future `templates/`, the manifest itself).
+3. **Operational** — tool-relevant material read by the tool at specific moments. Machine-owned operational files live in `.memento/`; human-readable tool artifacts and vault conventions live in `_memento/` per ADR-0009.
 
-**`.mementoignore`** — a dotfile (hidden from Obsidian, out of the content namespace, which is why no operational subdir is needed yet), using **gitignore syntax with `#` comments**. The comments make it self-documenting (a soft demo to the user of what the file is for) while keeping parsing unambiguous — a markdown ignore would force the parser to disentangle prose from globs. The ignore file ignores itself.
+**`.mementoignore`** — a dotfile at the memory root, hidden from Obsidian and out of the content namespace, using a small gitignore-like syntax with `#` comments. The comments make it self-documenting (a soft demo to the user of what the file is for) while keeping parsing unambiguous — a markdown ignore would force the parser to disentangle prose from globs. The ignore file ignores itself.
 
-**Operational-ness is a named role, orthogonal to ignore membership.** `writing_guide.md` is operational because the tool has a named role for it (default `writing_guide.md`, configurable), *not* because it appears in the ignore list. It would still be read at write-time even if unlisted; it is merely also excluded from content indexing. Do not derive operational-ness from ignore membership — the ignore file lists many things that are merely human-only.
+**Operational-ness is a named role, orthogonal to ignore membership.** `.memento/manifest.json` is machine-owned and hidden. `_memento/brief.md` is generated and ignored. Future user-authored files such as `_memento/writing.md`, `_memento/review.md`, and `_memento/audit.md` are operational because tools look for those named roles, not because the files appear in an ignore list. Do not derive operational-ness from ignore membership — the ignore file lists many things that are merely human-only.
 
-**Layout: flat.** Operational files sit in the root of `memory/`. A `_meta/` subfolder (underscore, Obsidian-visible — not a hidden dot) earns itself only when operational files proliferate past ~2–3. Pre-structuring for two files is exactly the a-priori-tidiness this design refuses throughout.
+**Layout: two tool namespaces.** `.memento/` is the hidden machine namespace for `config.toml`, `manifest.json`, and future structured tool state. `_memento/` is the Obsidian-visible, mixed-audience namespace for tool-relevant human-readable artifacts: generated files such as `brief.md` and versioned user-authored guides or prompts. Ownership inside `_memento/` is file-level, not folder-level; generated files are ignored individually, while user-authored convention files remain versioned by default. Specific tool-read filenames are deferred to ADR-0010.
 
 ---
 
@@ -154,12 +156,12 @@ The tool **validates the operation against the declared mode before writing**. T
 
 ### When the agent should write of its own accord (default triggers)
 
-Trigger-shaped, not discretion-shaped — discretionary "write down useful things" yields noise-or-nothing; specific triggers yield signal. These live in `writing_guide.md` so they are tunable per-project without a recompile, and are **read at write-time**.
+Trigger-shaped, not discretion-shaped — discretionary "write down useful things" yields noise-or-nothing; specific triggers yield signal. These live in a tool-read writing guide so they are tunable per-project without a recompile, and are **read at write-time**. ADR-0010 pins the concrete `_memento/` filename and precedence rules.
 
 **Write when:**
-- you discovered a constraint not evident from the code and not already in `memory/`;
+- you discovered a constraint not evident from the code and not already in the memento vault;
 - a decision was made (or handed to you) with non-obvious rationale or rejected alternatives → new ADR;
-- you corrected an assumption already recorded in `memory/` that is now wrong.
+- you corrected an assumption already recorded in the memento vault that is now wrong.
 
 **Do not write** (the negatives prevent the swamp, and matter as much as the positives):
 - anything that merely restates what the code says;
@@ -169,7 +171,7 @@ Trigger-shaped, not discretion-shaped — discretionary "write down useful thing
 
 ### Posture
 
-**Autonomous write with *asynchronous* review via git diff.** Do not gate writes behind synchronous human approval — that kills the agent's flow. Rely on the committed-manifest-is-diffable loop: agent writes land as diffs a human sees in PR, which is where rot is caught. The boundary leak to watch: agents will try to encode durable learnings into beads close-notes, where compaction destroys them — the bootloader/writing_guide must state that discoveries outliving a task exit beads into `memory/`.
+**Autonomous write with *asynchronous* review via git diff.** Do not gate writes behind synchronous human approval — that kills the agent's flow. Rely on the committed-manifest-is-diffable loop: agent writes land as diffs a human sees in PR, which is where rot is caught. The boundary leak to watch: agents will try to encode durable learnings into beads close-notes, where compaction destroys them — the bootloader and writing guide must state that discoveries outliving a task exit beads into the memento vault.
 
 ---
 
@@ -192,7 +194,7 @@ So "auto-summarisation" is not a single feature at a fixed version: *detection* 
 
 ```
 memento compile          # walk vault → emit manifest (or stdout with --print for testing)
-memento init             # adopt-or-create: scaffold/adopt memory/, hook, bootloader (§11)
+memento init             # adopt-or-create: scaffold/adopt the vault, hook, bootloader (§11)
 memento read  <key>      # whole-file; supports read <key>#<heading>
 memento write <key>      # append/upsert/section-replace, validated against declared mode
 memento serve            # MCP server (v3) — registers compile/read/write/list as tools
@@ -208,7 +210,7 @@ memento serve            # MCP server (v3) — registers compile/read/write/list
 
 `init` is **adopt-or-create**:
 
-- Pointed at a **non-empty** dir → **adopt**: compile what is there, inject the bootloader, drop operational files (`writing_guide.md`, `.mementoignore`) only if absent. Never clobber.
+- Pointed at a **non-empty** dir → **adopt**: compile what is there, inject the bootloader, drop operational files (`.memento/` marker/config, `.mementoignore`) only if absent. Never clobber.
 - Pointed at an **empty/new** dir → create the minimal structure plus a single example note with model frontmatter (convention-by-example).
 
 **Compile must work on bare, frontmatter-less markdown** (filename → title, first line → summary, flag the gap). Frontmatter is **progressive enhancement** the human adds incrementally, never a precondition — a hard frontmatter requirement would turn adoption into a retrofit wall and kill it on contact with any existing repo.
@@ -217,14 +219,14 @@ memento serve            # MCP server (v3) — registers compile/read/write/list
 
 ```
 <!-- memento:start -->
-Durable project knowledge lives in `memory/`. The manifest is at `memory/.manifest.json`.
-Before a task: scan the manifest (titles, summaries, headings), filter by tag, read bodies/sections on demand.
-Working state lives in beads (`bd ready`); discoveries that outlive a task go to memory/, not beads notes.
-Write back per the rules in memory/writing_guide.md.
+Durable project knowledge lives in `<vault>`.
+Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).
+Identify relevant entries from the brief; read only the bodies or sections that plausibly apply with `memento read <key>`.
+Working state lives in beads (`bd ready`); discoveries that outlive a task go to `<vault>/`, not beads notes.
 <!-- memento:end -->
 ```
 
-Idempotent and removable (re-running replaces the block; never blind-appends). The block is **parametrised by the resolved dir/manifest path**. Critical, catastrophic-if-wrong items are promoted *out* of `memory/` and into `AGENTS.md` directly — the head of the distribution is unconditional, the long tail is conditional.
+Idempotent and removable (re-running replaces the block; never blind-appends). The block is **parametrised by the resolved dir** and points agents at `memento brief`; the canonical manifest remains at `<vault>/.memento/manifest.json`. Critical, catastrophic-if-wrong items are promoted *out* of the vault and into `AGENTS.md` directly — the head of the distribution is unconditional, the long tail is conditional.
 
 **Obsidian config is not owned.** `init` does not create or manage `.obsidian/` — a vault is just a folder and Obsidian creates its own config on first open. The only Obsidian-aware action is a `.gitignore` stanza for the per-machine UI noise (`.obsidian/workspace*`, `.obsidian/cache`), which is git hygiene, not config ownership.
 
@@ -236,7 +238,7 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 
 - **Spec-driven dev works natively** — a spec is just a durable doc with frontmatter, in the manifest like anything else. The heading-tree + section-read combination makes a monolithic spec navigable without splitting it.
 - **Auto-decomposition of specs into subfiles is NOT built.** Splitting along seams is a semantic authoring act; baking it into the index layer conflates indexing with content-transformation. If wanted, it is an *agent task* ("split this along its H2s into linked notes"), and memento *supports* the decomposed result (heading tree + outlinks) without *performing* the split.
-- **ADRs are the paradigm case that justifies the write-mode system.** An accepted ADR is `mode: read-only`, carries a `status:`, and supersession is a *new* ADR with a `supersedes:` typed link back. Ship a default ADR frontmatter convention in `writing_guide.md`.
+- **ADRs are the paradigm case that justifies the write-mode system.** An accepted ADR is `mode: read-only`, carries a `status:`, and supersession is a *new* ADR with a `supersedes:` typed link back. Ship a default ADR frontmatter convention in the tool-read writing guide once ADR-0010 pins the filename.
 - **Obsidian Tasks: no integration.** Tasks-in-markdown is a competing task store in the durable substrate — exactly the working-memory-into-semantic-memory leak beads exists to prevent. Human task-jotting in notes falls on the human-only ignore side; the agent must not treat it as authoritative state.
 
 ---
@@ -245,11 +247,11 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 
 | Ver | Scope |
 |---|---|
-| **v0** | CLI `compile` only. Point at a vault/subfolder → manifest file (`--print` to stdout for testing the representation). Includes: `.mementoignore` (subdir walking, glob+comment syntax), tag vocabulary (omitted if no tags exist), heading extraction, out/in link graph as data, bare-markdown fallback, summary-staleness **detection** (flag only, no generation). |
-| **v1** | `init` (adopt-or-create, pre-commit hook, sentinel bootloader injection, `.gitignore` stanza, no Obsidian ownership). `read` (whole-file **and** `#heading` section reads). Barebones `write` (mode-validated). |
-| **v2** | Smarter writes. `writing_guide.md` read at write-time to expose agent-facing write rules / triggers / placement conventions; `init` scaffolds a barebones guide. Default ADR convention. |
+| **v0** | CLI `compile`, `init`, `read`, and minimum `write`. Point at or discover one marker-based vault → canonical `.memento/manifest.json` plus generated `_memento/brief.md` (`--print` to stdout for testing the JSON representation). Includes: `<project>-memory/` init default, `.mementoignore` (subdir walking, glob+comment syntax), tag vocabulary (omitted if no tags exist), heading extraction, out/in link graph as data, bare-markdown fallback, summary-staleness **detection** (flag only, no generation), adopt-or-create init, pre-commit hook, sentinel bootloader injection, `.gitignore` stanza, `memento brief`, whole-file and `#heading` reads, and conservative write support limited to create/append. |
+| **v1** | Hardening and polish around the v0 surfaces after dogfooding: better diagnostics, portability fixes, and any compatibility adjustments needed before the MCP surface is promoted from the CLI. |
+| **v2** | Smarter writes. Tool-read conventions such as `_memento/writing.md` expose agent-facing write rules / triggers / placement conventions once ADR-0010 pins filenames and precedence. Full mode-aware editing, including `section-replace`, `keyed-upsert`, and mechanical `read-only` enforcement. Default ADR convention. |
 | **v3** | MCP server (`serve`). `read` surfaces out/inlinks for navigation. Agent-driven summarisation (borrow caller compute). |
-| **v4** | Standalone CLI auto-summarisation (`--summarize`, configured model). CLI verb to open Obsidian pointed at `memory/`. |
+| **v4** | Standalone CLI auto-summarisation (`--summarize`, configured model). `review` verb for deterministic and agent-assisted maintenance. CLI verb to open Obsidian pointed at the resolved vault. |
 
 ---
 
@@ -259,7 +261,7 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 - **Human-canonical.** What the human sees in Obsidian is truth; the agent's address space is the human's path space.
 - **Single source of truth.** The markdown files; the manifest and link graph are derived and cannot drift from them.
 - **Diffable = auditable.** Committed manifest + git makes semantic-memory changes and rot visible in review — the cheapest defence against silent decay.
-- **Structure earns itself from observed failure, not a-priori tidiness.** Applies to the typed-link graph, the `_meta/` subfolder, the embedding index, and the taxonomy itself — add cardinality when a failure mode demands it, not before.
+- **Structure earns itself from observed failure, not a-priori tidiness.** Applies to the typed-link graph, the `_memento/` filename set, the embedding index, and the taxonomy itself — add cardinality when a failure mode demands it, not before.
 - **Transports are dumb; the core is shared.** The MCP is a second mouth on the same library, promoted from a dogfooded CLI API.
 
 ---
@@ -268,10 +270,14 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 
 - **Typed-link traversal policy** — which edge types the agent follows by default. Defer; grow from misses.
 - **Embedding index over summaries** — only if the flat manifest visibly strains (low hundreds of docs). The first response to manifest bloat is *pruning the store*, not adding a graph. Defer.
-- **Human `INDEX.md` MOC** — optional second derived artifact. Defer.
 - **Monorepo / multiple memory dirs / manifest-of-manifests** — out of scope; the "point at a folder" design does not preclude it.
 - **Standalone summariser model wiring** — v4 detail (which binary, config surface, prompt).
-- **Vault-boundary enforcement** — currently a human-setup convention (open `memory/` as vault root); no tooling guard.
+- **Vault-boundary enforcement** — currently a human-setup convention (open the resolved memory directory as vault root); no tooling guard.
+- **ADR-0010 filename conventions** — pin `_memento/writing.md`, `_memento/review.md`, `_memento/audit.md`, and any precedence rules against memento-shipped defaults.
+- **Token-aware brief sizing** — bytes/lines are the v0 size proxy; tokenizer-backed sizing waits until brief size approaches context budgets.
+- **`init --template=` starters** — opinionated vault structures and starter conventions remain opt-in.
+- **Doc-type-specific brief rendering** — ADRs, specs, and notes render uniformly in v0; specialized rendering waits for observed need.
+- **Unresolved-question convention** — choose a home and naming scheme for open design questions, RFD-style or similar, alongside ADRs.
 
 
 ## Dogfooding note
