@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/tpisel/memento/internal/brief"
 	"github.com/tpisel/memento/internal/manifest"
@@ -26,7 +28,7 @@ Usage:
   memento brief [--dir <vault>]
   memento compile [--dir <vault>] [--print]
   memento init [--dir <vault>]
-  memento read [--dir <vault>] <key>
+  memento read [--dir <vault>] <key|N>
   memento write [--dir <vault>] <key>
   memento serve
 
@@ -269,7 +271,7 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprint(stderr, "memento read: expected exactly one key\n")
+		fmt.Fprint(stderr, "memento read: expected exactly one key or entry number\n")
 		return 2
 	}
 
@@ -279,7 +281,13 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	data, err := note.Read(v, flags.Arg(0))
+	target := flags.Arg(0)
+	var data []byte
+	if isAllDigits(target) {
+		data, err = readNumberedEntry(v, target, stderr)
+	} else {
+		data, err = note.Read(v, target)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, note.ErrInvalidKey):
@@ -299,6 +307,106 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func readNumberedEntry(v vault.Vault, target string, stderr io.Writer) ([]byte, error) {
+	number, err := strconv.Atoi(target)
+	if err != nil || number < 1 {
+		return nil, fmt.Errorf("entry number must be 1 or greater: %s", target)
+	}
+
+	m, err := readManifest(v)
+	if err != nil {
+		return nil, err
+	}
+
+	numbered := brief.NumberedEntries(m)
+	if number > len(numbered) {
+		return nil, fmt.Errorf("entry %d does not exist in manifest; manifest has %d entries", number, len(numbered))
+	}
+
+	key := numbered[number-1].Entry.Key
+	path, err := manifestEntryPath(v, key)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("entry %d's file `%s` no longer exists.\nmanifest is stale; run: memento compile && memento brief\nnote: entry numbers will likely shift after compile.", number, key)
+		}
+		return nil, fmt.Errorf("read %s: %w", key, err)
+	}
+
+	warnIfBriefHashDrift(v, m, stderr)
+	return data, nil
+}
+
+func readManifest(v vault.Vault) (manifest.Manifest, error) {
+	data, err := os.ReadFile(v.ManifestPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return manifest.Manifest{}, fmt.Errorf("manifest missing at %s; run memento compile", v.ManifestPath)
+		}
+		return manifest.Manifest{}, fmt.Errorf("read manifest: %w", err)
+	}
+
+	var m manifest.Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return manifest.Manifest{}, fmt.Errorf("decode manifest: %w", err)
+	}
+	return m, nil
+}
+
+func manifestEntryPath(v vault.Vault, key string) (string, error) {
+	if key == "" || strings.Contains(key, "\\") || filepath.IsAbs(key) || strings.HasPrefix(key, "/") {
+		return "", fmt.Errorf("manifest entry has invalid key: %s", key)
+	}
+	for _, part := range strings.Split(key, "/") {
+		if part == "" || part == "." || part == ".." {
+			return "", fmt.Errorf("manifest entry has invalid key: %s", key)
+		}
+	}
+	return filepath.Join(v.Root, filepath.FromSlash(key)), nil
+}
+
+func warnIfBriefHashDrift(v vault.Vault, m manifest.Manifest, stderr io.Writer) {
+	data, err := os.ReadFile(vault.BriefPath(v))
+	if err != nil {
+		return
+	}
+
+	briefHash, ok := briefManifestHash(data)
+	if !ok || briefHash == brief.ManifestHash(m) {
+		return
+	}
+	fmt.Fprintln(stderr, "warn: manifest changed since last brief, numbers may not match your view — re-run memento brief.")
+}
+
+func briefManifestHash(data []byte) (string, bool) {
+	line := string(data)
+	if before, _, ok := strings.Cut(line, "\n"); ok {
+		line = before
+	}
+
+	const prefix = "<!-- manifest: "
+	const suffix = " -->"
+	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
+		return "", false
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(line, prefix), suffix), true
+}
+
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, ch := range s {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {

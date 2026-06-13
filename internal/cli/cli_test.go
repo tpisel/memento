@@ -450,6 +450,134 @@ func TestReadPrintsRequestedMarkdownForExplicitDir(t *testing.T) {
 	}
 }
 
+func TestReadNumericReferenceResolvesAgainstManifestOrdering(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "zeta.md", "# Zeta\n\nRoot note.\n")
+	writeCLIFile(t, root, "notes/beta.md", "# Beta\n\nNested note.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "--dir", root, "2"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read 2) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(read 2) stderr = %q, want empty", stderr.String())
+	}
+	if want := "# Beta\n\nNested note.\n"; stdout.String() != want {
+		t.Fatalf("Run(read 2) stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestReadNumericReferenceFailsWithStaleManifestMessageForMissingFile(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+	if err := os.Remove(filepath.Join(root, "note.md")); err != nil {
+		t.Fatalf("remove note.md: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "--dir", root, "1"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(read 1) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(read 1) stdout = %q, want empty", stdout.String())
+	}
+	for _, want := range []string{
+		"entry 1's file `note.md` no longer exists.",
+		"manifest is stale; run: memento compile && memento brief",
+		"note: entry numbers will likely shift after compile.",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("Run(read 1) stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+}
+
+func TestReadNumericReferenceWarnsWhenManifestHashDiffersFromBrief(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+	manifestPath := filepath.Join(root, ".memento", "manifest.json")
+	manifestJSON := readCLIFile(t, root, ".memento/manifest.json")
+	manifestJSON = strings.Replace(manifestJSON, `"title": "Note"`, `"title": "Changed"`, 1)
+	if err := os.WriteFile(manifestPath, []byte(manifestJSON), 0o644); err != nil {
+		t.Fatalf("write changed manifest: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "--dir", root, "1"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read 1) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if want := "# Note\n\nSummary.\n"; stdout.String() != want {
+		t.Fatalf("Run(read 1) stdout = %q, want %q", stdout.String(), want)
+	}
+	if want := "warn: manifest changed since last brief, numbers may not match your view"; !strings.Contains(stderr.String(), want) {
+		t.Fatalf("Run(read 1) stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+func TestReadNumericReferenceSkipsHashCheckWhenBriefIsMissing(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+	if err := os.Remove(filepath.Join(root, "_memento", "brief.md")); err != nil {
+		t.Fatalf("remove brief: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "--dir", root, "1"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read 1) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(read 1) stderr = %q, want empty", stderr.String())
+	}
+	if want := "# Note\n\nSummary.\n"; stdout.String() != want {
+		t.Fatalf("Run(read 1) stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestReadNonNumericArgumentFallsThroughToPathBehavior(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "2026.md", "# Year\n\nPath note.\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"read", "--dir", root, "2026.md"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read 2026.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(read 2026.md) stderr = %q, want empty", stderr.String())
+	}
+	if want := "# Year\n\nPath note.\n"; stdout.String() != want {
+		t.Fatalf("Run(read 2026.md) stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
 func TestReadPrintsRequestedSection(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "spec.md", "# Spec\n\n## Target Heading\n\nTarget content.\n\n## Next\n\nOther content.\n")
