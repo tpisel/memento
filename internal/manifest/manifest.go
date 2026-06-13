@@ -285,6 +285,21 @@ type linkResolver struct {
 	ambiguous map[string]bool
 }
 
+type WikiLinkResolver struct {
+	resolver *linkResolver
+}
+
+func NewWikiLinkResolver(entries []Entry) *WikiLinkResolver {
+	return &WikiLinkResolver{resolver: newLinkResolver(entries)}
+}
+
+func (r *WikiLinkResolver) Resolve(currentKey, rawTarget string) (string, bool) {
+	if r == nil || r.resolver == nil {
+		return rawTarget, false
+	}
+	return r.resolver.resolve(currentKey, rawTarget)
+}
+
 func newLinkResolver(entries []Entry) *linkResolver {
 	r := &linkResolver{
 		exact:     map[string]string{},

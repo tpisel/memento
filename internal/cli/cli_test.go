@@ -355,6 +355,34 @@ Body.
 	}
 }
 
+func TestCompileBriefSuffixesWikiLinksWithoutMutatingSources(t *testing.T) {
+	root := makeCLIVault(t)
+	source := `# Alpha
+
+Resolved [[beta]], display [[beta|Beta note]], broken [[missing]], and anchored [[beta#Decision]] links.
+`
+	writeCLIFile(t, root, "alpha.md", source)
+	writeCLIFile(t, root, "beta.md", "# Beta\n\nTarget.\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(compile) stdout = %q, want empty", stdout.String())
+	}
+
+	brief := readCLIFile(t, root, "_memento/brief.md")
+	want := "Resolved [[beta @ 2]], display [[beta|Beta note @ 2]], broken [[missing]], and anchored [[beta#Decision]] links."
+	if !strings.Contains(brief, want) {
+		t.Fatalf("brief =\n%s\nwant %q", brief, want)
+	}
+	if got := readCLIFile(t, root, "alpha.md"); got != source {
+		t.Fatalf("source mutated by compile:\ngot:\n%s\nwant:\n%s", got, source)
+	}
+}
+
 func TestBriefPrintsExistingBriefForExplicitDir(t *testing.T) {
 	root := makeCLIVault(t)
 	want := "# Existing Brief\n\nAlready rendered.\n"

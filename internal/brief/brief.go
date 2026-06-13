@@ -103,8 +103,15 @@ func RenderWithToolFiles(m manifest.Manifest, toolFiles []string) []byte {
 	b.WriteString(Banner)
 	b.WriteString("\n\n# Memento Brief\n")
 
+	numberedEntries := NumberedEntries(m)
+	numberByKey := map[string]int{}
+	for _, numbered := range numberedEntries {
+		numberByKey[numbered.Entry.Key] = numbered.Number
+	}
+	linkResolver := manifest.NewWikiLinkResolver(m.Entries)
+
 	currentFolder := ""
-	for _, numbered := range NumberedEntries(m) {
+	for _, numbered := range numberedEntries {
 		entry := numbered.Entry
 		if numbered.Folder != currentFolder {
 			currentFolder = numbered.Folder
@@ -115,7 +122,7 @@ func RenderWithToolFiles(m manifest.Manifest, toolFiles []string) []byte {
 		if entry.Summary == "" {
 			b.WriteString("Summary: none\n\n")
 		} else {
-			b.WriteString(entry.Summary)
+			b.WriteString(suffixSummaryWikiLinks(entry.Summary, entry.Key, linkResolver, numberByKey))
 			b.WriteString("\n\n")
 		}
 		fmt.Fprintf(&b, "Headings: %s\n", inlineHeadings(entry.Headings))
@@ -125,6 +132,76 @@ func RenderWithToolFiles(m manifest.Manifest, toolFiles []string) []byte {
 	fmt.Fprintf(&b, "Tag frequency: %s\n", tagFrequency(m.Tags))
 	fmt.Fprintf(&b, "Tool files: %s\n", inlineToolFiles(toolFiles))
 	return b.Bytes()
+}
+
+func suffixSummaryWikiLinks(summary, currentKey string, resolver *manifest.WikiLinkResolver, numberByKey map[string]int) string {
+	var b strings.Builder
+	changed := false
+	pos := 0
+
+	for pos < len(summary) {
+		start := strings.Index(summary[pos:], "[[")
+		if start < 0 {
+			break
+		}
+		start += pos
+
+		end := strings.Index(summary[start+2:], "]]")
+		if end < 0 {
+			break
+		}
+		end += start + 2
+
+		raw := summary[start+2 : end]
+		replacement, ok := suffixedWikiLink(raw, currentKey, resolver, numberByKey)
+		if !ok {
+			if changed {
+				b.WriteString(summary[pos : end+2])
+			}
+			pos = end + 2
+			continue
+		}
+
+		if !changed {
+			b.Grow(len(summary) + 8)
+			b.WriteString(summary[:start])
+			changed = true
+		} else {
+			b.WriteString(summary[pos:start])
+		}
+		b.WriteString(replacement)
+		pos = end + 2
+	}
+
+	if !changed {
+		return summary
+	}
+	b.WriteString(summary[pos:])
+	return b.String()
+}
+
+func suffixedWikiLink(raw, currentKey string, resolver *manifest.WikiLinkResolver, numberByKey map[string]int) (string, bool) {
+	inner := strings.TrimSpace(raw)
+	target, display, hasDisplay := strings.Cut(inner, "|")
+	target = strings.TrimSpace(target)
+	display = strings.TrimSpace(display)
+	if target == "" || strings.ContainsAny(target, "#^") {
+		return "", false
+	}
+
+	resolvedKey, ok := resolver.Resolve(currentKey, target)
+	if !ok {
+		return "", false
+	}
+	number, ok := numberByKey[resolvedKey]
+	if !ok {
+		return "", false
+	}
+
+	if hasDisplay {
+		return fmt.Sprintf("[[%s|%s @ %d]]", target, display, number), true
+	}
+	return fmt.Sprintf("[[%s @ %d]]", target, number), true
 }
 
 func ManifestHash(m manifest.Manifest) string {

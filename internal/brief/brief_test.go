@@ -210,6 +210,36 @@ func TestNumberedEntriesArePureAndDeterministic(t *testing.T) {
 	}
 }
 
+func TestRenderSuffixesResolvedSummaryWikiLinksWithEntryNumbers(t *testing.T) {
+	m := manifest.Manifest{
+		Entries: []manifest.Entry{
+			{
+				Key:   "alpha.md",
+				Title: "Alpha",
+				Summary: "Resolved [[beta]], display [[beta|Beta note]], broken [[missing]], " +
+					"and anchored [[beta#Decision]] links.",
+				Mode: markdown.ModeAppendOnly,
+			},
+			{
+				Key:     "beta.md",
+				Title:   "Beta",
+				Summary: "Target.",
+				Mode:    markdown.ModeAppendOnly,
+			},
+		},
+	}
+
+	got := string(Render(m))
+	for _, want := range []string{
+		"Resolved [[beta @ 2]], display [[beta|Beta note @ 2]], broken [[missing]], and anchored [[beta#Decision]] links.",
+		"Target.",
+	} {
+		if !bytes.Contains([]byte(got), []byte(want)) {
+			t.Fatalf("Render() =\n%s\nwant %q", got, want)
+		}
+	}
+}
+
 func TestRenderWithToolFilesListsDetectedFiles(t *testing.T) {
 	got := string(RenderWithToolFiles(manifest.Manifest{}, []string{"_memento/review.md", "_memento/writing.md"}))
 
