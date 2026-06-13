@@ -4,6 +4,7 @@ status: accepted
 mode: read-only
 date: 2026-06-11
 tags: [memento, write, mcp]
+summary: V0 write supports only creating a new file and appending to an existing one. Section-replace, keyed-upsert, and full mode enforcement are deferred to v2; declared `read-only` files remain socially read-only until enforcement lands. The CLI must not offer operations that imply historical rewriting.
 ---
 
 # ADR-0004 - V0 write scope

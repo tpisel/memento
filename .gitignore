@@ -45,3 +45,9 @@ logs/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# memento:gitignore:start
+# Obsidian per-machine UI state
+memento-memory/.obsidian/workspace*
+memento-memory/.obsidian/cache
+# memento:gitignore:end

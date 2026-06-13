@@ -4,6 +4,7 @@ status: accepted
 mode: read-only
 date: 2026-06-11
 tags: [memento, init, manifest, config, obsidian]
+summary: Vault discovery is by `.memento/` marker directory, not by directory name — exactly one marker per repository, ambiguity is a hard error. Tool-owned operational files (`config.toml`, `manifest.json`) live under `.memento/`; `.mementoignore` stays at the memory root because it describes the content namespace.
 ---
 
 # ADR-0002 - Marker-based vault discovery and operational layout

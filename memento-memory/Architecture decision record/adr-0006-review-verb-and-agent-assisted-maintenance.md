@@ -4,6 +4,7 @@ status: accepted
 mode: read-only
 date: 2026-06-11
 tags: [memento, review, maintenance, roadmap]
+summary: A `review` verb is accepted as v4 roadmap work, distinct from `compile` (which must stay deterministic and hook-safe). Mechanical review reports duplicate headings, malformed frontmatter, stale summaries, count-1 tags, and broken wikilinks. Agent-assisted review uses the caller's reasoning to propose better summaries, identify obsolete notes, and suggest decomposition — memento itself embeds no model credentials.
 ---
 
 # ADR-0006 - Review verb and agent-assisted maintenance

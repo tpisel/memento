@@ -3,7 +3,12 @@ title: Beads integration posture
 status: accepted
 mode: read-only
 date: 2026-06-11
-tags: [memento, beads, retrieval, agents]
+tags:
+  - memento
+  - beads
+  - retrieval
+  - agents
+summary: "Memento does not depend on beads, and beads is not required to use memento — they are integrated, not merged. Memento keys and section anchors stay stable and human-readable so beads tasks, commit messages, and humans can hotlink them directly. The substrate boundary holds: task progress in beads, durable semantic knowledge in memento."
 ---
 
 # ADR-0007 - Beads integration posture

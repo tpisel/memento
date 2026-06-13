@@ -1,0 +1,625 @@
+{
+  "entries": [
+    {
+      "key": "Architecture decision record/adr-0001-vault-naming.md",
+      "title": "Memory directory naming \u0026 vault topology",
+      "summary": "The memory directory defaults to \u003cproject\u003e-memory/, where \u003cproject\u003e is derived at init time from the git remote basename, falling back to the repository directory name. If no project name can be derived, fall back to memory/.",
+      "tags": [
+        "init",
+        "memento",
+        "obsidian"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0002-marker-based-vault-discovery.md",
+      "title": "Marker-based vault discovery and operational layout",
+      "summary": "Vault discovery is by `.memento/` marker directory, not by directory name — exactly one marker per repository, ambiguity is a hard error. Tool-owned operational files (`config.toml`, `manifest.json`) live under `.memento/`; `.mementoignore` stays at the memory root because it describes the content namespace.",
+      "tags": [
+        "config",
+        "init",
+        "manifest",
+        "memento",
+        "obsidian"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0003-v0-retrieval-and-indexing-semantics.md",
+      "title": "V0 retrieval and indexing semantics",
+      "summary": "V0 scope is deterministic indexing and selective reads — one-vault discovery via marker, deterministic `manifest.json`, `read \u003ckey\u003e` for whole files, `read \u003ckey\u003e#\u003cheading\u003e` for section reads with GitHub-style slug anchors. `.mementoignore` supports a small `.gitignore`-like subset (literals, globs, `**`); negation, nested ignores, and full git-attribute compatibility are deliberately out of scope.",
+      "tags": [
+        "compile",
+        "ignore",
+        "markdown",
+        "memento",
+        "read"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Ignore Semantics",
+          "slug": "ignore-semantics"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0004-v0-write-scope.md",
+      "title": "V0 write scope",
+      "summary": "V0 write supports only creating a new file and appending to an existing one. Section-replace, keyed-upsert, and full mode enforcement are deferred to v2; declared `read-only` files remain socially read-only until enforcement lands. The CLI must not offer operations that imply historical rewriting.",
+      "tags": [
+        "mcp",
+        "memento",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0005-init-and-pre-commit-hook.md",
+      "title": "Init and pre-commit hook ownership",
+      "summary": " `init` installs or updates a sentinel-bounded block in `.git/hooks/pre-commit` (creating the hook if absent, preserving existing content if present). The hook runs manifest compilation and stages the resulting `.memento/manifest.json`. Re-running `init` is idempotent and never rewrites unrelated hook content.",
+      "tags": [
+        "git",
+        "init",
+        "manifest",
+        "memento"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0006-review-verb-and-agent-assisted-maintenance.md",
+      "title": "Review verb and agent-assisted maintenance",
+      "summary": "A `review` verb is accepted as v4 roadmap work, distinct from `compile` (which must stay deterministic and hook-safe). Mechanical review reports duplicate headings, malformed frontmatter, stale summaries, count-1 tags, and broken wikilinks. Agent-assisted review uses the caller's reasoning to propose better summaries, identify obsolete notes, and suggest decomposition — memento itself embeds no model credentials.",
+      "tags": [
+        "maintenance",
+        "memento",
+        "review",
+        "roadmap"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0007-beads-integration-posture.md",
+      "title": "Beads integration posture",
+      "summary": "Memento does not depend on beads, and beads is not required to use memento — they are integrated, not merged. Memento keys and section anchors stay stable and human-readable so beads tasks, commit messages, and humans can hotlink them directly. The substrate boundary holds: task progress in beads, durable semantic knowledge in memento.",
+      "tags": [
+        "agents",
+        "beads",
+        "memento",
+        "retrieval"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0008-memento-brief-projection.md",
+      "title": "Memento brief — agent-facing manifest projection",
+      "summary": "Add a `memento brief` verb that emits the agent-facing markdown projection of the manifest. `compile` writes both `.memento/manifest.json` (canonical, versioned) and `_memento/brief.md` (derived, gitignored). `brief` reads the file, falling back to a render-from-JSON when absent. The brief carries `mode: read-only` frontmatter and a DO-NOT-EDIT banner; the bootloader injects brief output instead of raw JSON.",
+      "tags": [
+        "agents",
+        "brief",
+        "compile",
+        "manifest",
+        "memento"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 3,
+          "text": "Editing guards",
+          "slug": "editing-guards"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0009-memento-subfolder-namespace.md",
+      "title": "_memento/ — mixed-audience tool namespace",
+      "summary": "Establish `\u003cvault\u003e/_memento/` as the namespace for tool-relevant human-readable artifacts — both memento-generated (brief, future review outputs) and user-authored (writing guides, review prompts, audit instructions). Ownership is file-level, not folder-level: `.gitignore` distinguishes generated from versioned files, `mode:` and filename conventions handle the rest. Pinning specific tool-read filenames is deferred to ADR-0010.",
+      "tags": [
+        "agents",
+        "memento",
+        "namespace",
+        "review",
+        "vault",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Feature thoughts.md",
+      "title": "Feature thoughts",
+      "summary": "Possible features and affordances:",
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Features",
+          "slug": "features"
+        },
+        {
+          "level": 2,
+          "text": "Nits",
+          "slug": "nits"
+        }
+      ],
+      "mode": "append-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "agent-human review boundaries.md",
+      "title": "Agent / human review boundaries",
+      "summary": "A philosophical sketch and tentative proposal — the beads/memento substrate boundary may be the surface of a deeper axis distinguishing who *authors* and who *reviews* at each layer of work. Names a review-granularity ladder (invariants → epics → atoms) and a possible bead-epic ↔ memento-note coupling. Deliberately unresolved — recorded so future design work can return with usage evidence.",
+      "tags": [
+        "agents",
+        "beads",
+        "memento",
+        "open-question",
+        "philosophy",
+        "proposal",
+        "review"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The deeper axis",
+          "slug": "the-deeper-axis"
+        },
+        {
+          "level": 2,
+          "text": "The granularity ladder",
+          "slug": "the-granularity-ladder"
+        },
+        {
+          "level": 2,
+          "text": "A possible bead-epic ↔ memento-note coupling",
+          "slug": "a-possible-bead-epic-memento-note-coupling"
+        },
+        {
+          "level": 2,
+          "text": "What this is explicitly not",
+          "slug": "what-this-is-explicitly-not"
+        },
+        {
+          "level": 2,
+          "text": "Why this stays unresolved",
+          "slug": "why-this-stays-unresolved"
+        },
+        {
+          "level": 2,
+          "text": "Threads worth following",
+          "slug": "threads-worth-following"
+        },
+        {
+          "level": 2,
+          "text": "Provenance",
+          "slug": "provenance"
+        }
+      ],
+      "mode": "append-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "spec.md",
+      "title": "memento — design specification",
+      "summary": "A thin retrieval/dispatch layer over a human-curated markdown knowledge store. It compiles a manifest that agents load at session start, and exposes selective read/write so an agent pulls decomposed context on demand rather than ingesting the whole store every time.",
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "1. Problem \u0026 position",
+          "slug": "1-problem-position"
+        },
+        {
+          "level": 3,
+          "text": "Code is prime memory",
+          "slug": "code-is-prime-memory"
+        },
+        {
+          "level": 2,
+          "text": "2. Architecture",
+          "slug": "2-architecture"
+        },
+        {
+          "level": 2,
+          "text": "3. The memory directory \u0026 vault model",
+          "slug": "3-the-memory-directory-vault-model"
+        },
+        {
+          "level": 2,
+          "text": "4. The manifest",
+          "slug": "4-the-manifest"
+        },
+        {
+          "level": 3,
+          "text": "Per-file fields",
+          "slug": "per-file-fields"
+        },
+        {
+          "level": 3,
+          "text": "Global",
+          "slug": "global"
+        },
+        {
+          "level": 2,
+          "text": "5. Addressing \u0026 renames",
+          "slug": "5-addressing-renames"
+        },
+        {
+          "level": 2,
+          "text": "6. The ignore taxonomy \u0026 operational files",
+          "slug": "6-the-ignore-taxonomy-operational-files"
+        },
+        {
+          "level": 2,
+          "text": "7. Reading",
+          "slug": "7-reading"
+        },
+        {
+          "level": 2,
+          "text": "8. Writing",
+          "slug": "8-writing"
+        },
+        {
+          "level": 3,
+          "text": "Modes (frontmatter-declared, tool-enforced)",
+          "slug": "modes-frontmatter-declared-tool-enforced"
+        },
+        {
+          "level": 3,
+          "text": "When the agent should write of its own accord (default triggers)",
+          "slug": "when-the-agent-should-write-of-its-own-accord-default-triggers"
+        },
+        {
+          "level": 3,
+          "text": "Posture",
+          "slug": "posture"
+        },
+        {
+          "level": 2,
+          "text": "9. Summarisation",
+          "slug": "9-summarisation"
+        },
+        {
+          "level": 2,
+          "text": "10. CLI surface",
+          "slug": "10-cli-surface"
+        },
+        {
+          "level": 2,
+          "text": "11. init \u0026 adoption flows",
+          "slug": "11-init-adoption-flows"
+        },
+        {
+          "level": 2,
+          "text": "12. Spec-driven development, ADRs, and what we deliberately do not build",
+          "slug": "12-spec-driven-development-adrs-and-what-we-deliberately-do-not-build"
+        },
+        {
+          "level": 2,
+          "text": "13. Version / scope plan",
+          "slug": "13-version-scope-plan"
+        },
+        {
+          "level": 2,
+          "text": "14. Design principles (non-functional)",
+          "slug": "14-design-principles-non-functional"
+        },
+        {
+          "level": 2,
+          "text": "15. Deferred / out of scope / open questions",
+          "slug": "15-deferred-out-of-scope-open-questions"
+        },
+        {
+          "level": 2,
+          "text": "Dogfooding note",
+          "slug": "dogfooding-note"
+        }
+      ],
+      "mode": "append-only",
+      "updated": "2026-06-10T00:00:00Z",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "wikilinks",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "x",
+            "type": "embed",
+            "resolved": false
+          }
+        ],
+        "in": []
+      }
+    },
+    {
+      "key": "what makes a good summary.md",
+      "title": "What makes a good summary",
+      "summary": "A summary is read by an agent scanning the brief to decide what to open next. Lead with the decision or the load-bearing fact — not the question, the context, or the motivation. If reading the summary tells you the answer, the brief is doing its job; if it only tells you a file exists on the topic, the brief is just an index.",
+      "tags": [
+        "draft",
+        "memento",
+        "summaries",
+        "writing"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The rule",
+          "slug": "the-rule"
+        },
+        {
+          "level": 2,
+          "text": "Concrete contrast",
+          "slug": "concrete-contrast"
+        },
+        {
+          "level": 2,
+          "text": "Working heuristics",
+          "slug": "working-heuristics"
+        },
+        {
+          "level": 2,
+          "text": "What this is not (yet)",
+          "slug": "what-this-is-not-yet"
+        }
+      ],
+      "mode": "append-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    }
+  ],
+  "tags": {
+    "agents": 4,
+    "beads": 2,
+    "brief": 1,
+    "compile": 2,
+    "config": 1,
+    "draft": 1,
+    "git": 1,
+    "ignore": 1,
+    "init": 3,
+    "maintenance": 1,
+    "manifest": 3,
+    "markdown": 1,
+    "mcp": 1,
+    "memento": 11,
+    "namespace": 1,
+    "obsidian": 2,
+    "open-question": 1,
+    "philosophy": 1,
+    "proposal": 1,
+    "read": 1,
+    "retrieval": 1,
+    "review": 3,
+    "roadmap": 1,
+    "summaries": 1,
+    "vault": 1,
+    "write": 2,
+    "writing": 1
+  }
+}

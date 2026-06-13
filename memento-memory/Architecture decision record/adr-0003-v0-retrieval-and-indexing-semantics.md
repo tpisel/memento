@@ -4,6 +4,7 @@ status: accepted
 mode: read-only
 date: 2026-06-11
 tags: [memento, compile, read, markdown, ignore]
+summary: V0 scope is deterministic indexing and selective reads — one-vault discovery via marker, deterministic `manifest.json`, `read <key>` for whole files, `read <key>#<heading>` for section reads with GitHub-style slug anchors. `.mementoignore` supports a small `.gitignore`-like subset (literals, globs, `**`); negation, nested ignores, and full git-attribute compatibility are deliberately out of scope.
 ---
 
 # ADR-0003 - V0 retrieval and indexing semantics

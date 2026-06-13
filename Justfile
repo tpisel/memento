@@ -16,6 +16,9 @@ build:
     mkdir -p /tmp/memento-build
     go build -o /tmp/memento-build/memento ./cmd/memento
 
+run *args:
+    go run ./cmd/memento {{args}}
+
 check: fmt test vet build
 
 ralph agent="codex" bead="":

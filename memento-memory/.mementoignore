@@ -1,0 +1,6 @@
+# memento operational files
+.memento/
+.mementoignore
+
+# macOS Finder metadata
+.DS_Store

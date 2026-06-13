@@ -21,15 +21,14 @@ Keep that boundary clear. Task progress belongs in beads. Durable semantic knowl
 When memento CLI support exists, replace the manual memory scan with the manifest/read workflow below.
 
 <!-- memento:start -->
-Durable project knowledge lives in `memento-memory/`.
-The future manifest path is `memento-memory/.memento/manifest.json`.
-
-Before a task: scan the manifest when present, using titles, summaries, tags, and headings to identify relevant entries. Read only the entries or sections that plausibly apply.
-
-Until the CLI and manifest exist, manually read the relevant files in `memento-memory/`, especially `spec.md` and the Architecture decision record directory.
-
-Discoveries that outlive the current task go to `memento-memory/`, not transient task notes. Write back according to `memento-memory/writing_guide.md` once it exists.
+Durable project knowledge lives in `memento-memory`.
+Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).
+Identify relevant entries from the brief; read only the bodies or sections that plausibly apply with `memento read <key>`.
+Working state lives in beads (`bd ready`); discoveries that outlive a task go to `memento-memory/`, not beads notes.
+Write back according to `memento-memory/writing_guide.md` once it exists.
 <!-- memento:end -->
+
+**This repo only — invoking memento:** memento is being built in this repo. The block above refers to `memento` as if it were on `$PATH`. In this repo, invoke it as `go run ./cmd/memento <verb>` or `just run <verb>` (e.g., `just run brief`, `just run read <key>`).
 
 ## During Implementation
 
