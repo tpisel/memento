@@ -38,7 +38,7 @@ func TestInitCreatesAgentInstructionsWhenAbsent(t *testing.T) {
 	for _, want := range []string{
 		"<!-- memento:start -->",
 		"Durable project knowledge lives in `sample-app-memory`.",
-		"The manifest is at `sample-app-memory/.memento/manifest.json`.",
+		"Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).",
 		"<!-- memento:end -->",
 	} {
 		if !strings.Contains(got, want) {
@@ -62,9 +62,7 @@ func TestInitAppendsBootloaderToExistingAgentInstructions(t *testing.T) {
 	if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
 		t.Fatalf("AGENTS.md start sentinel count = %d, want 1; contents = %q", count, got)
 	}
-	if !strings.Contains(got, "The manifest is at `memory/.memento/manifest.json`.") {
-		t.Fatalf("AGENTS.md = %q, want memory manifest path", got)
-	}
+	assertBriefRoutedBootloader(t, "AGENTS.md", got, "memory")
 }
 
 func TestInitAppendsBootloaderToExistingClaudeInstructions(t *testing.T) {
@@ -82,9 +80,7 @@ func TestInitAppendsBootloaderToExistingClaudeInstructions(t *testing.T) {
 	if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
 		t.Fatalf("CLAUDE.md start sentinel count = %d, want 1; contents = %q", count, got)
 	}
-	if !strings.Contains(got, "The manifest is at `memory/.memento/manifest.json`.") {
-		t.Fatalf("CLAUDE.md = %q, want memory manifest path", got)
-	}
+	assertBriefRoutedBootloader(t, "CLAUDE.md", got, "memory")
 	if _, err := os.Stat(filepath.Join(repo, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("AGENTS.md stat err = %v, want file not to exist", err)
 	}
@@ -104,9 +100,7 @@ func TestInitInjectsBootloaderIntoAgentsAndClaudeWhenBothExist(t *testing.T) {
 		if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
 			t.Fatalf("%s start sentinel count = %d, want 1; contents = %q", relPath, count, got)
 		}
-		if !strings.Contains(got, "The manifest is at `memory/.memento/manifest.json`.") {
-			t.Fatalf("%s = %q, want memory manifest path", relPath, got)
-		}
+		assertBriefRoutedBootloader(t, relPath, got, "memory")
 	}
 }
 
@@ -119,11 +113,12 @@ func TestInitReplacesExistingBootloaderBlock(t *testing.T) {
 	}
 
 	got := readSetupFile(t, repo, "AGENTS.md")
-	for _, want := range []string{"# Rules\n\n", "\n\nKeep this too.\n", "project-memory/.memento/manifest.json"} {
+	for _, want := range []string{"# Rules\n\n", "\n\nKeep this too.\n"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("AGENTS.md = %q, want it to contain %q", got, want)
 		}
 	}
+	assertBriefRoutedBootloader(t, "AGENTS.md", got, "project-memory")
 	if strings.Contains(got, "old block") {
 		t.Fatalf("AGENTS.md = %q, want old bootloader removed", got)
 	}
@@ -143,9 +138,7 @@ func TestInitReplacesExistingBootloaderBlockInEveryPresentInstructionFile(t *tes
 
 	for _, relPath := range []string{"AGENTS.md", "CLAUDE.md"} {
 		got := readSetupFile(t, repo, relPath)
-		if !strings.Contains(got, "project-memory/.memento/manifest.json") {
-			t.Fatalf("%s = %q, want project-memory manifest path", relPath, got)
-		}
+		assertBriefRoutedBootloader(t, relPath, got, "project-memory")
 		if strings.Contains(got, "old agents block") || strings.Contains(got, "old claude block") {
 			t.Fatalf("%s = %q, want old bootloader removed", relPath, got)
 		}
@@ -165,13 +158,13 @@ func TestInitBootloaderUsesCustomMemoryDirectoryPath(t *testing.T) {
 	got := readSetupFile(t, repo, "AGENTS.md")
 	for _, want := range []string{
 		"Durable project knowledge lives in `docs/project-memory`.",
-		"The manifest is at `docs/project-memory/.memento/manifest.json`.",
-		"Write back according to `docs/project-memory/writing_guide.md` once it exists.",
+		"Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("AGENTS.md = %q, want it to contain %q", got, want)
 		}
 	}
+	assertNoWritingGuideReference(t, "AGENTS.md", got)
 }
 
 func TestInitBootloaderIsIdempotent(t *testing.T) {
@@ -312,9 +305,7 @@ func TestInitCanUseConfiguredAgentInstructionFile(t *testing.T) {
 	}
 
 	got := readSetupFile(t, repo, "CLAUDE.md")
-	if !strings.Contains(got, "The manifest is at `memory/.memento/manifest.json`.") {
-		t.Fatalf("CLAUDE.md = %q, want memory manifest path", got)
-	}
+	assertBriefRoutedBootloader(t, "CLAUDE.md", got, "memory")
 	if _, err := os.Stat(filepath.Join(repo, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("AGENTS.md stat err = %v, want file not to exist", err)
 	}
@@ -419,4 +410,39 @@ func readSetupFile(t *testing.T, root, relPath string) string {
 		t.Fatalf("read %q: %v", relPath, err)
 	}
 	return string(data)
+}
+
+func assertBriefRoutedBootloader(t *testing.T, relPath, got, memoryPath string) {
+	t.Helper()
+
+	for _, want := range []string{
+		"Durable project knowledge lives in `" + memoryPath + "`.",
+		"Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).",
+		"Identify relevant entries from the brief; read only the bodies or sections that plausibly apply with `memento read <key>`.",
+		"Working state lives in beads (`bd ready`); discoveries that outlive a task go to `" + memoryPath + "/`, not beads notes.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%s = %q, want it to contain %q", relPath, got, want)
+		}
+	}
+
+	for _, unwanted := range []string{
+		"manifest.json",
+		"scan the manifest",
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("%s = %q, want no raw manifest guidance containing %q", relPath, got, unwanted)
+		}
+	}
+	assertNoWritingGuideReference(t, relPath, got)
+}
+
+func assertNoWritingGuideReference(t *testing.T, relPath, got string) {
+	t.Helper()
+
+	for _, unwanted := range []string{"writing_guide.md", "writing.md"} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("%s = %q, want no writing guide reference containing %q", relPath, got, unwanted)
+		}
+	}
 }

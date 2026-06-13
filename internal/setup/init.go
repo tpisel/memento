@@ -352,17 +352,13 @@ func agentInstructionsPath(repoRoot, configured string) (string, error) {
 
 func bootloaderBlock(repoRoot string, v vault.Vault) string {
 	memoryPath := displayPath(repoRoot, v.Root)
-	manifestPath := displayPath(repoRoot, v.ManifestPath)
-	writingGuidePath := filepath.ToSlash(filepath.Join(memoryPath, "writing_guide.md"))
 
 	return strings.Join([]string{
 		bootloaderStartSentinel,
 		fmt.Sprintf("Durable project knowledge lives in `%s`.", memoryPath),
-		fmt.Sprintf("The manifest is at `%s`.", manifestPath),
-		"Before a task: scan the manifest's titles, summaries, tags, and headings to identify relevant entries.",
-		"Read only the bodies or sections that plausibly apply.",
+		"Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).",
+		"Identify relevant entries from the brief; read only the bodies or sections that plausibly apply with `memento read <key>`.",
 		fmt.Sprintf("Working state lives in beads (`bd ready`); discoveries that outlive a task go to `%s/`, not beads notes.", memoryPath),
-		fmt.Sprintf("Write back according to `%s` once it exists.", writingGuidePath),
 		bootloaderEndSentinel,
 	}, "\n")
 }

@@ -25,7 +25,6 @@ Durable project knowledge lives in `memento-memory`.
 Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).
 Identify relevant entries from the brief; read only the bodies or sections that plausibly apply with `memento read <key>`.
 Working state lives in beads (`bd ready`); discoveries that outlive a task go to `memento-memory/`, not beads notes.
-Write back according to `memento-memory/writing_guide.md` once it exists.
 <!-- memento:end -->
 
 **This repo only — invoking memento:** memento is being built in this repo. The block above refers to `memento` as if it were on `$PATH`. In this repo, invoke it as `go run ./cmd/memento <verb>` or `just run <verb>` (e.g., `just run brief`, `just run read <key>`).
