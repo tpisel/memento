@@ -158,6 +158,39 @@ func TestCompileEmptyVaultSerializesEntriesArray(t *testing.T) {
 	}
 }
 
+func TestMarshalDoesNotEscapeHTMLCharacters(t *testing.T) {
+	m := Manifest{
+		Entries: []Entry{
+			{
+				Key:     "angle.md",
+				Title:   "Use <tags> & symbols",
+				Summary: "Keep <, >, and & readable.",
+				Tags:    []string{"a&b"},
+				Mode:    "append-only",
+				Links: Links{
+					Out: []OutLink{},
+					In:  []InLink{},
+				},
+			},
+		},
+	}
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v, want nil", err)
+	}
+	for _, want := range []string{"Use <tags> & symbols", "Keep <, >, and & readable.", "a&b"} {
+		if !bytes.Contains(data, []byte(want)) {
+			t.Fatalf("Marshal() =\n%s\nwant unescaped %q", data, want)
+		}
+	}
+	for _, forbidden := range []string{"\\u"} {
+		if bytes.Contains(data, []byte(forbidden)) {
+			t.Fatalf("Marshal() contains %q:\n%s", forbidden, data)
+		}
+	}
+}
+
 func TestCompileExtractsWikiLinkGraph(t *testing.T) {
 	root := makeVault(t)
 	writeFile(t, root, "source.md", `# Source

@@ -12,6 +12,8 @@ import (
 const (
 	MarkerDirName    = ".memento"
 	ManifestFileName = "manifest.json"
+	ToolDirName      = "_memento"
+	BriefFileName    = "brief.md"
 )
 
 var (
@@ -23,6 +25,10 @@ type Vault struct {
 	Root         string
 	MarkerDir    string
 	ManifestPath string
+}
+
+func BriefPath(v Vault) string {
+	return filepath.Join(v.Root, ToolDirName, BriefFileName)
 }
 
 type DiscoveryError struct {

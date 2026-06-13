@@ -45,7 +45,7 @@ func WalkMarkdown(vault Vault, visit func(relPath, absPath string) error) error 
 			}
 		}
 
-		if relPath == IgnoreFileName || relPath == WritingGuideFileName {
+		if relPath == IgnoreFileName || relPath == WritingGuideFileName || relPath == ToolDirName+"/"+BriefFileName {
 			return nil
 		}
 		if ignore.Matches(patterns, relPath, false) {

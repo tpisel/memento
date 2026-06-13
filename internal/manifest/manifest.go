@@ -131,11 +131,14 @@ func compile(v vault.Vault) (Manifest, []Warning, error) {
 }
 
 func Marshal(m Manifest) ([]byte, error) {
-	data, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
+	var b strings.Builder
+	encoder := json.NewEncoder(&b)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(m); err != nil {
 		return nil, err
 	}
-	return append(data, '\n'), nil
+	return []byte(b.String()), nil
 }
 
 func Write(v vault.Vault) error {

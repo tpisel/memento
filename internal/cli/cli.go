@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
+	"github.com/tpisel/memento/internal/brief"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/note"
 	"github.com/tpisel/memento/internal/setup"
@@ -108,13 +110,51 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	warnings, err := manifest.WriteWithWarnings(v)
+	warnings, err := writeCompileArtifacts(v)
 	if err != nil {
 		fmt.Fprintf(stderr, "memento compile: %v\n", err)
 		return 1
 	}
 	printCompileWarnings(stderr, warnings)
 	return 0
+}
+
+func writeCompileArtifacts(v vault.Vault) ([]manifest.Warning, error) {
+	m, warnings, err := manifest.CompileWithWarnings(v)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := manifest.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("marshal manifest: %w", err)
+	}
+	if err := os.MkdirAll(v.MarkerDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create marker directory: %w", err)
+	}
+	if err := os.WriteFile(v.ManifestPath, data, 0o644); err != nil {
+		return nil, fmt.Errorf("write manifest: %w", err)
+	}
+
+	if err := writeBriefArtifact(v, m); err != nil {
+		warnings = append(warnings, manifest.Warning{Path: filepath.ToSlash(filepath.Join(vault.ToolDirName, vault.BriefFileName)), Err: err})
+	}
+	return warnings, nil
+}
+
+func writeBriefArtifact(v vault.Vault, m manifest.Manifest) error {
+	toolFiles, err := brief.DetectToolFiles(v)
+	if err != nil {
+		return err
+	}
+	path := vault.BriefPath(v)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create brief directory: %w", err)
+	}
+	if err := os.WriteFile(path, brief.RenderWithToolFiles(m, toolFiles), 0o644); err != nil {
+		return fmt.Errorf("write brief: %w", err)
+	}
+	return nil
 }
 
 func printCompileWarnings(stderr io.Writer, warnings []manifest.Warning) {

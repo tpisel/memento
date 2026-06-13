@@ -1,4 +1,6 @@
 set shell := ["sh", "-eu", "-c"]
+set default-list := true
+
 export PATH := "/usr/local/go/bin:" + env_var("PATH")
 export GOCACHE := env_var_or_default("GOCACHE", "/tmp/memento-go-build")
 export GOMODCACHE := env_var_or_default("GOMODCACHE", justfile_directory() / ".cache/go-mod")
@@ -49,7 +51,7 @@ ralph-tail:
 ralph-log:
     @ls -t logs/ralph-*.log 2>/dev/null | head -n1
 
-# Show whether the last-launched ralph loop is still running and which log it's writing.
+# Check if the last-launched ralph loop is still running and find its logfile.
 ralph-status:
     #!/usr/bin/env sh
     set -eu
