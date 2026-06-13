@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -32,6 +33,8 @@ type Entry struct {
 	Key          string             `json:"key"`
 	Title        string             `json:"title"`
 	Summary      string             `json:"summary"`
+	Bytes        int64              `json:"bytes"`
+	Lines        int                `json:"lines"`
 	Tags         []string           `json:"tags"`
 	Headings     []Heading          `json:"headings"`
 	Mode         markdown.WriteMode `json:"mode"`
@@ -102,6 +105,8 @@ func compile(v vault.Vault) (Manifest, []Warning, error) {
 			Key:          relPath,
 			Title:        meta.Title,
 			Summary:      meta.Summary,
+			Bytes:        int64(len(source)),
+			Lines:        bytes.Count(source, []byte("\n")),
 			Tags:         tags,
 			Headings:     manifestHeadings(meta.Headings),
 			Mode:         meta.Mode,

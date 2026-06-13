@@ -64,6 +64,8 @@ Alpha summary.
       "key": "alpha.md",
       "title": "Alpha",
       "summary": "Alpha summary.",
+      "bytes": 37,
+      "lines": 5,
       "tags": [],
       "headings": [
         {
@@ -84,6 +86,8 @@ Alpha summary.
       "key": "zeta.md",
       "title": "Zeta",
       "summary": "Zeta summary.",
+      "bytes": 160,
+      "lines": 14,
       "tags": [
         "memento",
         "v0"
@@ -158,6 +162,42 @@ func TestCompileEmptyVaultSerializesEntriesArray(t *testing.T) {
 	}
 }
 
+func TestCompilePopulatesEntrySizes(t *testing.T) {
+	root := makeVault(t)
+	files := map[string]string{
+		"empty.md":       "",
+		"no-newline.md":  "# No Newline",
+		"trailing-lf.md": "# Trailing LF\n",
+		"crlf.md":        "# CRLF\r\n\r\nSummary.\r\n",
+	}
+	for relPath, content := range files {
+		writeFile(t, root, relPath, content)
+	}
+
+	m, err := Compile(vaultFromRoot(root))
+	if err != nil {
+		t.Fatalf("Compile() error = %v, want nil", err)
+	}
+
+	entries := make(map[string]Entry, len(m.Entries))
+	for _, entry := range m.Entries {
+		entries[entry.Key] = entry
+	}
+
+	for relPath, content := range files {
+		entry, ok := entries[relPath]
+		if !ok {
+			t.Fatalf("missing manifest entry for %s", relPath)
+		}
+		if entry.Bytes != int64(len([]byte(content))) {
+			t.Fatalf("%s Bytes = %d, want %d", relPath, entry.Bytes, len([]byte(content)))
+		}
+		if entry.Lines != bytes.Count([]byte(content), []byte("\n")) {
+			t.Fatalf("%s Lines = %d, want %d", relPath, entry.Lines, bytes.Count([]byte(content), []byte("\n")))
+		}
+	}
+}
+
 func TestMarshalDoesNotEscapeHTMLCharacters(t *testing.T) {
 	m := Manifest{
 		Entries: []Entry{
@@ -216,6 +256,8 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
       "key": "Embeds/Thing.md",
       "title": "Thing",
       "summary": "",
+      "bytes": 8,
+      "lines": 1,
       "tags": [],
       "headings": [],
       "mode": "append-only",
@@ -235,6 +277,8 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
       "key": "Target.md",
       "title": "Target",
       "summary": "",
+      "bytes": 9,
+      "lines": 1,
       "tags": [],
       "headings": [],
       "mode": "append-only",
@@ -254,6 +298,8 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
       "key": "source.md",
       "title": "Source",
       "summary": "Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and [[source]].",
+      "bytes": 102,
+      "lines": 3,
       "tags": [],
       "headings": [],
       "mode": "append-only",

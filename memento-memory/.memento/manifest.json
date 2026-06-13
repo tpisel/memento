@@ -2,8 +2,10 @@
   "entries": [
     {
       "key": "Architecture decision record/adr-0001-vault-naming.md",
-      "title": "Memory directory naming \u0026 vault topology",
-      "summary": "The memory directory defaults to \u003cproject\u003e-memory/, where \u003cproject\u003e is derived at init time from the git remote basename, falling back to the repository directory name. If no project name can be derived, fall back to memory/.",
+      "title": "Memory directory naming & vault topology",
+      "summary": "The memory directory defaults to <project>-memory/, where <project> is derived at init time from the git remote basename, falling back to the repository directory name. If no project name can be derived, fall back to memory/.",
+      "bytes": 1269,
+      "lines": 23,
       "tags": [
         "init",
         "memento",
@@ -33,6 +35,8 @@
       "key": "Architecture decision record/adr-0002-marker-based-vault-discovery.md",
       "title": "Marker-based vault discovery and operational layout",
       "summary": "Vault discovery is by `.memento/` marker directory, not by directory name — exactly one marker per repository, ambiguity is a hard error. Tool-owned operational files (`config.toml`, `manifest.json`) live under `.memento/`; `.mementoignore` stays at the memory root because it describes the content namespace.",
+      "bytes": 2709,
+      "lines": 56,
       "tags": [
         "config",
         "init",
@@ -68,7 +72,9 @@
     {
       "key": "Architecture decision record/adr-0003-v0-retrieval-and-indexing-semantics.md",
       "title": "V0 retrieval and indexing semantics",
-      "summary": "V0 scope is deterministic indexing and selective reads — one-vault discovery via marker, deterministic `manifest.json`, `read \u003ckey\u003e` for whole files, `read \u003ckey\u003e#\u003cheading\u003e` for section reads with GitHub-style slug anchors. `.mementoignore` supports a small `.gitignore`-like subset (literals, globs, `**`); negation, nested ignores, and full git-attribute compatibility are deliberately out of scope.",
+      "summary": "V0 scope is deterministic indexing and selective reads — one-vault discovery via marker, deterministic `manifest.json`, `read <key>` for whole files, `read <key>#<heading>` for section reads with GitHub-style slug anchors. `.mementoignore` supports a small `.gitignore`-like subset (literals, globs, `**`); negation, nested ignores, and full git-attribute compatibility are deliberately out of scope.",
+      "bytes": 3365,
+      "lines": 61,
       "tags": [
         "compile",
         "ignore",
@@ -110,6 +116,8 @@
       "key": "Architecture decision record/adr-0004-v0-write-scope.md",
       "title": "V0 write scope",
       "summary": "V0 write supports only creating a new file and appending to an existing one. Section-replace, keyed-upsert, and full mode enforcement are deferred to v2; declared `read-only` files remain socially read-only until enforcement lands. The CLI must not offer operations that imply historical rewriting.",
+      "bytes": 1878,
+      "lines": 36,
       "tags": [
         "mcp",
         "memento",
@@ -144,6 +152,8 @@
       "key": "Architecture decision record/adr-0005-init-and-pre-commit-hook.md",
       "title": "Init and pre-commit hook ownership",
       "summary": " `init` installs or updates a sentinel-bounded block in `.git/hooks/pre-commit` (creating the hook if absent, preserving existing content if present). The hook runs manifest compilation and stages the resulting `.memento/manifest.json`. Re-running `init` is idempotent and never rewrites unrelated hook content.",
+      "bytes": 1772,
+      "lines": 51,
       "tags": [
         "git",
         "init",
@@ -179,6 +189,8 @@
       "key": "Architecture decision record/adr-0006-review-verb-and-agent-assisted-maintenance.md",
       "title": "Review verb and agent-assisted maintenance",
       "summary": "A `review` verb is accepted as v4 roadmap work, distinct from `compile` (which must stay deterministic and hook-safe). Mechanical review reports duplicate headings, malformed frontmatter, stale summaries, count-1 tags, and broken wikilinks. Agent-assisted review uses the caller's reasoning to propose better summaries, identify obsolete notes, and suggest decomposition — memento itself embeds no model credentials.",
+      "bytes": 2163,
+      "lines": 46,
       "tags": [
         "maintenance",
         "memento",
@@ -214,6 +226,8 @@
       "key": "Architecture decision record/adr-0007-beads-integration-posture.md",
       "title": "Beads integration posture",
       "summary": "Memento does not depend on beads, and beads is not required to use memento — they are integrated, not merged. Memento keys and section anchors stay stable and human-readable so beads tasks, commit messages, and humans can hotlink them directly. The substrate boundary holds: task progress in beads, durable semantic knowledge in memento.",
+      "bytes": 2100,
+      "lines": 42,
       "tags": [
         "agents",
         "beads",
@@ -249,6 +263,8 @@
       "key": "Architecture decision record/adr-0008-memento-brief-projection.md",
       "title": "Memento brief — agent-facing manifest projection",
       "summary": "Add a `memento brief` verb that emits the agent-facing markdown projection of the manifest. `compile` writes both `.memento/manifest.json` (canonical, versioned) and `_memento/brief.md` (derived, gitignored). `brief` reads the file, falling back to a render-from-JSON when absent. The brief carries `mode: read-only` frontmatter and a DO-NOT-EDIT banner; the bootloader injects brief output instead of raw JSON.",
+      "bytes": 6003,
+      "lines": 61,
       "tags": [
         "agents",
         "brief",
@@ -294,7 +310,9 @@
     {
       "key": "Architecture decision record/adr-0009-memento-subfolder-namespace.md",
       "title": "_memento/ — mixed-audience tool namespace",
-      "summary": "Establish `\u003cvault\u003e/_memento/` as the namespace for tool-relevant human-readable artifacts — both memento-generated (brief, future review outputs) and user-authored (writing guides, review prompts, audit instructions). Ownership is file-level, not folder-level: `.gitignore` distinguishes generated from versioned files, `mode:` and filename conventions handle the rest. Pinning specific tool-read filenames is deferred to ADR-0010.",
+      "summary": "Establish `<vault>/_memento/` as the namespace for tool-relevant human-readable artifacts — both memento-generated (brief, future review outputs) and user-authored (writing guides, review prompts, audit instructions). Ownership is file-level, not folder-level: `.gitignore` distinguishes generated from versioned files, `mode:` and filename conventions handle the rest. Pinning specific tool-read filenames is deferred to ADR-0010.",
+      "bytes": 5426,
+      "lines": 54,
       "tags": [
         "agents",
         "memento",
@@ -337,6 +355,8 @@
       "key": "Feature thoughts.md",
       "title": "Feature thoughts",
       "summary": "Possible features and affordances:",
+      "bytes": 475,
+      "lines": 16,
       "tags": [],
       "headings": [
         {
@@ -362,6 +382,8 @@
       "key": "agent-human review boundaries.md",
       "title": "Agent / human review boundaries",
       "summary": "A philosophical sketch and tentative proposal — the beads/memento substrate boundary may be the surface of a deeper axis distinguishing who *authors* and who *reviews* at each layer of work. Names a review-granularity ladder (invariants → epics → atoms) and a possible bead-epic ↔ memento-note coupling. Deliberately unresolved — recorded so future design work can return with usage evidence.",
+      "bytes": 7067,
+      "lines": 75,
       "tags": [
         "agents",
         "beads",
@@ -420,11 +442,13 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "A thin retrieval/dispatch layer over a human-curated markdown knowledge store. It compiles a manifest that agents load at session start, and exposes selective read/write so an agent pulls decomposed context on demand rather than ingesting the whole store every time.",
+      "bytes": 23808,
+      "lines": 283,
       "tags": [],
       "headings": [
         {
           "level": 2,
-          "text": "1. Problem \u0026 position",
+          "text": "1. Problem & position",
           "slug": "1-problem-position"
         },
         {
@@ -439,7 +463,7 @@
         },
         {
           "level": 2,
-          "text": "3. The memory directory \u0026 vault model",
+          "text": "3. The memory directory & vault model",
           "slug": "3-the-memory-directory-vault-model"
         },
         {
@@ -459,12 +483,12 @@
         },
         {
           "level": 2,
-          "text": "5. Addressing \u0026 renames",
+          "text": "5. Addressing & renames",
           "slug": "5-addressing-renames"
         },
         {
           "level": 2,
-          "text": "6. The ignore taxonomy \u0026 operational files",
+          "text": "6. The ignore taxonomy & operational files",
           "slug": "6-the-ignore-taxonomy-operational-files"
         },
         {
@@ -504,7 +528,7 @@
         },
         {
           "level": 2,
-          "text": "11. init \u0026 adoption flows",
+          "text": "11. init & adoption flows",
           "slug": "11-init-adoption-flows"
         },
         {
@@ -556,6 +580,8 @@
       "key": "what makes a good summary.md",
       "title": "What makes a good summary",
       "summary": "A summary is read by an agent scanning the brief to decide what to open next. Lead with the decision or the load-bearing fact — not the question, the context, or the motivation. If reading the summary tells you the answer, the brief is doing its job; if it only tells you a file exists on the topic, the brief is just an index.",
+      "bytes": 3620,
+      "lines": 48,
       "tags": [
         "draft",
         "memento",
