@@ -352,6 +352,111 @@
       }
     },
     {
+      "key": "Architecture decision record/adr-0011-numeric-brief-references.md",
+      "title": "Numeric brief references — ephemeral CLI projection over manifest entries",
+      "summary": "The brief gains a render-time numeric index over top-level entries so `read N` is the short follow-up after `brief`. Numbers exist only in CLI/brief output — never in source, wikilinks, commit messages, or beads tasks. `read N` resolves against `.memento/manifest.json` only, never falls back to a filesystem walk; if the manifest is stale (rename/delete) the call is a hard error that names the fix verbatim. Folder structure surfaces as H2 sections; section addressing stays slug-based.",
+      "bytes": 7689,
+      "lines": 88,
+      "tags": [
+        "agents",
+        "brief",
+        "memento",
+        "read"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Determinism and the staleness contract",
+          "slug": "determinism-and-the-staleness-contract"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Explicit non-features",
+          "slug": "explicit-non-features"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "adr-0003#Ignore Semantics",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "spec @ 3",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "spec.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0012-using-memento-guide.md",
+      "title": "Init-scaffolded Using Memento guide",
+      "summary": "Replace the sentinel-managed `_memento/README.md` convention note with a one-shot `_memento/Using Memento.md` onboarding guide. The guide has no `mode: read-only` frontmatter or managed block, is fully user-owned after init writes it, and is ignored by compile so it does not appear in the manifest or brief.",
+      "bytes": 1928,
+      "lines": 35,
+      "tags": [
+        "init",
+        "memento",
+        "namespace",
+        "vault"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        }
+      ],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
       "key": "Feature thoughts.md",
       "title": "Feature thoughts",
       "summary": "Possible features and affordances:",
@@ -402,22 +507,6 @@
             "resolved": true
           }
         ],
-        "in": []
-      }
-    },
-    {
-      "key": "_memento/README.md",
-      "title": "_memento",
-      "summary": "This folder holds memento tool-relevant, human-readable artifacts for this vault.",
-      "bytes": 606,
-      "lines": 15,
-      "tags": [],
-      "headings": [],
-      "mode": "read-only",
-      "updated": "",
-      "summary_stale": true,
-      "links": {
-        "out": [],
         "in": []
       }
     },
@@ -618,6 +707,10 @@
         ],
         "in": [
           {
+            "source": "Architecture decision record/adr-0011-numeric-brief-references.md",
+            "type": "wiki"
+          },
+          {
             "source": "Incremental disclosure and ergonomics.md",
             "type": "wiki"
           }
@@ -668,31 +761,31 @@
     }
   ],
   "tags": {
-    "agents": 4,
+    "agents": 5,
     "beads": 2,
-    "brief": 1,
+    "brief": 2,
     "compile": 2,
     "config": 1,
     "draft": 1,
     "git": 1,
     "ignore": 1,
-    "init": 3,
+    "init": 4,
     "maintenance": 1,
     "manifest": 3,
     "markdown": 1,
     "mcp": 1,
-    "memento": 11,
-    "namespace": 1,
+    "memento": 13,
+    "namespace": 2,
     "obsidian": 2,
     "open-question": 1,
     "philosophy": 1,
     "proposal": 1,
-    "read": 1,
+    "read": 2,
     "retrieval": 1,
     "review": 3,
     "roadmap": 1,
     "summaries": 1,
-    "vault": 1,
+    "vault": 2,
     "write": 2,
     "writing": 1
   }

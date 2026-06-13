@@ -22,8 +22,6 @@ const (
 	hookEndSentinel         = "# memento:end"
 	gitignoreStartSentinel  = "# memento:gitignore:start"
 	gitignoreEndSentinel    = "# memento:gitignore:end"
-	readmeStartSentinel     = "<!-- memento:readme:start -->"
-	readmeEndSentinel       = "<!-- memento:readme:end -->"
 )
 
 const defaultConfig = `# memento vault configuration
@@ -36,6 +34,9 @@ const defaultIgnore = `# memento operational files
 
 # memento generated artifacts
 _memento/brief.md
+
+# memento human onboarding artifacts
+_memento/Using Memento.md
 
 # macOS Finder metadata
 .DS_Store
@@ -53,7 +54,24 @@ mode: append-only
 Use notes like this for durable project knowledge: decisions, constraints, and discoveries that should survive a task.
 `
 
-const defaultMementoReadmeBanner = "<!-- memento-authored default. You may edit this file; init only updates the managed block below. -->"
+var defaultUsingMementoGuide = strings.Join([]string{
+	"# Using Memento",
+	"",
+	"Welcome. This note is here because this folder is a little different from the rest of your vault.",
+	"",
+	"`_memento/` is the human-readable tool namespace for this vault. It is where memento puts notes that are useful to people and agents, but are about the tool rather than your project knowledge itself.",
+	"",
+	"Memento also has a hidden machine namespace, `.memento/`. That folder holds structured files such as config and the manifest. You normally do not need to open it in Obsidian.",
+	"",
+	"`brief.md` is auto-regenerated from `.memento/manifest.json`. It is the short agent-facing view of your memory vault: titles, summaries, tags, headings, and modes. Because it is regenerated, edits to `brief.md` will be replaced the next time memento compiles the vault.",
+	"",
+	"Future tool-read files such as `writing.md`, `review.md`, and `audit.md` will arrive with their corresponding verbs. Those files will let you describe local conventions in normal markdown when the tool grows those workflows.",
+	"",
+	"This guide is only a gentle starter. You can edit it, move ideas from it into your own notes, or remove it once it stops being useful.",
+	"",
+	"If you don't want this file, deleting it is fine - memento does not depend on it.",
+	"",
+}, "\n")
 
 type InitOptions struct {
 	AgentInstructionsPath string
@@ -101,7 +119,7 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 			return vault.Vault{}, fmt.Errorf("create example note: %w", err)
 		}
 	}
-	if err := ensureMementoReadme(v); err != nil {
+	if err := ensureUsingMementoGuide(v); err != nil {
 		return vault.Vault{}, err
 	}
 	if err := ensureMementoIgnore(v); err != nil {
@@ -191,70 +209,43 @@ func ensureMementoIgnore(v vault.Vault) error {
 		return fmt.Errorf("read %s: %w", vault.IgnoreFileName, err)
 	}
 
-	if hasLine(string(data), vault.ToolDirName+"/"+vault.BriefFileName) {
+	requiredEntries := []string{
+		vault.ToolDirName + "/" + vault.BriefFileName,
+		vault.ToolDirName + "/Using Memento.md",
+	}
+	var missingEntries []string
+	for _, entry := range requiredEntries {
+		if !hasLine(string(data), entry) {
+			missingEntries = append(missingEntries, entry)
+		}
+	}
+	if len(missingEntries) == 0 {
 		return nil
 	}
 
-	updated := appendMementoIgnoreEntry(string(data), strings.Join([]string{
-		"# memento generated artifacts",
-		vault.ToolDirName + "/" + vault.BriefFileName,
-	}, "\n"))
+	entryLines := append([]string{"# memento ignored artifacts"}, missingEntries...)
+	updated := appendMementoIgnoreEntry(string(data), strings.Join(entryLines, "\n"))
 	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", vault.IgnoreFileName, err)
 	}
 	return nil
 }
 
-func ensureMementoReadme(v vault.Vault) error {
-	path := filepath.Join(v.Root, vault.ToolDirName, "README.md")
-	block := mementoReadmeBlock()
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			contents := strings.Join([]string{
-				"---",
-				"mode: read-only",
-				"---",
-				"",
-				defaultMementoReadmeBanner,
-				"",
-				"# _memento",
-				"",
-				block,
-				"",
-			}, "\n")
-			if err := writeNewFile(path, []byte(contents), 0o644); err != nil {
-				return fmt.Errorf("create _memento README: %w", err)
-			}
-			return nil
+func ensureUsingMementoGuide(v vault.Vault) error {
+	path := filepath.Join(v.Root, vault.ToolDirName, "Using Memento.md")
+	if info, err := os.Stat(path); err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("%s already exists as a directory", path)
 		}
-		return fmt.Errorf("read _memento README: %w", err)
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat _memento Using Memento guide: %w", err)
 	}
 
-	updated, err := insertOrReplaceMementoReadmeBlock(string(data), block)
-	if err != nil {
-		return err
-	}
-	if updated == string(data) {
-		return nil
-	}
-	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
-		return fmt.Errorf("write _memento README: %w", err)
+	if err := writeNewFile(path, []byte(defaultUsingMementoGuide), 0o644); err != nil {
+		return fmt.Errorf("create _memento Using Memento guide: %w", err)
 	}
 	return nil
-}
-
-func mementoReadmeBlock() string {
-	return strings.Join([]string{
-		readmeStartSentinel,
-		"This folder holds memento tool-relevant, human-readable artifacts for this vault.",
-		"",
-		"- `brief.md` is generated by `memento compile` and may be overwritten.",
-		"- Files listed in `.gitignore` are generated; files not listed there are versioned vault conventions by default.",
-		"- Future tool-read files such as `writing.md`, `review.md`, and `audit.md` will be read by their respective verbs once those contracts land.",
-		readmeEndSentinel,
-	}, "\n")
 }
 
 func ensureGitignore(repoRoot string, v vault.Vault) error {
@@ -472,10 +463,6 @@ func insertOrReplaceHookBlock(contents, block string) (string, error) {
 
 func insertOrReplaceGitignoreBlock(contents, block string) (string, error) {
 	return insertOrReplaceSentinelBlock(contents, block, gitignoreStartSentinel, gitignoreEndSentinel, ".gitignore", "memento gitignore")
-}
-
-func insertOrReplaceMementoReadmeBlock(contents, block string) (string, error) {
-	return insertOrReplaceSentinelBlock(contents, block, readmeStartSentinel, readmeEndSentinel, "_memento README", "memento README")
 }
 
 func insertOrReplaceSentinelBlock(contents, block, startSentinel, endSentinel, target, blockName string) (string, error) {

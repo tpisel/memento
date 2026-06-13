@@ -266,6 +266,9 @@ func TestInitWritesBriefIgnoreEntriesForGreenfieldVault(t *testing.T) {
 	if !hasSetupLine(mementoignore, "_memento/brief.md") {
 		t.Fatalf(".mementoignore = %q, want file-specific brief ignore entry", mementoignore)
 	}
+	if !hasSetupLine(mementoignore, "_memento/Using Memento.md") {
+		t.Fatalf(".mementoignore = %q, want file-specific Using Memento guide ignore entry", mementoignore)
+	}
 	if hasSetupLine(mementoignore, "_memento/") || hasSetupLine(mementoignore, "/_memento/") {
 		t.Fatalf(".mementoignore = %q, want no folder-wide _memento ignore entry", mementoignore)
 	}
@@ -299,6 +302,9 @@ func TestInitAddsBriefIgnoreEntriesWhenAdoptingExistingVault(t *testing.T) {
 	if !hasSetupLine(mementoignore, "_memento/brief.md") {
 		t.Fatalf(".mementoignore = %q, want file-specific brief ignore entry", mementoignore)
 	}
+	if !hasSetupLine(mementoignore, "_memento/Using Memento.md") {
+		t.Fatalf(".mementoignore = %q, want file-specific Using Memento guide ignore entry", mementoignore)
+	}
 	if hasSetupLine(mementoignore, "_memento/") || hasSetupLine(mementoignore, "/_memento/") {
 		t.Fatalf(".mementoignore = %q, want no folder-wide _memento ignore entry", mementoignore)
 	}
@@ -319,7 +325,7 @@ func TestInitBriefIgnoreEntriesAreIdempotentWhenPresent(t *testing.T) {
 		"",
 	}, "\n"))
 	writeSetupFile(t, repo, "memory/note.md", "# Existing note\n\nKeep this.\n")
-	writeSetupFile(t, repo, "memory/.mementoignore", "drafts/\n\n_memento/brief.md\n")
+	writeSetupFile(t, repo, "memory/.mementoignore", "drafts/\n\n_memento/brief.md\n_memento/Using Memento.md\n")
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("first Init() error = %v, want nil", err)
@@ -345,9 +351,12 @@ func TestInitBriefIgnoreEntriesAreIdempotentWhenPresent(t *testing.T) {
 	if count := countSetupLine(secondMementoignore, "_memento/brief.md"); count != 1 {
 		t.Fatalf(".mementoignore brief entry count = %d, want 1; contents = %q", count, secondMementoignore)
 	}
+	if count := countSetupLine(secondMementoignore, "_memento/Using Memento.md"); count != 1 {
+		t.Fatalf(".mementoignore Using Memento guide entry count = %d, want 1; contents = %q", count, secondMementoignore)
+	}
 }
 
-func TestInitCreatesMementoNamespaceReadmeForGreenfieldVault(t *testing.T) {
+func TestInitCreatesUsingMementoGuideForGreenfieldVault(t *testing.T) {
 	repo := t.TempDir()
 
 	if _, err := Init(repo, "memory"); err != nil {
@@ -362,16 +371,16 @@ func TestInitCreatesMementoNamespaceReadmeForGreenfieldVault(t *testing.T) {
 		t.Fatalf("_memento mode = %v, want directory", info.Mode())
 	}
 
-	got := readSetupFile(t, repo, "memory/_memento/README.md")
-	assertMementoReadmeDefault(t, got)
+	got := readSetupFile(t, repo, "memory/_memento/Using Memento.md")
+	assertUsingMementoGuide(t, got)
 
 	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
-	if !strings.Contains(manifest, `"key": "_memento/README.md"`) {
-		t.Fatalf("manifest = %q, want _memento/README.md entry", manifest)
+	if strings.Contains(manifest, `_memento/Using Memento.md`) {
+		t.Fatalf("manifest = %q, want no _memento/Using Memento.md entry", manifest)
 	}
 }
 
-func TestInitCreatesMementoNamespaceReadmeWhenAdoptingExistingVault(t *testing.T) {
+func TestInitCreatesUsingMementoGuideWhenAdoptingExistingVault(t *testing.T) {
 	repo := t.TempDir()
 	writeSetupFile(t, repo, "memory/note.md", "# Existing note\n\nKeep this.\n")
 
@@ -379,73 +388,79 @@ func TestInitCreatesMementoNamespaceReadmeWhenAdoptingExistingVault(t *testing.T
 		t.Fatalf("Init() error = %v, want nil", err)
 	}
 
-	got := readSetupFile(t, repo, "memory/_memento/README.md")
-	assertMementoReadmeDefault(t, got)
+	got := readSetupFile(t, repo, "memory/_memento/Using Memento.md")
+	assertUsingMementoGuide(t, got)
 	if _, err := os.Stat(filepath.Join(repo, "memory", "example.md")); !os.IsNotExist(err) {
 		t.Fatalf("example.md stat err = %v, want file not to exist", err)
 	}
 }
 
-func TestInitAppendsMementoNamespaceBlockToExistingReadme(t *testing.T) {
+func TestInitDoesNotModifyExistingUsingMementoGuide(t *testing.T) {
 	repo := t.TempDir()
-	existing := "# Local tool notes\n\nKeep this local convention.\n"
+	existing := "# My local guide\n\nKeep this exactly.\n"
+	writeSetupFile(t, repo, "memory/_memento/Using Memento.md", existing)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, "memory/_memento/Using Memento.md")
+	if got != existing {
+		t.Fatalf("_memento/Using Memento.md changed to %q, want %q", got, existing)
+	}
+}
+
+func TestInitLeavesExistingMementoReadmeUntouched(t *testing.T) {
+	repo := t.TempDir()
+	existing := "# Old README\n\nDelete manually if you do not want this.\n"
 	writeSetupFile(t, repo, "memory/_memento/README.md", existing)
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
 	}
 
-	got := readSetupFile(t, repo, "memory/_memento/README.md")
-	if !strings.HasPrefix(got, existing) {
-		t.Fatalf("_memento/README.md = %q, want existing content preserved at start", got)
+	if got := readSetupFile(t, repo, "memory/_memento/README.md"); got != existing {
+		t.Fatalf("_memento/README.md changed to %q, want %q", got, existing)
 	}
-	assertMementoReadmeManagedBlock(t, got)
-	if count := strings.Count(got, "<!-- memento:readme:start -->"); count != 1 {
-		t.Fatalf("_memento/README.md start sentinel count = %d, want 1; contents = %q", count, got)
-	}
+	guide := readSetupFile(t, repo, "memory/_memento/Using Memento.md")
+	assertUsingMementoGuide(t, guide)
 }
 
-func TestInitReplacesExistingMementoNamespaceBlockInReadme(t *testing.T) {
-	repo := t.TempDir()
-	writeSetupFile(t, repo, "memory/_memento/README.md", "# Local tool notes\n\n<!-- memento:readme:start -->\nold block\n<!-- memento:readme:end -->\n\nKeep this too.\n")
-
-	if _, err := Init(repo, "memory"); err != nil {
-		t.Fatalf("Init() error = %v, want nil", err)
-	}
-
-	got := readSetupFile(t, repo, "memory/_memento/README.md")
-	for _, want := range []string{"# Local tool notes\n\n", "\n\nKeep this too.\n"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("_memento/README.md = %q, want it to contain %q", got, want)
-		}
-	}
-	assertMementoReadmeManagedBlock(t, got)
-	if strings.Contains(got, "old block") {
-		t.Fatalf("_memento/README.md = %q, want old managed block removed", got)
-	}
-	if count := strings.Count(got, "<!-- memento:readme:start -->"); count != 1 {
-		t.Fatalf("_memento/README.md start sentinel count = %d, want 1; contents = %q", count, got)
-	}
-}
-
-func TestInitMementoNamespaceReadmeIsIdempotent(t *testing.T) {
+func TestInitUsingMementoGuideIsIdempotent(t *testing.T) {
 	repo := t.TempDir()
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("first Init() error = %v, want nil", err)
 	}
-	first := readSetupFile(t, repo, "memory/_memento/README.md")
+	first := readSetupFile(t, repo, "memory/_memento/Using Memento.md")
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("second Init() error = %v, want nil", err)
 	}
-	second := readSetupFile(t, repo, "memory/_memento/README.md")
+	second := readSetupFile(t, repo, "memory/_memento/Using Memento.md")
 
 	if second != first {
-		t.Fatalf("_memento/README.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", first, second)
+		t.Fatalf("_memento/Using Memento.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
-	if count := strings.Count(second, "<!-- memento:readme:start -->"); count != 1 {
-		t.Fatalf("_memento/README.md start sentinel count = %d, want 1; contents = %q", count, second)
+}
+
+func TestInitDoesNotIndexUsingMementoGuideWhenAdoptingExistingIgnore(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, "memory/.mementoignore", "drafts/\n")
+	writeSetupFile(t, repo, "memory/note.md", "# Existing note\n\nKeep this.\n")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	mementoignore := readSetupFile(t, repo, "memory/.mementoignore")
+	if !hasSetupLine(mementoignore, "_memento/Using Memento.md") {
+		t.Fatalf(".mementoignore = %q, want Using Memento guide ignore entry", mementoignore)
+	}
+
+	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
+	if strings.Contains(manifest, `_memento/Using Memento.md`) {
+		t.Fatalf("manifest = %q, want no _memento/Using Memento.md entry", manifest)
 	}
 }
 
@@ -650,34 +665,27 @@ func assertNoWritingGuideReference(t *testing.T, relPath, got string) {
 	}
 }
 
-func assertMementoReadmeDefault(t *testing.T, got string) {
+func assertUsingMementoGuide(t *testing.T, got string) {
 	t.Helper()
 
 	for _, want := range []string{
-		"---\nmode: read-only\n---",
-		"<!-- memento-authored default. You may edit this file; init only updates the managed block below. -->",
-		"# _memento",
+		"# Using Memento",
+		"`_memento/` is the human-readable tool namespace for this vault.",
+		"`brief.md` is auto-regenerated from `.memento/manifest.json`",
+		"Future tool-read files such as `writing.md`, `review.md`, and `audit.md`",
+		"If you don't want this file, deleting it is fine",
 	} {
 		if !strings.Contains(got, want) {
-			t.Fatalf("_memento/README.md = %q, want it to contain %q", got, want)
+			t.Fatalf("_memento/Using Memento.md = %q, want it to contain %q", got, want)
 		}
 	}
-	assertMementoReadmeManagedBlock(t, got)
-}
-
-func assertMementoReadmeManagedBlock(t *testing.T, got string) {
-	t.Helper()
-
-	for _, want := range []string{
+	for _, unwanted := range []string{
+		"mode: read-only",
 		"<!-- memento:readme:start -->",
-		"tool-relevant, human-readable artifacts",
-		"`brief.md` is generated by `memento compile`",
-		"Files listed in `.gitignore` are generated",
-		"`writing.md`, `review.md`, and `audit.md`",
 		"<!-- memento:readme:end -->",
 	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("_memento/README.md = %q, want it to contain %q", got, want)
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("_memento/Using Memento.md = %q, want it not to contain %q", got, unwanted)
 		}
 	}
 }

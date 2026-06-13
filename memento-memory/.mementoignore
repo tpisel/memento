@@ -5,5 +5,8 @@
 # memento generated artifacts
 _memento/brief.md
 
+# memento human onboarding artifacts
+_memento/Using Memento.md
+
 # macOS Finder metadata
 .DS_Store
