@@ -194,6 +194,7 @@ So "auto-summarisation" is not a single feature at a fixed version: *detection* 
 
 ```
 memento compile          # walk vault → emit manifest (or stdout with --print for testing)
+memento brief            # print the agent-facing manifest projection
 memento init             # adopt-or-create: scaffold/adopt the vault, hook, bootloader (§11)
 memento read  <key>      # whole-file; supports read <key>#<heading>
 memento write <key>      # append/upsert/section-replace, validated against declared mode

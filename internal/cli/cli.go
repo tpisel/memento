@@ -38,7 +38,7 @@ Commands:
   init      Adopt or create a memory vault.
   read      Read a memory note.
   write     Create or append to a memory note from stdin.
-  serve     Run the MCP server. Not implemented in this scaffold.
+  serve     MCP server (not implemented; see spec §13).
 `
 
 // Run dispatches the CLI and returns a process-style exit code.

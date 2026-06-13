@@ -27,6 +27,7 @@ func TestHelpCommand(t *testing.T) {
 		"compile",
 		"read",
 		"version",
+		"serve     MCP server (not implemented; see spec §13).",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("Run(help) output %q does not contain %q", out, want)
