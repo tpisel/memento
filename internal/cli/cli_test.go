@@ -168,8 +168,8 @@ func TestInitDoesNotClobberExistingFilesystemArtifacts(t *testing.T) {
 	if got := readCLIFile(t, root, ".memento/manifest.json"); got != "custom manifest\n" {
 		t.Fatalf("manifest clobbered: %q", got)
 	}
-	if got := readCLIFile(t, root, ".mementoignore"); got != "custom ignore\n" {
-		t.Fatalf("ignore clobbered: %q", got)
+	if got := readCLIFile(t, root, ".mementoignore"); !strings.HasPrefix(got, "custom ignore\n") || !strings.Contains(got, "_memento/brief.md") {
+		t.Fatalf("ignore update = %q, want existing content preserved and brief entry added", got)
 	}
 }
 

@@ -2,5 +2,8 @@
 .memento/
 .mementoignore
 
+# memento generated artifacts
+_memento/brief.md
+
 # macOS Finder metadata
 .DS_Store

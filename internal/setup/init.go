@@ -34,6 +34,9 @@ const defaultIgnore = `# memento operational files
 .memento/
 .mementoignore
 
+# memento generated artifacts
+_memento/brief.md
+
 # macOS Finder metadata
 .DS_Store
 `
@@ -93,15 +96,15 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensureFile(filepath.Join(marker, ConfigFileName), []byte(defaultConfig), 0o644); err != nil {
 		return vault.Vault{}, fmt.Errorf("create config: %w", err)
 	}
-	if err := ensureFile(filepath.Join(vaultRoot, vault.IgnoreFileName), []byte(defaultIgnore), 0o644); err != nil {
-		return vault.Vault{}, fmt.Errorf("create %s: %w", vault.IgnoreFileName, err)
-	}
 	if greenfield {
 		if err := ensureFile(filepath.Join(vaultRoot, "example.md"), []byte(defaultExampleNote), 0o644); err != nil {
 			return vault.Vault{}, fmt.Errorf("create example note: %w", err)
 		}
 	}
 	if err := ensureMementoReadme(v); err != nil {
+		return vault.Vault{}, err
+	}
+	if err := ensureMementoIgnore(v); err != nil {
 		return vault.Vault{}, err
 	}
 	if err := ensureManifest(v); err != nil {
@@ -171,6 +174,33 @@ func ensureFile(path string, contents []byte, perm os.FileMode) error {
 
 	if _, err := file.Write(contents); err != nil {
 		return err
+	}
+	return nil
+}
+
+func ensureMementoIgnore(v vault.Vault) error {
+	path := filepath.Join(v.Root, vault.IgnoreFileName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if err := writeNewFile(path, []byte(defaultIgnore), 0o644); err != nil {
+				return fmt.Errorf("create %s: %w", vault.IgnoreFileName, err)
+			}
+			return nil
+		}
+		return fmt.Errorf("read %s: %w", vault.IgnoreFileName, err)
+	}
+
+	if hasLine(string(data), vault.ToolDirName+"/"+vault.BriefFileName) {
+		return nil
+	}
+
+	updated := appendMementoIgnoreEntry(string(data), strings.Join([]string{
+		"# memento generated artifacts",
+		vault.ToolDirName + "/" + vault.BriefFileName,
+	}, "\n"))
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", vault.IgnoreFileName, err)
 	}
 	return nil
 }
@@ -260,6 +290,8 @@ func gitignoreBlock(repoRoot string, v vault.Vault) string {
 		"# Obsidian per-machine UI state",
 		prefix + ".obsidian/workspace*",
 		prefix + ".obsidian/cache",
+		"# Memento generated artifacts",
+		prefix + vault.ToolDirName + "/" + vault.BriefFileName,
 		gitignoreEndSentinel,
 	}, "\n")
 }
@@ -476,6 +508,28 @@ func appendSentinelBlock(contents, block string) string {
 		separator = "\n"
 	}
 	return contents + separator + block + "\n"
+}
+
+func appendMementoIgnoreEntry(contents, entryBlock string) string {
+	if contents == "" {
+		return entryBlock + "\n"
+	}
+	separator := "\n\n"
+	if strings.HasSuffix(contents, "\n\n") {
+		separator = ""
+	} else if strings.HasSuffix(contents, "\n") {
+		separator = "\n"
+	}
+	return contents + separator + entryBlock + "\n"
+}
+
+func hasLine(contents, want string) bool {
+	for _, line := range strings.Split(contents, "\n") {
+		if strings.TrimSpace(line) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func writeNewFile(path string, contents []byte, perm os.FileMode) error {

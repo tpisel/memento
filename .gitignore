@@ -50,4 +50,6 @@ logs/
 # Obsidian per-machine UI state
 memento-memory/.obsidian/workspace*
 memento-memory/.obsidian/cache
+# Memento generated artifacts
+memento-memory/_memento/brief.md
 # memento:gitignore:end
