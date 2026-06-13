@@ -151,8 +151,8 @@
     {
       "key": "Architecture decision record/adr-0005-init-and-pre-commit-hook.md",
       "title": "Init and pre-commit hook ownership",
-      "summary": " `init` installs or updates a sentinel-bounded block in `.git/hooks/pre-commit` (creating the hook if absent, preserving existing content if present). The hook runs manifest compilation and stages the resulting `.memento/manifest.json`. Re-running `init` is idempotent and never rewrites unrelated hook content.",
-      "bytes": 1772,
+      "summary": "`init` installs or updates a sentinel-bounded block in `.git/hooks/pre-commit` (creating the hook if absent, preserving existing content if present). The hook runs manifest compilation and stages the resulting `.memento/manifest.json`. Re-running `init` is idempotent and never rewrites unrelated hook content.",
+      "bytes": 1771,
       "lines": 51,
       "tags": [
         "git",
@@ -379,6 +379,49 @@
       }
     },
     {
+      "key": "Incremental disclosure and ergonomics.md",
+      "title": "Incremental disclosure and ergonomics",
+      "summary": "Currently we dump a flat list, but the actual flow of going from the brief to looking further at a specific item is a little painful (have to supply the exact file name). Instead, brief should return each entry with a numeric reference, so that the follow-up command becomes memento read 4 or perhaps even memento read 4 2 for slug referencing, and to reference these in the brief in the same way:",
+      "bytes": 1353,
+      "lines": 40,
+      "tags": [],
+      "headings": [],
+      "mode": "append-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "spec @ 1",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "spec.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
+      "key": "_memento/README.md",
+      "title": "_memento",
+      "summary": "This folder holds memento tool-relevant, human-readable artifacts for this vault.",
+      "bytes": 606,
+      "lines": 15,
+      "tags": [],
+      "headings": [],
+      "mode": "read-only",
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
       "key": "agent-human review boundaries.md",
       "title": "Agent / human review boundaries",
       "summary": "A philosophical sketch and tentative proposal — the beads/memento substrate boundary may be the surface of a deeper axis distinguishing who *authors* and who *reviews* at each layer of work. Names a review-granularity ladder (invariants → epics → atoms) and a possible bead-epic ↔ memento-note coupling. Deliberately unresolved — recorded so future design work can return with usage evidence.",
@@ -573,7 +616,12 @@
             "resolved": false
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Incremental disclosure and ergonomics.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {

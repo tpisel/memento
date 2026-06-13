@@ -8,7 +8,7 @@ tags:
   - init
   - git
   - manifest
-summary: " `init` installs or updates a sentinel-bounded block in `.git/hooks/pre-commit` (creating the hook if absent, preserving existing content if present). The hook runs manifest compilation and stages the resulting `.memento/manifest.json`. Re-running `init` is idempotent and never rewrites unrelated hook content."
+summary: "`init` installs or updates a sentinel-bounded block in `.git/hooks/pre-commit` (creating the hook if absent, preserving existing content if present). The hook runs manifest compilation and stages the resulting `.memento/manifest.json`. Re-running `init` is idempotent and never rewrites unrelated hook content."
 ---
 
 # ADR-0005 - Init and pre-commit hook ownership
