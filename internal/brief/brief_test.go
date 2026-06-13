@@ -18,6 +18,8 @@ func TestRenderProducesDeterministicMarkdownProjection(t *testing.T) {
 				Key:     "notes/alpha.md",
 				Title:   "Alpha <Beta>",
 				Summary: "Summary with <angle> & ampersand.",
+				Bytes:   342,
+				Lines:   32,
 				Tags:    []string{"memento", "brief"},
 				Mode:    markdown.ModeReadOnly,
 				Headings: []manifest.Heading{
@@ -30,6 +32,24 @@ func TestRenderProducesDeterministicMarkdownProjection(t *testing.T) {
 				},
 			},
 			{
+				Key:     "notes/beta.md",
+				Title:   "Beta",
+				Summary: "A compact note.",
+				Bytes:   1234,
+				Lines:   7,
+				Tags:    []string{"brief"},
+				Mode:    markdown.ModeAppendOnly,
+			},
+			{
+				Key:     "notes/gamma.md",
+				Title:   "Gamma",
+				Summary: "A larger note.",
+				Bytes:   12345,
+				Lines:   250,
+				Tags:    []string{"memento"},
+				Mode:    markdown.ModeAppendOnly,
+			},
+			{
 				Key:     "zeta.md",
 				Title:   "Zeta",
 				Summary: "",
@@ -38,8 +58,8 @@ func TestRenderProducesDeterministicMarkdownProjection(t *testing.T) {
 			},
 		},
 		Tags: map[string]int{
-			"brief":   1,
-			"memento": 1,
+			"brief":   2,
+			"memento": 2,
 		},
 	}
 
@@ -58,15 +78,31 @@ mode: read-only
 
 ## Alpha <Beta>
 
-key: ` + "`notes/alpha.md`" + ` | mode: ` + "`read-only`" + ` | tags: ` + "`brief`" + `, ` + "`memento`" + `
+key: ` + "`notes/alpha.md`" + ` | mode: ` + "`read-only`" + ` | tags: ` + "`brief`" + `, ` + "`memento`" + ` | size: 342B / 32 lines
 
 Summary with <angle> & ampersand.
 
 Headings: Context; Decision & Tradeoffs
 
+## Beta
+
+key: ` + "`notes/beta.md`" + ` | mode: ` + "`append-only`" + ` | tags: ` + "`brief`" + ` | size: 1.2k / 7 lines
+
+A compact note.
+
+Headings: none
+
+## Gamma
+
+key: ` + "`notes/gamma.md`" + ` | mode: ` + "`append-only`" + ` | tags: ` + "`memento`" + ` | size: 12k / 250 lines
+
+A larger note.
+
+Headings: none
+
 ## Zeta
 
-key: ` + "`zeta.md`" + ` | mode: ` + "`append-only`" + ` | tags: none
+key: ` + "`zeta.md`" + ` | mode: ` + "`append-only`" + ` | tags: none | size: 0B / 0 lines
 
 Summary: none
 
@@ -74,7 +110,7 @@ Headings: none
 
 ---
 
-Tag frequency: brief=1, memento=1
+Tag frequency: brief=2, memento=2
 Tool files: none
 `
 	if string(first) != want {
@@ -93,6 +129,22 @@ func TestRenderWithToolFilesListsDetectedFiles(t *testing.T) {
 
 	if !bytes.Contains([]byte(got), []byte("Tool files: _memento/review.md, _memento/writing.md\n")) {
 		t.Fatalf("RenderWithToolFiles() =\n%s\nwant tool file footer", got)
+	}
+}
+
+func TestFriendlyBytes(t *testing.T) {
+	tests := map[int64]string{
+		0:       "0B",
+		342:     "342B",
+		1234:    "1.2k",
+		12345:   "12k",
+		1400000: "1.4M",
+	}
+
+	for bytes, want := range tests {
+		if got := friendlyBytes(bytes); got != want {
+			t.Fatalf("friendlyBytes(%d) = %q, want %q", bytes, got, want)
+		}
 	}
 }
 

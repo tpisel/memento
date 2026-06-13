@@ -70,7 +70,7 @@ func RenderWithToolFiles(m manifest.Manifest, toolFiles []string) []byte {
 
 	for _, entry := range entries {
 		fmt.Fprintf(&b, "\n## %s\n\n", entry.Title)
-		fmt.Fprintf(&b, "key: `%s` | mode: `%s` | tags: %s\n\n", entry.Key, entry.Mode, inlineTags(entry.Tags))
+		fmt.Fprintf(&b, "key: `%s` | mode: `%s` | tags: %s | size: %s\n\n", entry.Key, entry.Mode, inlineTags(entry.Tags), sizeMarker(entry))
 		if entry.Summary == "" {
 			b.WriteString("Summary: none\n\n")
 		} else {
@@ -110,6 +110,36 @@ func inlineHeadings(headings []manifest.Heading) string {
 		parts = append(parts, heading.Text)
 	}
 	return strings.Join(parts, "; ")
+}
+
+func sizeMarker(entry manifest.Entry) string {
+	lines := entry.Lines
+	if lines < 0 {
+		lines = 0
+	}
+	return fmt.Sprintf("%s / %d lines", friendlyBytes(entry.Bytes), lines)
+}
+
+func friendlyBytes(bytes int64) string {
+	if bytes <= 0 {
+		return "0B"
+	}
+	if bytes < 1000 {
+		return fmt.Sprintf("%dB", bytes)
+	}
+	if bytes < 1000*1000 {
+		return friendlyUnit(float64(bytes)/1000, "k")
+	}
+	return friendlyUnit(float64(bytes)/(1000*1000), "M")
+}
+
+func friendlyUnit(value float64, suffix string) string {
+	if value < 10 {
+		text := fmt.Sprintf("%.1f", value)
+		text = strings.TrimSuffix(text, ".0")
+		return text + suffix
+	}
+	return fmt.Sprintf("%.0f%s", value, suffix)
 }
 
 func tagFrequency(tags map[string]int) string {
