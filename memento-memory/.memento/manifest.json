@@ -263,7 +263,7 @@
       "key": "Architecture decision record/adr-0008-memento-brief-projection.md",
       "title": "Memento brief — agent-facing manifest projection",
       "summary": "Add a `memento brief` verb that emits the agent-facing markdown projection of the manifest. `compile` writes both `.memento/manifest.json` (canonical, versioned) and `_memento/brief.md` (derived, gitignored). `brief` reads the file, falling back to a render-from-JSON when absent. The brief carries `mode: read-only` frontmatter and a DO-NOT-EDIT banner; the bootloader injects brief output instead of raw JSON.",
-      "bytes": 6003,
+      "bytes": 6062,
       "lines": 61,
       "tags": [
         "agents",
