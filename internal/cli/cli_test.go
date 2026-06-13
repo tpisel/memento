@@ -75,6 +75,26 @@ func TestUnknownCommand(t *testing.T) {
 	}
 }
 
+func TestServeCommandIsFutureStub(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := Run([]string{"serve"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(serve) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(serve) wrote stdout = %q, want empty", stdout.String())
+	}
+	for _, want := range []string{"not implemented", "v3", "spec §13"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("Run(serve) stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+	if strings.Contains(stderr.String(), "unknown command") {
+		t.Fatalf("Run(serve) stderr = %q, want non-usage not-implemented error", stderr.String())
+	}
+}
+
 func TestInitCreatesDefaultVaultForEmptyProject(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "sample-app")
 	if err := os.MkdirAll(repo, 0o755); err != nil {

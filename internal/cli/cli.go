@@ -70,6 +70,9 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		return runRead(args[1:], stdout, stderr)
 	case "write":
 		return runWrite(args[1:], stdin, stdout, stderr)
+	case "serve":
+		fmt.Fprint(stderr, "memento serve: not implemented (v3; see spec §13)\n")
+		return 1
 	default:
 		fmt.Fprintf(stderr, "memento: unknown command %q\n\n", args[0])
 		fmt.Fprint(stderr, "Run 'memento help' for usage.\n")
