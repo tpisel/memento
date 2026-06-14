@@ -366,16 +366,12 @@ func readNumberedEntry(v vault.Vault, target string, stderr io.Writer) ([]byte, 
 	}
 
 	key := numbered[number-1].Entry.Key
-	path, err := manifestEntryPath(v, key)
+	data, err := note.Read(v, key)
 	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, note.ErrNotFound) {
 			return nil, fmt.Errorf("entry %d's file `%s` no longer exists.\nmanifest is stale; run: memento compile && memento brief\nnote: entry numbers will likely shift after compile.", number, key)
 		}
-		return nil, fmt.Errorf("read %s: %w", key, err)
+		return nil, err
 	}
 
 	warnIfBriefHashDrift(v, m, stderr)
@@ -396,18 +392,6 @@ func readManifest(v vault.Vault) (manifest.Manifest, error) {
 		return manifest.Manifest{}, fmt.Errorf("decode manifest: %w", err)
 	}
 	return m, nil
-}
-
-func manifestEntryPath(v vault.Vault, key string) (string, error) {
-	if key == "" || strings.Contains(key, "\\") || filepath.IsAbs(key) || strings.HasPrefix(key, "/") {
-		return "", fmt.Errorf("manifest entry has invalid key: %s", key)
-	}
-	for _, part := range strings.Split(key, "/") {
-		if part == "" || part == "." || part == ".." {
-			return "", fmt.Errorf("manifest entry has invalid key: %s", key)
-		}
-	}
-	return filepath.Join(v.Root, filepath.FromSlash(key)), nil
 }
 
 func warnIfBriefHashDrift(v vault.Vault, m manifest.Manifest, stderr io.Writer) {
