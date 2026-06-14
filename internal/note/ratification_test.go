@@ -44,6 +44,122 @@ func TestBindingForKeyDoesNotRatifyUntrackedPathspecMetacharacterMatch(t *testin
 	}
 }
 
+func TestBindingForKeyTreatsOldGitNotRepositoryAsNonGitVault(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses a POSIX shell shim")
+	}
+
+	root := makeVault(t)
+	shimDir := t.TempDir()
+	shimPath := filepath.Join(shimDir, "git")
+	shim := "#!/bin/sh\n" +
+		"printf 'fatal: not a git repository (or any of the parent directories): .git\\n' >&2\n" +
+		"exit 128\n"
+	if err := os.WriteFile(shimPath, []byte(shim), 0o755); err != nil {
+		t.Fatalf("write git shim: %v", err)
+	}
+	t.Setenv("PATH", shimDir)
+
+	got, err := BindingForKey(vaultFromRoot(root), "note.md")
+	if err != nil {
+		t.Fatalf("BindingForKey() error = %v, want nil", err)
+	}
+	if got != BindingRatified {
+		t.Fatalf("BindingForKey() = %s, want %s", got, BindingRatified)
+	}
+}
+
+func TestBindingForKeySurfacesBrokenRepositoryRevParseFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses a POSIX shell shim")
+	}
+
+	root := makeVault(t)
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	shimDir := t.TempDir()
+	shimPath := filepath.Join(shimDir, "git")
+	shim := "#!/bin/sh\n" +
+		"printf 'fatal: not a git repository (or any of the parent directories): .git\\n' >&2\n" +
+		"exit 128\n"
+	if err := os.WriteFile(shimPath, []byte(shim), 0o755); err != nil {
+		t.Fatalf("write git shim: %v", err)
+	}
+	t.Setenv("PATH", shimDir)
+
+	_, err := BindingForKey(vaultFromRoot(root), "note.md")
+	if err == nil {
+		t.Fatal("BindingForKey() error = nil, want broken repository error")
+	}
+	if !strings.Contains(err.Error(), "check git work tree") {
+		t.Fatalf("BindingForKey() error = %q, want work tree context", err.Error())
+	}
+	if !strings.Contains(err.Error(), "fatal: not a git repository") {
+		t.Fatalf("BindingForKey() error = %q, want git stderr", err.Error())
+	}
+}
+
+func TestBindingForKeySurfacesFatalRevParseFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses a POSIX shell shim")
+	}
+
+	root := makeVault(t)
+	shimDir := t.TempDir()
+	shimPath := filepath.Join(shimDir, "git")
+	shim := "#!/bin/sh\n" +
+		"printf 'fatal: detected dubious ownership in repository\\n' >&2\n" +
+		"exit 128\n"
+	if err := os.WriteFile(shimPath, []byte(shim), 0o755); err != nil {
+		t.Fatalf("write git shim: %v", err)
+	}
+	t.Setenv("PATH", shimDir)
+
+	_, err := BindingForKey(vaultFromRoot(root), "note.md")
+	if err == nil {
+		t.Fatal("BindingForKey() error = nil, want fatal git error")
+	}
+	if !strings.Contains(err.Error(), "check git work tree") {
+		t.Fatalf("BindingForKey() error = %q, want work tree context", err.Error())
+	}
+	if !strings.Contains(err.Error(), "dubious ownership") {
+		t.Fatalf("BindingForKey() error = %q, want git stderr", err.Error())
+	}
+}
+
+func TestBindingForKeySurfacesFatalLSFilesFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses a POSIX shell shim")
+	}
+
+	root := makeVault(t)
+	shimDir := t.TempDir()
+	shimPath := filepath.Join(shimDir, "git")
+	shim := "#!/bin/sh\n" +
+		"if [ \"$2\" = \"rev-parse\" ]; then\n" +
+		"  printf 'true\\n'\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"printf 'fatal: bad revision HEAD\\n' >&2\n" +
+		"exit 128\n"
+	if err := os.WriteFile(shimPath, []byte(shim), 0o755); err != nil {
+		t.Fatalf("write git shim: %v", err)
+	}
+	t.Setenv("PATH", shimDir)
+
+	_, err := BindingForKey(vaultFromRoot(root), "note.md")
+	if err == nil {
+		t.Fatal("BindingForKey() error = nil, want fatal git error")
+	}
+	if !strings.Contains(err.Error(), "check git ratification for note.md") {
+		t.Fatalf("BindingForKey() error = %q, want ratification context", err.Error())
+	}
+	if !strings.Contains(err.Error(), "bad revision HEAD") {
+		t.Fatalf("BindingForKey() error = %q, want git stderr", err.Error())
+	}
+}
+
 func TestBindingForKeyFailsWhenGitDisappearsAfterWorkTreeCheck(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses a POSIX shell shim")
