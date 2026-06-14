@@ -32,6 +32,9 @@ func WalkMarkdown(vault Vault, visit func(relPath, absPath string) error) error 
 		if relPath == "." {
 			return nil
 		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
 
 		if d.IsDir() {
 			switch d.Name() {

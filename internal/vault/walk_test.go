@@ -61,6 +61,71 @@ func TestWalkMarkdownWithoutIgnoreFile(t *testing.T) {
 	}
 }
 
+func TestWalkMarkdownPreservesNFCAndNFDUnicodePaths(t *testing.T) {
+	root := t.TempDir()
+	vault := makeVault(t, root)
+	nfc := "caf\u00e9.md"
+	nfd := "cafe\u0301.md"
+	writeFile(t, root, "nfc/"+nfc, "# NFC\n")
+	writeFile(t, root, "nfd/"+nfd, "# NFD\n")
+
+	got := walkPaths(t, vault)
+	want := []string{
+		"nfc/" + nfc,
+		"nfd/" + nfd,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("WalkMarkdown() visited %#v, want %#v", got, want)
+	}
+}
+
+func TestWalkMarkdownPreservesCaseDistinctPathsWhenFilesystemSupportsThem(t *testing.T) {
+	root := t.TempDir()
+	vault := makeVault(t, root)
+	writeFile(t, root, "Note.md", "# Upper\n")
+	writeFile(t, root, "note.md", "# Lower\n")
+
+	upperInfo, err := os.Stat(filepath.Join(root, "Note.md"))
+	if err != nil {
+		t.Fatalf("stat Note.md: %v", err)
+	}
+	lowerInfo, err := os.Stat(filepath.Join(root, "note.md"))
+	if err != nil {
+		t.Fatalf("stat note.md: %v", err)
+	}
+	if os.SameFile(upperInfo, lowerInfo) {
+		t.Skip("case-folded filesystem cannot represent case-only filename twins")
+	}
+
+	got := walkPaths(t, vault)
+	want := []string{"Note.md", "note.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("WalkMarkdown() visited %v, want %v", got, want)
+	}
+}
+
+func TestWalkMarkdownSkipsSymlinks(t *testing.T) {
+	root := t.TempDir()
+	vault := makeVault(t, root)
+	writeFile(t, root, "content.md", "# Content\n")
+
+	outside := t.TempDir()
+	writeExternalFile(t, outside, "outside.md", "# Outside\n")
+	writeExternalFile(t, outside, "outside-dir/nested.md", "# Nested\n")
+	if err := os.Symlink(filepath.Join(outside, "outside.md"), filepath.Join(root, "linked.md")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "outside-dir"), filepath.Join(root, "linked-dir")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+
+	got := walkPaths(t, vault)
+	want := []string{"content.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("WalkMarkdown() visited %v, want %v", got, want)
+	}
+}
+
 func TestWalkMarkdownReturnsIgnoreParseError(t *testing.T) {
 	root := t.TempDir()
 	vault := makeVault(t, root)
@@ -130,5 +195,17 @@ func writeFile(t *testing.T, root, relPath, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write %q: %v", relPath, err)
+	}
+}
+
+func writeExternalFile(t *testing.T, root, relPath, content string) {
+	t.Helper()
+
+	path := filepath.Join(root, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir parent for external %q: %v", relPath, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write external %q: %v", relPath, err)
 	}
 }
