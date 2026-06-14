@@ -93,7 +93,7 @@ func checkCompileIdempotent(root string, c idempotencyCase) string {
 		return err.Error()
 	}
 
-	if failure := runCLIExpectSuccess([]string{"compile", "--dir", root}, true); failure != "" {
+	if failure := runCLIInDirExpectSuccessExpectingStdout(root, []string{"compile"}, true); failure != "" {
 		return "first compile: " + failure
 	}
 	firstManifest, err := os.ReadFile(filepath.Join(root, ".memento", "manifest.json"))
@@ -105,7 +105,7 @@ func checkCompileIdempotent(root string, c idempotencyCase) string {
 		return fmt.Sprintf("read first brief: %v", err)
 	}
 
-	if failure := runCLIExpectSuccess([]string{"compile", "--dir", root}, true); failure != "" {
+	if failure := runCLIInDirExpectSuccessExpectingStdout(root, []string{"compile"}, true); failure != "" {
 		return "second compile: " + failure
 	}
 	secondManifest, err := os.ReadFile(filepath.Join(root, ".memento", "manifest.json"))
@@ -133,7 +133,7 @@ func checkBriefIdempotent(root string, c idempotencyCase) string {
 	if err := writeVaultCase(root, c); err != nil {
 		return err.Error()
 	}
-	if failure := runCLIExpectSuccess([]string{"compile", "--dir", root}, true); failure != "" {
+	if failure := runCLIInDirExpectSuccessExpectingStdout(root, []string{"compile"}, true); failure != "" {
 		return "compile setup: " + failure
 	}
 	if err := os.Remove(filepath.Join(root, "_memento", "brief.md")); err != nil {
@@ -141,7 +141,7 @@ func checkBriefIdempotent(root string, c idempotencyCase) string {
 	}
 
 	var firstOut bytes.Buffer
-	if failure := runCLIExpectSuccessWithStdout([]string{"brief", "--dir", root}, &firstOut, false); failure != "" {
+	if failure := runCLIInDirExpectSuccessWithStdout(root, []string{"brief"}, &firstOut); failure != "" {
 		return "first brief: " + failure
 	}
 	if err := setAllFileTimes(root, fixedSnapshotTime); err != nil {
@@ -153,7 +153,7 @@ func checkBriefIdempotent(root string, c idempotencyCase) string {
 	}
 
 	var secondOut bytes.Buffer
-	if failure := runCLIExpectSuccessWithStdout([]string{"brief", "--dir", root}, &secondOut, false); failure != "" {
+	if failure := runCLIInDirExpectSuccessWithStdout(root, []string{"brief"}, &secondOut); failure != "" {
 		return "second brief: " + failure
 	}
 	secondSnapshot, err := snapshotFiles(root)
@@ -402,6 +402,18 @@ func titleWords(text string) string {
 }
 
 func runCLIInDirExpectSuccess(dir string, args []string) string {
+	return runCLIInDirExpectSuccessExpectingStdout(dir, args, false)
+}
+
+func runCLIInDirExpectSuccessWithStdout(dir string, args []string, stdoutSink *bytes.Buffer) string {
+	return runCLIInDir(dir, args, stdoutSink, false)
+}
+
+func runCLIInDirExpectSuccessExpectingStdout(dir string, args []string, wantEmptyStdout bool) string {
+	return runCLIInDir(dir, args, nil, wantEmptyStdout)
+}
+
+func runCLIInDir(dir string, args []string, stdoutSink *bytes.Buffer, wantEmptyStdout bool) string {
 	previous, err := os.Getwd()
 	if err != nil {
 		return fmt.Sprintf("getwd: %v", err)
@@ -412,7 +424,7 @@ func runCLIInDirExpectSuccess(dir string, args []string) string {
 	defer func() {
 		_ = os.Chdir(previous)
 	}()
-	return runCLIExpectSuccess(args, false)
+	return runCLIExpectSuccessWithStdout(args, stdoutSink, wantEmptyStdout)
 }
 
 func resetDir(root string) error {

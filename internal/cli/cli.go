@@ -25,12 +25,12 @@ const helpText = `memento
 Usage:
   memento help
   memento version
-  memento brief [--dir <vault>]
-  memento compile [--dir <vault>] [--print]
+  memento brief
+  memento compile
   memento init [--dir <vault>]
-  memento orient [--dir <vault>]
-  memento read [--dir <vault>] <key|@N>
-  memento write [--dir <vault>] <key>
+  memento orient
+  memento read <key|@N>
+  memento write <key>
 
 Commands:
   help      Show this help text.
@@ -83,7 +83,6 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 func runOrient(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("orient", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	dir := flags.String("dir", "", "memory vault directory")
 	if err := flags.Parse(args); err != nil {
 		printCLIError(stderr, "orient", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
@@ -93,7 +92,7 @@ func runOrient(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	v, err := resolveVault(*dir)
+	v, err := resolveVault()
 	if err != nil {
 		printCLIError(stderr, "orient", err)
 		return 1
@@ -119,7 +118,6 @@ func runOrient(args []string, stdout, stderr io.Writer) int {
 func runBrief(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("brief", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	dir := flags.String("dir", "", "memory vault directory")
 	if err := flags.Parse(args); err != nil {
 		printCLIError(stderr, "brief", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
@@ -129,7 +127,7 @@ func runBrief(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	v, err := resolveVault(*dir)
+	v, err := resolveVault()
 	if err != nil {
 		printCLIError(stderr, "brief", err)
 		return 1
@@ -175,8 +173,6 @@ func readOrRenderBrief(v vault.Vault) ([]byte, error) {
 func runCompile(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("compile", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	dir := flags.String("dir", "", "memory vault directory")
-	printOnly := flags.Bool("print", false, "print manifest JSON to stdout")
 	if err := flags.Parse(args); err != nil {
 		printCLIError(stderr, "compile", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
@@ -186,29 +182,10 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	v, err := compileVault(*dir)
+	v, err := resolveVault()
 	if err != nil {
 		printCLIError(stderr, "compile", err)
 		return 1
-	}
-
-	if *printOnly {
-		m, warnings, err := manifest.CompileWithWarnings(v)
-		if err != nil {
-			printCLIError(stderr, "compile", err)
-			return 1
-		}
-		printCompileWarnings(stderr, warnings)
-		data, err := manifest.Marshal(m)
-		if err != nil {
-			printCLIError(stderr, "compile", fmt.Errorf("%w: marshal manifest: %v", ErrIO, err))
-			return 1
-		}
-		if _, err := stdout.Write(data); err != nil {
-			printCLIError(stderr, "compile", fmt.Errorf("%w: write stdout: %v", ErrIO, err))
-			return 1
-		}
-		return 0
 	}
 
 	warnings, err := writeCompileArtifacts(v)
@@ -295,7 +272,6 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 func runRead(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("read", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	dir := flags.String("dir", "", "memory vault directory")
 	if err := flags.Parse(args); err != nil {
 		printCLIError(stderr, "read", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
@@ -305,7 +281,7 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	v, err := resolveVault(*dir)
+	v, err := resolveVault()
 	if err != nil {
 		printCLIError(stderr, "read", err)
 		return 1
@@ -406,7 +382,6 @@ func briefManifestHash(data []byte) (string, bool) {
 func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("write", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	dir := flags.String("dir", "", "memory vault directory")
 	if err := flags.Parse(args); err != nil {
 		printCLIError(stderr, "write", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
@@ -416,7 +391,7 @@ func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	v, err := resolveVault(*dir)
+	v, err := resolveVault()
 	if err != nil {
 		printCLIError(stderr, "write", err)
 		return 1
@@ -435,15 +410,7 @@ func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func compileVault(dir string) (vault.Vault, error) {
-	return resolveVault(dir)
-}
-
-func resolveVault(dir string) (vault.Vault, error) {
-	if dir != "" {
-		return vault.Open(dir)
-	}
-
+func resolveVault() (vault.Vault, error) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return vault.Vault{}, fmt.Errorf("get current directory: %w", err)

@@ -59,8 +59,19 @@ func BenchmarkCompile500Docs(b *testing.B) {
 }
 
 func runSyntheticCompile(root string) (stdout string, stderr string, code int) {
+	previous, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Sprintf("getwd: %v", err), 1
+	}
+	if err := os.Chdir(root); err != nil {
+		return "", fmt.Sprintf("chdir %q: %v", root, err), 1
+	}
+	defer func() {
+		_ = os.Chdir(previous)
+	}()
+
 	var stdoutBuf, stderrBuf bytes.Buffer
-	code = Run([]string{"compile", "--dir", root}, &stdoutBuf, &stderrBuf)
+	code = Run([]string{"compile"}, &stdoutBuf, &stderrBuf)
 	return stdoutBuf.String(), stderrBuf.String(), code
 }
 

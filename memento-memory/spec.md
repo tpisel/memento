@@ -68,7 +68,7 @@ CLI subcommands call exactly these. The CLI boundary contains no business logic.
 
 ## 3. The memory directory & vault model
 
-- **Default directory: `<project>-memory/`**, parametrised (`--dir`, config), per ADR-0001. `<project>` is derived at `init` time from the git remote basename, falling back to the repository directory name; if no project name can be derived, fall back to `memory/`. The default remains deliberately **not** `docs/`, which already means published documentation, API-doc output, and doc-site sources (mkdocs/docusaurus/sphinx); landing agent memory there tangles it with human-published docs and gets caught by site builders. A dotfolder (`.agent/`) would avoid collision but Obsidian hides dot-prefixed folders, breaking the human-first browse.
+- **Default directory: `<project>-memory/`**, with `init --dir <vault>` as the explicit override for adopting or creating a different vault root, per ADR-0001. `<project>` is derived at `init` time from the git remote basename, falling back to the repository directory name; if no project name can be derived, fall back to `memory/`. The default remains deliberately **not** `docs/`, which already means published documentation, API-doc output, and doc-site sources (mkdocs/docusaurus/sphinx); landing agent memory there tangles it with human-published docs and gets caught by site builders. A dotfolder (`.agent/`) would avoid collision but Obsidian hides dot-prefixed folders, breaking the human-first browse.
 - **Discovery is marker-based**, per ADR-0002. Commands discover the repository vault by finding exactly one `<memory-dir>/.memento/` marker directory; ambiguity is a hard error. Discovery does not depend on the vault directory name, so a vault can be renamed as long as its marker moves with it.
 - **The human opens the resolved memory directory itself as the Obsidian vault root**, not the repo root. This bounds the wikilink graph to the memory store; opening the repo root would let links leak into source files and pollute the out/in-link surface. (Human-setup note for the docs; the tool only walks what it is pointed at.)
 - The store is **in-repo** so it version-locks to the code and travels with branches.
@@ -194,7 +194,7 @@ So "auto-summarisation" is not a single feature at a fixed version: *detection* 
 ## 10. CLI surface
 
 ```
-memento compile          # walk vault → emit manifest (or stdout with --print for testing)
+memento compile          # walk discovered vault → emit manifest and brief artifacts
 memento brief            # print the agent-facing manifest projection
 memento init             # adopt-or-create: scaffold/adopt the vault, hook, bootloader (§11)
 memento orient           # print tool-usage orientation baseline + opt-in overlay docs
@@ -202,7 +202,9 @@ memento read  <key|@N>   # whole-file; supports read <key>#<heading>; @N reads a
 memento write <key>      # append/upsert/section-replace, validated against declared mode
 ```
 
-`compile` flags: `--dir`, `--print` (stdout, no file), `--summarize` (v4).
+`init` flags: `--dir <vault>` selects the vault root to adopt or create. Other verbs discover the vault by walking up from the current directory to find the repository's `.memento/` marker.
+
+Future compile flag: `--summarize` (v4).
 
 ### Brief render contract
 
@@ -296,7 +298,7 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 
 | Ver | Scope |
 |---|---|
-| **v0** | CLI `compile`, `init`, `read`, and minimum `write`. Point at or discover one marker-based vault → canonical `.memento/manifest.json` plus generated `_memento/brief.md` (`--print` to stdout for testing the JSON representation). Includes: `<project>-memory/` init default, `.mementoignore` (subdir walking, glob+comment syntax), tag vocabulary (omitted if no tags exist), heading extraction, out/in link graph as data, bare-markdown fallback, summary-staleness **detection** (flag only, no generation), adopt-or-create init, pre-commit hook, sentinel bootloader injection, `.gitignore` stanza, `memento brief`, whole-file and `#heading` reads, and conservative write support limited to create/append. |
+| **v0** | CLI `compile`, `init`, `read`, and minimum `write`. Point at or discover one marker-based vault → canonical `.memento/manifest.json` plus generated `_memento/brief.md`. Includes: `<project>-memory/` init default, `.mementoignore` (subdir walking, glob+comment syntax), tag vocabulary (omitted if no tags exist), heading extraction, out/in link graph as data, bare-markdown fallback, summary-staleness **detection** (flag only, no generation), adopt-or-create init, pre-commit hook, sentinel bootloader injection, `.gitignore` stanza, `memento brief`, whole-file and `#heading` reads, and conservative write support limited to create/append. |
 | **v1** | Hardening and polish around the v0 surfaces after dogfooding: better diagnostics, portability fixes, and compatibility adjustments to keep the CLI stable as the durable agent contract. |
 | **v2** | Smarter writes. Tool-read conventions such as `_memento/writing.md` expose agent-facing write rules / triggers / placement conventions once ADR-0010 pins filenames and precedence. Full mode-aware editing, including `section-replace`, `keyed-upsert`, and mechanical `read-only` enforcement. `read` surfaces out/inlinks for navigation. Default ADR convention. |
 | **v3** | Withdrawn by ADR-0019. Former non-transport items were re-homed: link surfaces on `read` to v2; agent-driven summarisation to v4 as a CLI workflow design question. |

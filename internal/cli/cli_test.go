@@ -34,7 +34,7 @@ func TestHelpCommand(t *testing.T) {
 		"compile",
 		"orient",
 		"read",
-		"memento read [--dir <vault>] <key|@N>",
+		"memento read <key|@N>",
 		"version",
 	} {
 		if !strings.Contains(out, want) {
@@ -107,6 +107,43 @@ func TestUnknownCommand(t *testing.T) {
 	assertRootErrorToken(t, stderr.String(), "unknown-command")
 	if !strings.Contains(stderr.String(), `unknown command "bogus"`) {
 		t.Fatalf("Run(bogus) stderr = %q, want unknown command message", stderr.String())
+	}
+}
+
+func TestRemovedNonInitFlagsFailWithInvalidArguments(t *testing.T) {
+	root := t.TempDir()
+
+	tests := []struct {
+		name  string
+		verb  string
+		args  []string
+		input io.Reader
+	}{
+		{name: "brief dir", verb: "brief", args: []string{"brief", "--dir", root}},
+		{name: "compile dir", verb: "compile", args: []string{"compile", "--dir", root}},
+		{name: "compile print", verb: "compile", args: []string{"compile", "--print"}},
+		{name: "orient dir", verb: "orient", args: []string{"orient", "--dir", root}},
+		{name: "read dir", verb: "read", args: []string{"read", "--dir", root, "note.md"}},
+		{name: "write dir", verb: "write", args: []string{"write", "--dir", root, "note.md"}, input: strings.NewReader("body\n")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			var code int
+			if tt.input != nil {
+				code = RunWithInput(tt.args, tt.input, &stdout, &stderr)
+			} else {
+				code = Run(tt.args, &stdout, &stderr)
+			}
+			if code != 2 {
+				t.Fatalf("Run(%v) exit code = %d, want 2; stderr = %q", tt.args, code, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("Run(%v) stdout = %q, want empty", tt.args, stdout.String())
+			}
+			assertCLIErrorToken(t, stderr.String(), tt.verb, "invalid-arguments")
+		})
 	}
 }
 
@@ -208,52 +245,6 @@ func TestInitDoesNotClobberExistingFilesystemArtifacts(t *testing.T) {
 	}
 }
 
-func TestCompilePrintsManifestForExplicitDir(t *testing.T) {
-	root := makeCLIVault(t)
-	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root, "--print"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("Run(compile --print) exit code = %d, want 0; stderr = %q", code, stderr.String())
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(compile --print) stderr = %q, want empty", stderr.String())
-	}
-	if !strings.Contains(stdout.String(), `"key": "note.md"`) {
-		t.Fatalf("Run(compile --print) stdout = %q, want note entry", stdout.String())
-	}
-	if _, err := os.Stat(filepath.Join(root, ".memento", "manifest.json")); !os.IsNotExist(err) {
-		t.Fatalf("Run(compile --print) wrote manifest unexpectedly; stat err = %v", err)
-	}
-}
-
-func TestCompilePrintWarnsForMalformedFrontmatter(t *testing.T) {
-	root := makeCLIVault(t)
-	writeCLIFile(t, root, "broken.md", `---
-title
----
-# Fallback
-
-Summary.
-`)
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root, "--print"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("Run(compile --print) exit code = %d, want 0; stderr = %q", code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), `"title": "Fallback"`) {
-		t.Fatalf("Run(compile --print) stdout = %q, want fallback title", stdout.String())
-	}
-	errOut := stderr.String()
-	for _, want := range []string{"warning", "broken.md", "malformed frontmatter"} {
-		if !strings.Contains(errOut, want) {
-			t.Fatalf("Run(compile --print) stderr = %q, want %q", errOut, want)
-		}
-	}
-}
-
 func TestCompileWritesDiscoveredManifest(t *testing.T) {
 	repo := t.TempDir()
 	root := filepath.Join(repo, "project-memory")
@@ -349,7 +340,7 @@ func TestCompileWritesManifestAndWarnsWhenBriefWriteFails(t *testing.T) {
 	writeCLIFile(t, root, "_memento", "not a directory\n")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &stdout, &stderr)
+	code := Run([]string{"compile"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -386,7 +377,7 @@ Body.
 `)
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &stdout, &stderr)
+	code := Run([]string{"compile"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -409,7 +400,7 @@ Resolved [[beta]], display [[beta|Beta note]], broken [[missing]], and anchored 
 	writeCLIFile(t, root, "beta.md", "# Beta\n\nTarget.\n")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &stdout, &stderr)
+	code := Run([]string{"compile"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -433,7 +424,7 @@ func TestBriefPrintsExistingBriefForExplicitDir(t *testing.T) {
 	writeCLIFile(t, root, "_memento/brief.md", want)
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"brief", "--dir", root}, &stdout, &stderr)
+	code := Run([]string{"brief"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(brief --dir) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -450,7 +441,7 @@ func TestBriefRendersFromManifestWhenBriefIsMissing(t *testing.T) {
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
 
 	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 	}
@@ -460,7 +451,7 @@ func TestBriefRendersFromManifestWhenBriefIsMissing(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code = Run([]string{"brief", "--dir", root}, &stdout, &stderr)
+	code = Run([]string{"brief"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(brief --dir) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -486,10 +477,10 @@ func TestBriefRendersFromManifestWhenBriefIsMissing(t *testing.T) {
 }
 
 func TestBriefFailsWithCompileHintWhenArtifactsAreMissing(t *testing.T) {
-	root := makeCLIVault(t)
+	makeCLIVault(t)
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"brief", "--dir", root}, &stdout, &stderr)
+	code := Run([]string{"brief"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("Run(brief --dir) exit code = %d, want 1", code)
 	}
@@ -509,13 +500,13 @@ func TestOrientPrintsBaselineOnlyWhenNoDocsAreTagged(t *testing.T) {
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
 
 	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 	}
 
 	var stdout, stderr bytes.Buffer
-	code = Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	code = Run([]string{"orient"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -534,13 +525,13 @@ func TestOrientAppendsSingleTaggedDocAfterBaseline(t *testing.T) {
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
 
 	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 	}
 
 	var stdout, stderr bytes.Buffer
-	code = Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	code = Run([]string{"orient"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -558,13 +549,13 @@ func TestOrientSortsMultipleTaggedDocsByManifestKey(t *testing.T) {
 	writeCLIFile(t, root, "nested/beta.md", "---\norient: true\n---\n# Beta\n")
 
 	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 	}
 
 	var stdout, stderr bytes.Buffer
-	code = Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	code = Run([]string{"orient"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -588,13 +579,13 @@ func TestOrientExcludesUntaggedAndExplicitFalseDocs(t *testing.T) {
 	writeCLIFile(t, root, "false.md", "---\norient: false\n---\n# False\n")
 
 	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 	}
 
 	var stdout, stderr bytes.Buffer
-	code = Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	code = Run([]string{"orient"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -611,10 +602,10 @@ func TestOrientExcludesUntaggedAndExplicitFalseDocs(t *testing.T) {
 }
 
 func TestOrientFailsWithCompileHintWhenManifestIsMissing(t *testing.T) {
-	root := makeCLIVault(t)
+	makeCLIVault(t)
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	code := Run([]string{"orient"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("Run(orient --dir) exit code = %d, want 1", code)
 	}
@@ -634,7 +625,7 @@ func TestReadPrintsRequestedMarkdownForExplicitDir(t *testing.T) {
 	writeCLIFile(t, root, "notes/deep.md", "# Deep\n\nNested content.\n")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"read", "--dir", root, "notes/deep.md"}, &stdout, &stderr)
+	code := Run([]string{"read", "notes/deep.md"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(read --dir notes/deep.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -654,13 +645,13 @@ func TestReadNumericReferenceResolvesAgainstManifestOrdering(t *testing.T) {
 	writeCLIFile(t, root, "notes/beta.md", "# Beta\n\nNested note.\n")
 
 	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 	}
 
 	var stdout, stderr bytes.Buffer
-	code = Run([]string{"read", "--dir", root, "@2"}, &stdout, &stderr)
+	code = Run([]string{"read", "@2"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(read @2) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -677,7 +668,7 @@ func TestReadNumericReferenceFailsWithStaleManifestMessageForMissingFile(t *test
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
 
 	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 	}
@@ -686,7 +677,7 @@ func TestReadNumericReferenceFailsWithStaleManifestMessageForMissingFile(t *test
 	}
 
 	var stdout, stderr bytes.Buffer
-	code = Run([]string{"read", "--dir", root, "@1"}, &stdout, &stderr)
+	code = Run([]string{"read", "@1"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("Run(read @1) exit code = %d, want 1", code)
 	}
@@ -710,7 +701,7 @@ func TestReadNumericReferenceWarnsWhenManifestHashDiffersFromBrief(t *testing.T)
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
 
 	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 	}
@@ -722,7 +713,7 @@ func TestReadNumericReferenceWarnsWhenManifestHashDiffersFromBrief(t *testing.T)
 	}
 
 	var stdout, stderr bytes.Buffer
-	code = Run([]string{"read", "--dir", root, "@1"}, &stdout, &stderr)
+	code = Run([]string{"read", "@1"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(read @1) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -791,7 +782,7 @@ func TestReadNumericReferenceSkipsHashCheckWhenBriefIsMissing(t *testing.T) {
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
 
 	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 	if code != 0 {
 		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 	}
@@ -800,7 +791,7 @@ func TestReadNumericReferenceSkipsHashCheckWhenBriefIsMissing(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code = Run([]string{"read", "--dir", root, "@1"}, &stdout, &stderr)
+	code = Run([]string{"read", "@1"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(read @1) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -817,7 +808,7 @@ func TestReadBareDigitPathReadsVaultFile(t *testing.T) {
 	writeCLIFile(t, root, "5.md", "# Five\n\nPath note.\n")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"read", "--dir", root, "5.md"}, &stdout, &stderr)
+	code := Run([]string{"read", "5.md"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(read 5.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -830,12 +821,12 @@ func TestReadBareDigitPathReadsVaultFile(t *testing.T) {
 }
 
 func TestReadInvalidNumericReferenceFailsCleanly(t *testing.T) {
-	root := makeCLIVault(t)
+	makeCLIVault(t)
 
 	for _, target := range []string{"@", "@abc"} {
 		t.Run(target, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := Run([]string{"read", "--dir", root, target}, &stdout, &stderr)
+			code := Run([]string{"read", target}, &stdout, &stderr)
 			if code != 1 {
 				t.Fatalf("Run(read %s) exit code = %d, want 1", target, code)
 			}
@@ -855,7 +846,7 @@ func TestReadPrintsRequestedSection(t *testing.T) {
 	writeCLIFile(t, root, "spec.md", "# Spec\n\n## Target Heading\n\nTarget content.\n\n## Next\n\nOther content.\n")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"read", "--dir", root, "spec.md#target-heading"}, &stdout, &stderr)
+	code := Run([]string{"read", "spec.md#target-heading"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("Run(read section) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
@@ -874,7 +865,7 @@ func TestReadFailsClearlyForUnknownSection(t *testing.T) {
 	writeCLIFile(t, root, "spec.md", "# Spec\n\n## Present\n\nContent.\n")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"read", "--dir", root, "spec.md#missing"}, &stdout, &stderr)
+	code := Run([]string{"read", "spec.md#missing"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("Run(read unknown section) exit code = %d, want 1", code)
 	}
@@ -895,7 +886,7 @@ func TestReadFailsClearlyForMissingOrIgnoredKey(t *testing.T) {
 	for _, key := range []string{"missing.md", "ignored.md"} {
 		t.Run(key, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := Run([]string{"read", "--dir", root, key}, &stdout, &stderr)
+			code := Run([]string{"read", key}, &stdout, &stderr)
 			if code != 1 {
 				t.Fatalf("Run(read %s) exit code = %d, want 1", key, code)
 			}
@@ -911,10 +902,10 @@ func TestReadFailsClearlyForMissingOrIgnoredKey(t *testing.T) {
 }
 
 func TestReadRejectsTraversalKey(t *testing.T) {
-	root := makeCLIVault(t)
+	makeCLIVault(t)
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"read", "--dir", root, "../outside.md"}, &stdout, &stderr)
+	code := Run([]string{"read", "../outside.md"}, &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("Run(read traversal) exit code = %d, want 1", code)
 	}
@@ -932,7 +923,7 @@ func TestWriteCreatesMarkdownFromStdin(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := RunWithInput(
-		[]string{"write", "--dir", root, "notes/new.md"},
+		[]string{"write", "notes/new.md"},
 		strings.NewReader("# New\n\nDurable note.\n"),
 		&stdout,
 		&stderr,
@@ -959,7 +950,7 @@ func TestWriteAppendsMarkdownFromStdin(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := RunWithInput(
-		[]string{"write", "--dir", root, "note.md"},
+		[]string{"write", "note.md"},
 		strings.NewReader("\nAppended.\n"),
 		&stdout,
 		&stderr,
@@ -981,11 +972,11 @@ func TestWriteAppendsMarkdownFromStdin(t *testing.T) {
 }
 
 func TestWriteRejectsTraversalKey(t *testing.T) {
-	root := makeCLIVault(t)
+	makeCLIVault(t)
 
 	var stdout, stderr bytes.Buffer
 	code := RunWithInput(
-		[]string{"write", "--dir", root, "../outside.md"},
+		[]string{"write", "../outside.md"},
 		strings.NewReader("# Outside\n"),
 		&stdout,
 		&stderr,
@@ -1014,10 +1005,11 @@ func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
 
 	t.Run("vault not found", func(t *testing.T) {
 		root := t.TempDir()
+		chdirCLI(t, root)
 		var stdout, stderr bytes.Buffer
-		code := Run([]string{"read", "--dir", root, "note.md"}, &stdout, &stderr)
+		code := Run([]string{"read", "note.md"}, &stdout, &stderr)
 		if code != 1 {
-			t.Fatalf("Run(read --dir missing-vault) exit code = %d, want 1", code)
+			t.Fatalf("Run(read missing-vault) exit code = %d, want 1", code)
 		}
 		assertCLIErrorToken(t, stderr.String(), "read", "vault-not-found")
 	})
@@ -1026,13 +1018,13 @@ func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
 		root := makeCLIVault(t)
 		writeCLIFile(t, root, "note.md", "# Note\n")
 		var compileStdout, compileStderr bytes.Buffer
-		code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+		code := Run([]string{"compile"}, &compileStdout, &compileStderr)
 		if code != 0 {
 			t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
 		}
 
 		var stdout, stderr bytes.Buffer
-		code = Run([]string{"read", "--dir", root, "@2"}, &stdout, &stderr)
+		code = Run([]string{"read", "@2"}, &stdout, &stderr)
 		if code != 1 {
 			t.Fatalf("Run(read @2) exit code = %d, want 1", code)
 		}
@@ -1043,7 +1035,7 @@ func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
 		root := makeCLIVault(t)
 		writeCLIFile(t, root, ".mementoignore", "!unsupported\n")
 		var stdout, stderr bytes.Buffer
-		code := Run([]string{"compile", "--dir", root, "--print"}, &stdout, &stderr)
+		code := Run([]string{"compile"}, &stdout, &stderr)
 		if code != 1 {
 			t.Fatalf("Run(compile invalid ignore) exit code = %d, want 1", code)
 		}
@@ -1054,7 +1046,7 @@ func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
 		root := makeCLIVault(t)
 		writeCLIFile(t, root, ".memento/manifest.json", "{not json")
 		var stdout, stderr bytes.Buffer
-		code := Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+		code := Run([]string{"orient"}, &stdout, &stderr)
 		if code != 1 {
 			t.Fatalf("Run(orient invalid manifest) exit code = %d, want 1", code)
 		}
@@ -1065,7 +1057,7 @@ func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
 		root := makeCLIVault(t)
 		writeCLIFile(t, root, ".memento/manifest.json", `{"entries":[]}`)
 		var stdout, stderr bytes.Buffer
-		code := Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+		code := Run([]string{"orient"}, &stdout, &stderr)
 		if code != 1 {
 			t.Fatalf("Run(orient unsupported schema) exit code = %d, want 1", code)
 		}
@@ -1076,7 +1068,7 @@ func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
 		root := makeCLIVault(t)
 		writeCLIFile(t, root, "note.md", "---\ntitle\n---\n# Note\n")
 		var stdout, stderr bytes.Buffer
-		code := RunWithInput([]string{"write", "--dir", root, "note.md"}, strings.NewReader("append\n"), &stdout, &stderr)
+		code := RunWithInput([]string{"write", "note.md"}, strings.NewReader("append\n"), &stdout, &stderr)
 		if code != 1 {
 			t.Fatalf("Run(write invalid frontmatter) exit code = %d, want 1", code)
 		}
@@ -1087,7 +1079,7 @@ func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
 		root := makeCLIVault(t)
 		writeCLIFile(t, root, "frozen.md", "---\nmode: read-only\n---\n# Frozen\n")
 		var stdout, stderr bytes.Buffer
-		code := RunWithInput([]string{"write", "--dir", root, "frozen.md"}, strings.NewReader("append\n"), &stdout, &stderr)
+		code := RunWithInput([]string{"write", "frozen.md"}, strings.NewReader("append\n"), &stdout, &stderr)
 		if code != 1 {
 			t.Fatalf("Run(write read-only) exit code = %d, want 1", code)
 		}
@@ -1164,9 +1156,9 @@ func TestWriteDoesNotOfferDeferredMutationFlags(t *testing.T) {
 	writeCLIFile(t, root, "note.md", "# Note\n\nOriginal.\n")
 
 	for _, args := range [][]string{
-		{"write", "--dir", root, "--overwrite", "note.md"},
-		{"write", "--dir", root, "--section", "context", "note.md"},
-		{"write", "--dir", root, "--upsert", "key", "note.md"},
+		{"write", "--overwrite", "note.md"},
+		{"write", "--section", "context", "note.md"},
+		{"write", "--upsert", "key", "note.md"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -1209,6 +1201,7 @@ func makeCLIVault(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(root, ".memento"), 0o755); err != nil {
 		t.Fatalf("mkdir marker: %v", err)
 	}
+	chdirCLI(t, root)
 	return root
 }
 

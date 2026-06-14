@@ -275,7 +275,7 @@
       "key": "Architecture decision record/adr-0008-memento-brief-projection.md",
       "title": "Memento brief — agent-facing manifest projection",
       "summary": "Add a `memento brief` verb that emits the agent-facing markdown projection of the manifest. `compile` writes both `.memento/manifest.json` (canonical, versioned) and `_memento/brief.md` (derived, gitignored). `brief` reads the file, falling back to a render-from-JSON when absent. The brief carries `mode: read-only` frontmatter and a DO-NOT-EDIT banner; the bootloader injects brief output instead of raw JSON.",
-      "bytes": 6033,
+      "bytes": 6017,
       "lines": 61,
       "tags": [
         "agents",
@@ -316,7 +316,13 @@
       "updated": "",
       "summary_stale": true,
       "links": {
-        "out": [],
+        "out": [
+          {
+            "target": "what makes a good summary.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
       }
     },
@@ -369,7 +375,7 @@
       "key": "Architecture decision record/adr-0011-numeric-brief-references.md",
       "title": "Numeric brief references — ephemeral CLI projection over manifest entries",
       "summary": "The brief gains a render-time numeric index over top-level entries so `read N` is the short follow-up after `brief`. Numbers exist only in CLI/brief output — never in source, wikilinks, commit messages, or beads tasks. `read N` resolves against `.memento/manifest.json` only, never falls back to a filesystem walk; if the manifest is stale (rename/delete) the call is a hard error that names the fix verbatim. Folder structure surfaces as H2 sections; section addressing stays slug-based.",
-      "bytes": 7905,
+      "bytes": 7904,
       "lines": 89,
       "tags": [
         "agents",
@@ -429,6 +435,11 @@
             "target": "spec.md",
             "type": "wiki",
             "resolved": true
+          },
+          {
+            "target": "what makes a good summary.md",
+            "type": "wiki",
+            "resolved": true
           }
         ],
         "in": []
@@ -469,7 +480,12 @@
       "summary_stale": true,
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "agent-human coordination failure modes.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -676,7 +692,7 @@
       "key": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
       "title": "Pre-commit edit window for new documents",
       "summary": "A document that has not yet been committed to git is in its 'edit window': the write gate accepts full-file rewrites regardless of declared `mode:`. Once the document is first committed, the declared mode binds for all subsequent writes. Ratification event = first commit, not session boundary. Rule applies uniformly across `append-only`, `living`, and `read-only`.",
-      "bytes": 7612,
+      "bytes": 7611,
       "lines": 71,
       "tags": [
         "lifecycle",
@@ -726,7 +742,13 @@
       "updated": "",
       "summary_stale": true,
       "links": {
-        "out": [],
+        "out": [
+          {
+            "target": "Configurability exploration.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
       }
     },
@@ -734,7 +756,7 @@
       "key": "Architecture decision record/adr-0018-okf-compatible-frontmatter.md",
       "title": "OKF-compatible frontmatter conventions",
       "summary": "Adopt the OKF v0.1 frontmatter vocabulary into memento's Tier 2 (convention, parsed-and-ignored): `type`, `resource`, `timestamp`, `okf_version`. Promote `description:` to Tier 1 as a summary fallback source (after `summary:`, before first-paragraph). Deeper OKF alignment — wikilink-to-markdown-link conversion, concept-ID `.md` stripping, reserving `index.md`/`log.md` — explicitly deferred to a future configurability decision.",
-      "bytes": 7016,
+      "bytes": 7012,
       "lines": 91,
       "tags": [
         "frontmatter",
@@ -790,7 +812,18 @@
       "updated": "",
       "summary_stale": true,
       "links": {
-        "out": [],
+        "out": [
+          {
+            "target": "Configurability exploration.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "OKF interop and external compatibility.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
       }
     },
@@ -897,7 +930,7 @@
       "key": "Configurability exploration.md",
       "title": "Configurability exploration",
       "summary": "A catalogue of memento behaviours that have surfaced as potentially configurable — deployment format, edit-window policy, and future axes — without committing to expose any of them as user-facing config. Each entry records the default, the alternative use cases, the exposure shape, the cost of exposing, and the trigger that would justify implementation.",
-      "bytes": 7540,
+      "bytes": 7538,
       "lines": 84,
       "tags": [
         "configuration",
@@ -936,20 +969,38 @@
       "links": {
         "out": [
           {
+            "target": "OKF interop and external compatibility.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
             "target": "target",
             "type": "wiki",
             "resolved": false
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0018-okf-compatible-frontmatter.md",
+            "type": "wiki"
+          },
+          {
+            "source": "spec.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
       "key": "Feature thoughts.md",
       "title": "Feature thoughts",
       "summary": "Possible features and affordances:",
-      "bytes": 937,
-      "lines": 23,
+      "bytes": 521,
+      "lines": 16,
       "tags": [],
       "headings": [
         {
@@ -969,7 +1020,16 @@
       "summary_stale": true,
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "agent-human coordination failure modes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "spec.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -1120,14 +1180,27 @@
             "resolved": false
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0018-okf-compatible-frontmatter.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Configurability exploration.md",
+            "type": "wiki"
+          },
+          {
+            "source": "spec.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
       "key": "agent-human coordination failure modes.md",
       "title": "Agent–human coordination failure modes",
       "summary": "Backlog/taxonomy of failure states that show up when humans and long-running agents share a queue, a worktree, and a spec. Sort later — collecting raw examples first.",
-      "bytes": 4057,
+      "bytes": 4055,
       "lines": 38,
       "tags": [],
       "headings": [
@@ -1157,7 +1230,18 @@
       "updated": "",
       "summary_stale": true,
       "links": {
-        "out": [],
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0012-using-memento-guide.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Feature thoughts.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
       }
     },
@@ -1226,8 +1310,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 35053,
-      "lines": 360,
+      "bytes": 35064,
+      "lines": 361,
       "tags": [],
       "headings": [
         {
@@ -1358,6 +1442,31 @@
       "links": {
         "out": [
           {
+            "target": "Configurability exploration.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Feature ideas",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "Feature thoughts.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "OKF interop and external compatibility.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Open questions",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
             "target": "target",
             "type": "wiki",
             "resolved": false
@@ -1425,7 +1534,16 @@
       "summary_stale": true,
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0008-memento-brief-projection.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0011-numeric-brief-references.md",
+            "type": "wiki"
+          }
+        ]
       }
     }
   ],

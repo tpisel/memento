@@ -19,12 +19,12 @@ Current verbs:
 
 - `memento help` - show this help text.
 - `memento version` - print the memento version.
-- `memento brief [--dir <vault>]` - print the agent-facing manifest projection.
-- `memento compile [--dir <vault>] [--print]` - compile a memory vault manifest.
+- `memento brief` - print the agent-facing manifest projection.
+- `memento compile` - compile a memory vault manifest.
 - `memento init [--dir <vault>]` - adopt or create a memory vault.
-- `memento orient [--dir <vault>]` - print tool-usage orientation and project overlays.
-- `memento read [--dir <vault>] <key|@N>` - read a memory note by key or `@N` entry reference.
-- `memento write [--dir <vault>] <key>` - create or append to a memory note from stdin.
+- `memento orient` - print tool-usage orientation and project overlays.
+- `memento read <key|@N>` - read a memory note by key or `@N` entry reference.
+- `memento write <key>` - create or append to a memory note from stdin.
 
 CLI errors start with stable tokens such as `unknown-command`, `invalid-arguments`, and `manifest-not-found`;
 see `memento-memory/spec.md` for the complete error-token contract.
