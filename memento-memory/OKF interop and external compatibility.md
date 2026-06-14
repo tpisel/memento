@@ -1,0 +1,157 @@
+---
+title: OKF interop and external compatibility
+status: proposal
+mode: append-only
+date: 2026-06-14
+tags: [memento, proposal, open-question, interop, okf, obsidian, format, distribution]
+summary: Working notes on aligning memento with Google Cloud's Open Knowledge Format (OKF) v0.1. Records what we can align without harming the Obsidian-as-human-interface commitment, what gap remains, whether to surface OKF support as an explicit mode, and where the OKF spec appears to be heading that we may already be on the path to.
+---
+
+# OKF interop and external compatibility
+
+## What this is
+
+Google Cloud published the Open Knowledge Format (OKF) v0.1 on 2026-06-13 (blog: `cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing/`; spec: `github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md`). It formalises the "LLM wiki" pattern — a directory of markdown files with YAML frontmatter — into a vendor-neutral interchange format. memento is shaped close enough to OKF that the question of *whether and how to converge* is worth recording before the design ossifies further in a direction that makes alignment costly.
+
+This note is exploratory, not a commitment. It exists so a future ADR has the framing pre-loaded and does not have to re-derive the analysis cold.
+
+## OKF v0.1 in two paragraphs
+
+A **bundle** is a directory of `.md` files with YAML frontmatter. Concept ID = file path with `.md` stripped. Only `type:` is required; `title`, `description`, `resource`, `tags`, `timestamp` are recommended. Two filenames are reserved: `index.md` (a directory listing for "progressive disclosure," which in practice is a manually-or-tool-generated TOC) and `log.md` (a date-grouped changelog). Links are standard markdown, and OKF normatively states links are *untyped* — the relationship is conveyed by surrounding prose, not by the link itself. Consumers MUST tolerate broken links, unknown types, unknown frontmatter keys, and missing optional files.
+
+Versioning is via `okf_version: "0.1"` in the bundle-root `index.md` (the only place `index.md` is allowed frontmatter). Minor bumps add backward-compatibly; major bumps may rename required fields or reserved filenames. Consumers that don't understand a declared version SHOULD attempt best-effort consumption, not refuse.
+
+## What we can align without harming Obsidian-as-human-interface
+
+Most of OKF is already what memento does, or what memento can do without touching the human surface:
+
+- **Substrate is identical.** Markdown + YAML frontmatter, version-controlled directory tree. Obsidian opens an OKF bundle as a vault unchanged.
+- **File path is concept identity.** memento already commits to this (spec §5; ADR-0007 pins key stability). The only difference is the `.md` strip — purely an export-side mapping.
+- **Frontmatter as additional keys.** OKF's permissive consumption model means memento's `mode`, `summary_hash`, `updated`, and the rest are valid OKF extension keys. Producers may add, consumers MUST preserve. This buys us full retention of write modes, summary detection, and any future structured metadata *without leaving conformance*.
+- **Typed links in frontmatter, not body syntax.** OKF says links in the markdown body are untyped. memento's planned typed-link overlay (`depends-on`, `supersedes`, `embeds`) lives in the compiled manifest, computed from frontmatter conventions and link context. As long as we never encode link types in the markdown body (no `[[target|type:depends-on]]`, no link-attribute extensions), we stay clean. This is a constraint we should pin now — it costs nothing today and keeps the export path open.
+- **Bare-markdown bodies.** Both formats are content-agnostic about body structure. memento's heading-tree extraction and section-anchored reads operate on standard markdown headings; nothing OKF says forbids this.
+- **`# Schema`, `# Examples`, `# Citations` conventional headings.** OKF names these as conventions, not requirements. memento's heading extraction picks them up uniformly. Free.
+- **Distribution.** OKF lists "git repository (recommended), tarball, zip, or subdirectory within a larger repository." memento's in-repo vault model is the "subdirectory within a larger repository" case.
+
+The Obsidian commitment (spec §3: human opens the resolved memory directory as vault root; wikilinks bounded to the store) is not threatened by any of the above. OKF says nothing about how a human authors; it specifies the on-disk shape and what consumers must tolerate.
+
+## Where the gap remains
+
+Three meaningful places memento and OKF do not line up:
+
+### 1. Bare-frontmatter tolerance
+
+memento's adopt-or-create flow (spec §11; ADR-0005) explicitly accepts markdown files with no frontmatter at all — filename becomes title, first line becomes summary, the gap is flagged. OKF conformance requires *parseable* YAML frontmatter with a non-empty `type:` on every non-reserved `.md` file.
+
+This is not a conflict for internal use — bare-markdown tolerance is a human ergonomics property that lets memento be useful on day zero. It only matters on *export*: a memento→OKF export shim must synthesise `type:` for any file missing it. The reasonable default is folder-name (`/tables/foo.md` → `type: Table`) with a fallback like `type: Note`. The mechanism is small; the design decision is just to commit that bare-markdown is permitted internally and synthesised on export.
+
+### 2. Reserved filenames
+
+OKF reserves `index.md` and `log.md` at any directory level. memento today does not reserve these — a user could author `index.md` as a regular concept note.
+
+If OKF compatibility ever becomes a stated goal, memento would need to either (a) treat `index.md`/`log.md` as reserved everywhere, breaking adoption of any existing vault that uses them as content, or (b) reserve them only in OKF-export mode, which means the export step rejects/renames or special-cases such files. Option (b) is the lower-friction choice and is consistent with how we already handle namespaces (`.memento/`, `_memento/`). The cost of (a) is that *every* memento vault becomes more constrained for the sake of a feature most users will not use. Lean (b).
+
+### 3. Wikilinks vs. markdown links
+
+OKF specifies standard markdown links (`[text](/path.md)` absolute, `[text](./other.md)` relative). memento's authoring surface is Obsidian's `[[wikilinks]]`, which we resolve at compile time (spec §4 link graph; §7 read).
+
+This is mostly an export-side translation: at OKF export, wikilinks resolve to standard markdown links with `/`-prefixed absolute paths. The human authoring experience stays Obsidian-native; the OKF-conformant artifact is generated. The one wrinkle: OKF's "links MUST tolerate brokenness" combined with our resolved-vs-unresolved distinction means unresolved wikilinks at export time become broken markdown links pointing at non-existent paths. That is OKF-conformant (broken links are permitted) but worth being explicit about — we are not silently dropping unresolved links, we are emitting them as broken targets, which is the OKF-correct behaviour.
+
+## Should we expose this as an explicit mode?
+
+Two ways to think about it:
+
+**Option A — single internal model, OKF as an export target.** memento stores and operates on its native model (vault-relative keys with `.md`, wikilinks, manifest, write modes). `memento export --okf <dir>` produces an OKF-conformant bundle as a one-shot artifact. The human keeps the Obsidian-native authoring surface; the OKF bundle is a publication step.
+
+**Option B — dual-mode vault.** memento can operate on a vault that *is itself* an OKF bundle, with markdown links instead of wikilinks, `.md`-stripped IDs in cross-references, OKF-style `index.md`/`log.md` reserved. Probably toggled by a `format: okf` flag in `.memento/config.toml`.
+
+Option A is much smaller. It treats OKF as an interchange format — the role OKF positions itself for — and keeps the internal model unconstrained. The Obsidian commitment is fully preserved because the human surface is unchanged. The export shim is bounded and testable.
+
+Option B is bigger and pulls against the Obsidian commitment: Obsidian's wikilink rewriting, backlinks pane, and graph view are first-class for `[[wikilinks]]` and noticeably less polished for standard markdown links. Operating on an OKF-native vault degrades the human surface to gain a property (on-disk conformance) that Option A delivers via a one-step export. The only reason to want Option B is if memento is being used as a long-running editor over a vault that other OKF consumers also want to edit live — a use case we have no evidence for.
+
+**Working position: Option A.** Pin "OKF as export target, not native mode" as the default posture. Revisit only if a concrete use case for live OKF-native editing surfaces.
+
+A small contingent design move that costs nothing now: keep the manifest schema and the writing/read APIs export-agnostic. Specifically, do not let typed-link syntax leak into the markdown body (frontmatter only). That preserves Option A indefinitely.
+
+## Where OKF is going, and whether we can be on the path early
+
+The spec is explicit that v0.1 is "intentionally a starting point, designed for backward-compatible growth." A few directions look likely based on what is and is not in v0.1:
+
+- **Compiled / cached indexes.** OKF's progressive-disclosure mechanism today is a tree of `index.md` files, manually curated or tool-generated. This is the wiki-folder-with-a-README pattern. It does not give a consumer a single scannable surface of titles + summaries + headings + tags for the whole bundle. The moment OKF bundles get large or are consumed by latency-sensitive agents, a compiled index will emerge — either as a convention (`/.okf/index.json`) or as a sibling artifact. memento's `manifest.json` is already that artifact. The honest claim: if OKF moves toward a compiled index, the shape of memento's manifest is a reasonable starting reference, and shipping `<bundle>/.okf/index.json` alongside the OKF bundle in our export is a low-cost contribution.
+- **Section-anchored addressing.** OKF concept IDs are file paths. Section-level read addressing (memento's `read <key>#<heading>`) is not in v0.1. As soon as bundles include long-form concepts (specs, runbooks), section addressing becomes obvious. memento has worked through the heading-extraction and slug rules already (spec §7); these are publishable as a profile or extension proposal.
+- **Typed links.** OKF's untyped-link rule is a v0.1 conservatism, not a design conviction (the spec acknowledges links assert *some* relationship). The hard cases — supersession between ADRs, depends-on between specs, embeds vs. references — will pressure-test the untyped rule fast. memento's frontmatter-encoded typed-link approach is one of the cleaner ways to add types without breaking the "body links are untyped" rule, because the body still parses identically under v0.1 consumers.
+- **Write semantics / mutation.** OKF v0.1 is read-only in spirit — it specifies how to produce and consume, not how to update. Once enrichment agents start writing back, something like memento's write-mode taxonomy (`append-only`, `section-replace`, `keyed-upsert`, `read-only`) becomes load-bearing — agents will rationalise past prose rules. ADR-0015 is upstream of where OKF will land here.
+- **Distribution and versioning.** OKF lists git-repo / tarball / zip / subdirectory. memento's "subdirectory in a larger repo" is the default case. If OKF develops conventions around package indexing or registry-like distribution, that is downstream of where we operate; track but don't pre-build.
+
+**Reasonable posture for getting on early without locking in:**
+
+1. Keep the manifest schema versioned (already committed, spec §4 `schema_version`) and treat it as something we might publish as a reference for an OKF-aligned index format.
+2. Hold the line that typed-link information lives in frontmatter / the manifest, not in markdown body link syntax. Cheap to maintain; preserves OKF body-link conformance forever.
+3. Avoid baking memento-specific filename conventions into the *human-visible vault root* where OKF will eventually reserve names. `_memento/` and `.memento/` are safely-prefixed; do not introduce a memento-flavoured `index.md` or `log.md` at the vault root.
+4. When an OKF spec discussion opens (issues on the knowledge-catalog repo, follow-up posts), bring observations from dogfooding: how often section addressing is needed, where the untyped-link rule pinches, what the manifest is actually used for. Evidence beats speculation in standards discussions.
+5. Defer the export shim itself until there is a concrete consumer asking for it. Cost of building it speculatively is real; cost of *preserving the ability to build it cheaply* is zero if the above constraints hold.
+
+## What this is explicitly not
+
+- **Not a commitment to OKF conformance.** memento's design center is the human-authored, agent-consumed in-repo memory substrate; OKF is one of several formats it could speak. If OKF stalls or diverges, this analysis loses force; the constraints above (typed-links-in-frontmatter, manifest versioning, namespace prefixes) are cheap insurance, not a strategic bet.
+- **Not a roadmap change.** No v0–v4 entry needs adjustment based on this note. The export shim, if built, is post-v4 unless evidence pulls it forward.
+- **Not a proposal to alter the Obsidian-as-human-interface commitment.** Everything above preserves it.
+
+## Why this stays unresolved
+
+OKF is one day old (as of writing). The spec is v0.1, explicitly a starting point. The right move is to record the alignment analysis and pin the cheap constraints (typed-link placement, namespace prefixing, manifest versioning) — not to build the export shim or expose a dual-mode flag before we know whether OKF gains traction.
+
+Revisit triggers:
+
+- An OKF-compatible consumer (BI tool, agent framework, catalog) emerges that we would want memento vaults to feed.
+- An OKF spec discussion opens on compiled indexes, section addressing, typed links, or write semantics — direct opportunity to bring memento's prior art.
+- A memento user requests OKF export specifically.
+- OKF v0.2+ lands and either narrows or broadens the gap.
+
+## Addendum 2026-06-14: dual-mode init as a deployment option
+
+The framing above treats Option B (OKF-native vault) as "degrading the Obsidian surface." That framing is wrong for users who were not going to use Obsidian in the first place. The Obsidian commitment in spec §3 is an *opinionated default* for the typical deployment, not a constraint on the design space. A user whose human surface is VS Code, a static-site renderer, a web viewer, or no human surface at all (pure agent consumption) gets no benefit from wikilinks and is actively penalised by them when those tools render plain markdown.
+
+So the question is better stated: **should `memento init` accept a `--format=okf` (or similar) flag that selects an OKF-native deployment, preserved in `.memento/config.toml`?** The Obsidian-default deployment is unaffected; the question is whether to support a second, equally first-class deployment shape.
+
+### Use cases that would want this
+
+- A team that already publishes OKF bundles externally wants its in-repo agent memory in the same format — no export step, no two-source drift.
+- A non-Obsidian solo developer who prefers standard markdown links and gets better tooling support for them across editors and renderers.
+- An organisation standardised on OKF as the cross-system interchange wants memento as the *editing* layer over those bundles, not just an *export* producer.
+
+These are real, not hypothetical — though we have zero of them as users today.
+
+### Costs of dual-mode that the export-only framing dodges
+
+Building a `format:` toggle is not free, and the cost is structural, not one-off:
+
+1. **Link-syntax has two paths through compile.** Wikilink resolution vs. standard markdown link resolution; different target-extraction rules; different what-counts-as-an-edge logic. Bounded but real.
+2. **Key shape has two paths.** `.md`-suffixed vs `.md`-stripped concept IDs propagate through manifest, brief, read, write, error messages.
+3. **Reserved-filename handling diverges.** OKF mode must treat `index.md`/`log.md` as operational, not concepts. Obsidian mode lets them be concepts.
+4. **Write-mode metadata becomes a shared-vault hazard.** In OKF mode, memento's `mode:` frontmatter is an extension key — OKF-conformant, but another OKF tool editing the same bundle won't honour it. The "physical unwritability" property of `mode: read-only` (spec §8) weakens when the bundle is not exclusively memento-managed.
+5. **Test surface doubles** for any path that branches on format.
+6. **Every future design decision now has a two-axis answer.** This is the deepest cost — once `format` exists in config, typed-link encoding, summary rendering, link-graph computation, the brief layout, and any new verb has to decide what it does in each mode. Optionality has gravity.
+
+Cost (6) is the one to weigh hardest. A toggle introduced casually accretes branches faster than the team carrying it can keep coherent.
+
+### What we can do now without building it
+
+The lowest-cost move is to preserve the *internal model's ability* to accommodate either deployment, without exposing the choice as a user-facing flag yet. Concretely:
+
+- Keep the manifest schema agnostic to link *syntax* — manifest stores resolved keys and link types, not raw wikilink text. (Already the case per spec §4; worth pinning explicitly.)
+- Localise key-shape decisions to a small number of call sites, so a future format toggle can change "`.md` stripped or not" in one place rather than threading through the code.
+- Hold the line that typed-link information lives in frontmatter / manifest, never in body link syntax (already pinned above; the same constraint serves dual-mode and export-only equally).
+- Do not introduce a memento-flavoured `index.md` or `log.md` at the vault root, in any mode. Those filenames belong to OKF in any future where dual-mode matters.
+
+These cost nothing today. They preserve the option indefinitely.
+
+### Revised working position
+
+The earlier position — "Option A: OKF as export target, not native mode" — stands as the *default* deployment. The revision is that Option B is not rejected on principle; it is **deferred and pre-positioned**. If a user surfaces with the use case above, the path from "we don't do this" to "we do this" should not require a rewrite. The cheap constraints in this section are what keep that path open.
+
+Trigger for actual implementation work: a concrete user with a non-Obsidian deployment intent, *or* a credible OKF consumer ecosystem where bidirectional editing (not just export) is the natural shape.
+
+## Provenance
+
+Originated in a 2026-06-14 conversation immediately after the Google Cloud OKF v0.1 announcement. Recorded to capture the alignment analysis while both formats are young and the cost of preserving compatibility is minimal. Addendum same day after the user pushed back on the "Obsidian as universal commitment" framing and surfaced the dual-mode deployment question.
