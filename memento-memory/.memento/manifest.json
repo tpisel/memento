@@ -1310,8 +1310,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 36031,
-      "lines": 368,
+      "bytes": 36650,
+      "lines": 378,
       "tags": [],
       "headings": [
         {
@@ -1433,6 +1433,11 @@
           "level": 2,
           "text": "Dogfooding note",
           "slug": "dogfooding-note"
+        },
+        {
+          "level": 2,
+          "text": "Addendum 2026-06-14: vault-rename-safe gitignore block",
+          "slug": "addendum-2026-06-14-vault-rename-safe-gitignore-block"
         }
       ],
       "mode": "append-only",

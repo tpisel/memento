@@ -131,7 +131,7 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensureBootloader(root, v, opts); err != nil {
 		return vault.Vault{}, err
 	}
-	if err := ensureGitignore(root, v); err != nil {
+	if err := ensureGitignore(root); err != nil {
 		return vault.Vault{}, err
 	}
 	if err := ensurePreCommitHook(root, v); err != nil {
@@ -248,9 +248,9 @@ func ensureUsingMementoGuide(v vault.Vault) error {
 	return nil
 }
 
-func ensureGitignore(repoRoot string, v vault.Vault) error {
+func ensureGitignore(repoRoot string) error {
 	path := filepath.Join(repoRoot, ".gitignore")
-	block := gitignoreBlock(repoRoot, v)
+	block := gitignoreBlock()
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -273,29 +273,16 @@ func ensureGitignore(repoRoot string, v vault.Vault) error {
 	return nil
 }
 
-func gitignoreBlock(repoRoot string, v vault.Vault) string {
-	prefix := gitignoreVaultPrefix(repoRoot, v.Root)
-
+func gitignoreBlock() string {
 	return strings.Join([]string{
 		gitignoreStartSentinel,
 		"# Obsidian per-machine UI state",
-		prefix + ".obsidian/workspace*",
-		prefix + ".obsidian/cache",
+		"**/.obsidian/workspace*",
+		"**/.obsidian/cache",
 		"# Memento generated artifacts",
-		prefix + vault.ToolDirName + "/" + vault.BriefFileName,
+		"**/" + vault.ToolDirName + "/" + vault.BriefFileName,
 		gitignoreEndSentinel,
 	}, "\n")
-}
-
-func gitignoreVaultPrefix(repoRoot, vaultRoot string) string {
-	rel, err := filepath.Rel(repoRoot, vaultRoot)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return ""
-	}
-	if rel == "." {
-		return ""
-	}
-	return filepath.ToSlash(rel) + "/"
 }
 
 func ensurePreCommitHook(repoRoot string, v vault.Vault) error {

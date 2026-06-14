@@ -366,3 +366,13 @@ We'll dogfood docs in our repo using the same method, though it's likely that we
 memento dir is `memento-memory/`
 ADRs in `memento-memory/Architecture decision record/`
 If a non-blocking open question poses itself in development, append to [[Open questions]], similarly for [[Feature ideas]]
+
+## Addendum 2026-06-14: vault-rename-safe gitignore block
+
+The v1 `.gitignore` sentinel block is still sentinel-bounded and file-specific for generated artifacts, but its managed entries are recursive rather than vault-relative:
+
+- `**/.obsidian/workspace*`
+- `**/.obsidian/cache`
+- `**/_memento/brief.md`
+
+This supersedes the earlier V1 triage wording that called the gitignore insertion vault-relative. The bootloader and pre-commit hook still carry resolved vault paths where they need to point at a specific vault, but the gitignore block should survive a vault directory rename without re-running `memento init`.

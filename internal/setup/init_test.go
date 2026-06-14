@@ -232,9 +232,9 @@ func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {
 	}
 	for _, want := range []string{
 		"# memento:gitignore:start",
-		"memory/.obsidian/workspace*",
-		"memory/.obsidian/cache",
-		"memory/_memento/brief.md",
+		"**/.obsidian/workspace*",
+		"**/.obsidian/cache",
+		"**/_memento/brief.md",
 		"# memento:gitignore:end",
 	} {
 		if !strings.Contains(second, want) {
@@ -259,10 +259,10 @@ func TestInitWritesBriefIgnoreEntriesForGreenfieldVault(t *testing.T) {
 	}
 
 	gitignore := readSetupFile(t, repo, ".gitignore")
-	if !hasSetupLine(gitignore, "memory/_memento/brief.md") {
+	if !hasSetupLine(gitignore, "**/_memento/brief.md") {
 		t.Fatalf(".gitignore = %q, want file-specific brief ignore entry", gitignore)
 	}
-	if hasSetupLine(gitignore, "memory/_memento/") {
+	if hasSetupLine(gitignore, "memory/_memento/brief.md") || hasSetupLine(gitignore, "memory/_memento/") {
 		t.Fatalf(".gitignore = %q, want no folder-wide _memento ignore entry", gitignore)
 	}
 
@@ -292,10 +292,10 @@ func TestInitAddsBriefIgnoreEntriesWhenAdoptingExistingVault(t *testing.T) {
 	if !strings.HasPrefix(gitignore, "build/\n") {
 		t.Fatalf(".gitignore = %q, want existing content preserved at start", gitignore)
 	}
-	if !hasSetupLine(gitignore, "memory/_memento/brief.md") {
+	if !hasSetupLine(gitignore, "**/_memento/brief.md") {
 		t.Fatalf(".gitignore = %q, want file-specific brief ignore entry", gitignore)
 	}
-	if hasSetupLine(gitignore, "memory/_memento/") {
+	if hasSetupLine(gitignore, "memory/_memento/brief.md") || hasSetupLine(gitignore, "memory/_memento/") {
 		t.Fatalf(".gitignore = %q, want no folder-wide _memento ignore entry", gitignore)
 	}
 
@@ -321,10 +321,10 @@ func TestInitBriefIgnoreEntriesAreIdempotentWhenPresent(t *testing.T) {
 		"",
 		"# memento:gitignore:start",
 		"# Obsidian per-machine UI state",
-		"memory/.obsidian/workspace*",
-		"memory/.obsidian/cache",
+		"**/.obsidian/workspace*",
+		"**/.obsidian/cache",
 		"# Memento generated artifacts",
-		"memory/_memento/brief.md",
+		"**/_memento/brief.md",
 		"# memento:gitignore:end",
 		"",
 	}, "\n"))
@@ -349,7 +349,7 @@ func TestInitBriefIgnoreEntriesAreIdempotentWhenPresent(t *testing.T) {
 	if secondMementoignore != firstMementoignore {
 		t.Fatalf(".mementoignore changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstMementoignore, secondMementoignore)
 	}
-	if count := countSetupLine(secondGitignore, "memory/_memento/brief.md"); count != 1 {
+	if count := countSetupLine(secondGitignore, "**/_memento/brief.md"); count != 1 {
 		t.Fatalf(".gitignore brief entry count = %d, want 1; contents = %q", count, secondGitignore)
 	}
 	if count := countSetupLine(secondMementoignore, "_memento/brief.md"); count != 1 {
