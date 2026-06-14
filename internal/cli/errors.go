@@ -15,7 +15,6 @@ import (
 var (
 	ErrInvalidArguments      = errors.New("invalid arguments")
 	ErrUnknownCommand        = errors.New("unknown command")
-	ErrNotImplemented        = errors.New("not implemented")
 	ErrInvalidEntryReference = errors.New("invalid entry reference")
 	ErrNumericOutOfRange     = errors.New("numeric reference out of range")
 	ErrIO                    = errors.New("I/O error")
@@ -41,8 +40,6 @@ func errorToken(err error) string {
 	switch {
 	case errors.Is(err, ErrUnknownCommand):
 		return "unknown-command"
-	case errors.Is(err, ErrNotImplemented):
-		return "not-implemented"
 	case errors.Is(err, ErrInvalidArguments):
 		return "invalid-arguments"
 	case errors.Is(err, ErrInvalidEntryReference):

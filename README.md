@@ -24,7 +24,6 @@ Current verbs:
 - `memento init` - adopt or create a memory vault and wire local agent instructions.
 - `memento read <key>` - read a note, or a section with `<key>#<heading>`.
 - `memento write <key>` - create or append to a note from stdin.
-- `memento serve` - MCP server entrypoint; currently a stub.
 
 ## Performance
 

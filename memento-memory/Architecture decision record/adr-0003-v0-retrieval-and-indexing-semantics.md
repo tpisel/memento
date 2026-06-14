@@ -54,8 +54,7 @@ V0 deliberately does not support:
 
 ## Consequences
 
-- The v0 product can be useful before write automation or MCP exists.
+- The v0 product can be useful before full write automation exists.
 - The implementation can use robust markdown parsing without pretending memento is a general markdown formatter.
 - `.mementoignore` is familiar enough to learn quickly, but small enough to specify and test completely.
 - GitHub-style section anchors make links predictable for humans, agents, and external systems such as beads.
-

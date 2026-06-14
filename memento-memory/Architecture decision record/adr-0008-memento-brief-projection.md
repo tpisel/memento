@@ -36,14 +36,14 @@ OS-level locks (chmod, immutable bits) are deliberately not used: cross-platform
 
 ## Context
 
-The current manifest is consumed as JSON. That JSON carries structural overhead (field names, empty `links` arrays, HTML-escape leakage like `<` and `&` from Go's default encoder) that costs agent context tokens without aiding retrieval. Markdown is the native medium for both the agent surface and the human-via-Obsidian surface; JSON remains the right surface for machine consumers (the compile pipeline, a future MCP server, future tooling).
+The current manifest is consumed as JSON. That JSON carries structural overhead (field names, empty `links` arrays, HTML-escape leakage like `<` and `&` from Go's default encoder) that costs agent context tokens without aiding retrieval. Markdown is the native medium for both the agent surface and the human-via-Obsidian surface; JSON remains the right surface for machine consumers (the compile pipeline and future tooling).
 
 Manifest summaries today are extracted from the first paragraph after the title heading (`internal/markdown/metadata.go:firstParagraphText`). Frontmatter `summary:` overrides that fallback. The summary discipline ("lead with the decision, not the question") is a content concern that the brief surfaces but does not enforce — see `memento-memory/what makes a good summary.md`.
 
 Two alternatives were considered and rejected:
 
 - **Format flag on `compile`** (e.g., `compile --format=markdown`). Rejected because `compile` mutates disk (rebuilds the index) while brief is read-only. Bundling them makes `--print --format=markdown` ambiguous about whether the on-disk artifact changes, and conflates two conceptual operations.
-- **Inline rendering in the bootloader hook** (shell snippet in the AGENTS.md / CLAUDE.md injection). Rejected because the rendering is design, not plumbing — it needs tests and version-locking with the manifest code. Any future consumer (MCP server, alternate IDE integration) would otherwise re-implement the same transformation.
+- **Inline rendering in the bootloader hook** (shell snippet in the AGENTS.md / CLAUDE.md injection). Rejected because the rendering is design, not plumbing — it needs tests and version-locking with the manifest code. Any future consumer or alternate IDE integration would otherwise re-implement the same transformation.
 
 ## Consequences
 

@@ -76,8 +76,8 @@
       "key": "Architecture decision record/adr-0003-v0-retrieval-and-indexing-semantics.md",
       "title": "V0 retrieval and indexing semantics",
       "summary": "V0 scope is deterministic indexing and selective reads — one-vault discovery via marker, deterministic `manifest.json`, `read <key>` for whole files, `read <key>#<heading>` for section reads with GitHub-style slug anchors. `.mementoignore` supports a small `.gitignore`-like subset (literals, globs, `**`); negation, nested ignores, and full git-attribute compatibility are deliberately out of scope.",
-      "bytes": 3365,
-      "lines": 61,
+      "bytes": 3362,
+      "lines": 60,
       "tags": [
         "compile",
         "ignore",
@@ -120,10 +120,9 @@
       "key": "Architecture decision record/adr-0004-v0-write-scope.md",
       "title": "V0 write scope",
       "summary": "V0 write supports only creating a new file and appending to an existing one. Section-replace, keyed-upsert, and full mode enforcement are deferred to v2; declared `read-only` files remain socially read-only until enforcement lands. The CLI must not offer operations that imply historical rewriting.",
-      "bytes": 1878,
-      "lines": 36,
+      "bytes": 1866,
+      "lines": 35,
       "tags": [
-        "mcp",
         "memento",
         "write"
       ],
@@ -264,14 +263,19 @@
       "summary_stale": true,
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0019-descope-mcp-transport.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
       "key": "Architecture decision record/adr-0008-memento-brief-projection.md",
       "title": "Memento brief — agent-facing manifest projection",
       "summary": "Add a `memento brief` verb that emits the agent-facing markdown projection of the manifest. `compile` writes both `.memento/manifest.json` (canonical, versioned) and `_memento/brief.md` (derived, gitignored). `brief` reads the file, falling back to a render-from-JSON when absent. The brief carries `mode: read-only` frontmatter and a DO-NOT-EDIT banner; the bootloader injects brief output instead of raw JSON.",
-      "bytes": 6062,
+      "bytes": 6033,
       "lines": 61,
       "tags": [
         "agents",
@@ -669,11 +673,243 @@
       }
     },
     {
+      "key": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
+      "title": "Pre-commit edit window for new documents",
+      "summary": "A document that has not yet been committed to git is in its 'edit window': the write gate accepts full-file rewrites regardless of declared `mode:`. Once the document is first committed, the declared mode binds for all subsequent writes. Ratification event = first commit, not session boundary. Rule applies uniformly across `append-only`, `living`, and `read-only`.",
+      "bytes": 7612,
+      "lines": 71,
+      "tags": [
+        "lifecycle",
+        "memento",
+        "mode",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 3,
+          "text": "Why apply uniformly to read-only",
+          "slug": "why-apply-uniformly-to-read-only"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        },
+        {
+          "level": 2,
+          "text": "Supersedes (partial)",
+          "slug": "supersedes-partial"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0018-okf-compatible-frontmatter.md",
+      "title": "OKF-compatible frontmatter conventions",
+      "summary": "Adopt the OKF v0.1 frontmatter vocabulary into memento's Tier 2 (convention, parsed-and-ignored): `type`, `resource`, `timestamp`, `okf_version`. Promote `description:` to Tier 1 as a summary fallback source (after `summary:`, before first-paragraph). Deeper OKF alignment — wikilink-to-markdown-link conversion, concept-ID `.md` stripping, reserving `index.md`/`log.md` — explicitly deferred to a future configurability decision.",
+      "bytes": 7016,
+      "lines": 91,
+      "tags": [
+        "frontmatter",
+        "interop",
+        "memento",
+        "okf",
+        "schema"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 3,
+          "text": "Tier 2 additions (parsed and ignored)",
+          "slug": "tier-2-additions-parsed-and-ignored"
+        },
+        {
+          "level": 3,
+          "text": "Tier 1 promotion: description: as a summary fallback",
+          "slug": "tier-1-promotion-description-as-a-summary-fallback"
+        },
+        {
+          "level": 3,
+          "text": "What this ADR explicitly does not do",
+          "slug": "what-this-adr-explicitly-does-not-do"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0019-descope-mcp-transport.md",
+      "title": "Descope MCP transport — the CLI is the durable agent surface",
+      "summary": "MCP is removed from the roadmap. spec §13 v3 row is withdrawn. The CLI is the single durable surface agents interact with. The 'tool-layer write enforcement' property the spec credited to MCP is delivered identically by `memento write` going through the mode check — the guarantee belongs to the verb, not the transport. Beads serves as the working counter-example of a CLI-only agent workflow.",
+      "bytes": 4109,
+      "lines": 59,
+      "tags": [
+        "cli",
+        "mcp",
+        "memento",
+        "scope"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Rationale and consequences",
+          "slug": "rationale-and-consequences"
+        },
+        {
+          "level": 2,
+          "text": "Out of scope",
+          "slug": "out-of-scope"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0007-beads-integration-posture.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "memento-fb0",
+            "type": "wiki",
+            "resolved": false
+          }
+        ],
+        "in": []
+      }
+    },
+    {
+      "key": "Configurability exploration.md",
+      "title": "Configurability exploration",
+      "summary": "A catalogue of memento behaviours that have surfaced as potentially configurable — deployment format, edit-window policy, and future axes — without committing to expose any of them as user-facing config. Each entry records the default, the alternative use cases, the exposure shape, the cost of exposing, and the trigger that would justify implementation.",
+      "bytes": 7540,
+      "lines": 84,
+      "tags": [
+        "configuration",
+        "lifecycle",
+        "memento",
+        "okf",
+        "open-question",
+        "proposal"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "What this is",
+          "slug": "what-this-is"
+        },
+        {
+          "level": 2,
+          "text": "Thread 1 — deployment format (Obsidian-aligned vs OKF-aligned)",
+          "slug": "thread-1-deployment-format-obsidian-aligned-vs-okf-aligned"
+        },
+        {
+          "level": 2,
+          "text": "Thread 2 — edit-window policy for new documents",
+          "slug": "thread-2-edit-window-policy-for-new-documents"
+        },
+        {
+          "level": 2,
+          "text": "Recording discipline",
+          "slug": "recording-discipline"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "target",
+            "type": "wiki",
+            "resolved": false
+          }
+        ],
+        "in": []
+      }
+    },
+    {
       "key": "Feature thoughts.md",
       "title": "Feature thoughts",
       "summary": "Possible features and affordances:",
-      "bytes": 921,
-      "lines": 25,
+      "bytes": 937,
+      "lines": 23,
       "tags": [],
       "headings": [
         {
@@ -719,6 +955,129 @@
             "target": "spec.md",
             "type": "wiki",
             "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
+      "key": "OKF interop and external compatibility.md",
+      "title": "OKF interop and external compatibility",
+      "summary": "Working notes on aligning memento with Google Cloud's Open Knowledge Format (OKF) v0.1. Records what we can align without harming the Obsidian-as-human-interface commitment, what gap remains, whether to surface OKF support as an explicit mode, and where the OKF spec appears to be heading that we may already be on the path to.",
+      "bytes": 19305,
+      "lines": 157,
+      "tags": [
+        "distribution",
+        "format",
+        "interop",
+        "memento",
+        "obsidian",
+        "okf",
+        "open-question",
+        "proposal"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "What this is",
+          "slug": "what-this-is"
+        },
+        {
+          "level": 2,
+          "text": "OKF v0.1 in two paragraphs",
+          "slug": "okf-v01-in-two-paragraphs"
+        },
+        {
+          "level": 2,
+          "text": "What we can align without harming Obsidian-as-human-interface",
+          "slug": "what-we-can-align-without-harming-obsidian-as-human-interface"
+        },
+        {
+          "level": 2,
+          "text": "Where the gap remains",
+          "slug": "where-the-gap-remains"
+        },
+        {
+          "level": 3,
+          "text": "1. Bare-frontmatter tolerance",
+          "slug": "1-bare-frontmatter-tolerance"
+        },
+        {
+          "level": 3,
+          "text": "2. Reserved filenames",
+          "slug": "2-reserved-filenames"
+        },
+        {
+          "level": 3,
+          "text": "3. Wikilinks vs. markdown links",
+          "slug": "3-wikilinks-vs-markdown-links"
+        },
+        {
+          "level": 2,
+          "text": "Should we expose this as an explicit mode?",
+          "slug": "should-we-expose-this-as-an-explicit-mode"
+        },
+        {
+          "level": 2,
+          "text": "Where OKF is going, and whether we can be on the path early",
+          "slug": "where-okf-is-going-and-whether-we-can-be-on-the-path-early"
+        },
+        {
+          "level": 2,
+          "text": "What this is explicitly not",
+          "slug": "what-this-is-explicitly-not"
+        },
+        {
+          "level": 2,
+          "text": "Why this stays unresolved",
+          "slug": "why-this-stays-unresolved"
+        },
+        {
+          "level": 2,
+          "text": "Addendum 2026-06-14: dual-mode init as a deployment option",
+          "slug": "addendum-2026-06-14-dual-mode-init-as-a-deployment-option"
+        },
+        {
+          "level": 3,
+          "text": "Use cases that would want this",
+          "slug": "use-cases-that-would-want-this"
+        },
+        {
+          "level": 3,
+          "text": "Costs of dual-mode that the export-only framing dodges",
+          "slug": "costs-of-dual-mode-that-the-export-only-framing-dodges"
+        },
+        {
+          "level": 3,
+          "text": "What we can do now without building it",
+          "slug": "what-we-can-do-now-without-building-it"
+        },
+        {
+          "level": 3,
+          "text": "Revised working position",
+          "slug": "revised-working-position"
+        },
+        {
+          "level": 2,
+          "text": "Provenance",
+          "slug": "provenance"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "target",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "wikilinks",
+            "type": "wiki",
+            "resolved": false
           }
         ],
         "in": []
@@ -827,8 +1186,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 31964,
-      "lines": 341,
+      "bytes": 31564,
+      "lines": 338,
       "tags": [],
       "headings": [
         {
@@ -990,7 +1349,7 @@
       "key": "what makes a good summary.md",
       "title": "What makes a good summary",
       "summary": "A summary is read by an agent scanning the brief to decide what to open next. Lead with the decision or the load-bearing fact — not the question, the context, or the motivation. If reading the summary tells you the answer, the brief is doing its job; if it only tells you a file exists on the topic, the brief is just an index.",
-      "bytes": 3620,
+      "bytes": 3616,
       "lines": 48,
       "tags": [
         "draft",
@@ -1035,33 +1394,41 @@
     "beads": 2,
     "bootloader": 1,
     "brief": 3,
+    "cli": 1,
     "compile": 2,
     "config": 1,
+    "configuration": 1,
+    "distribution": 1,
     "draft": 1,
-    "frontmatter": 1,
+    "format": 1,
+    "frontmatter": 2,
     "git": 1,
     "ignore": 1,
     "init": 4,
+    "interop": 2,
+    "lifecycle": 2,
     "maintenance": 1,
     "manifest": 3,
     "markdown": 1,
     "mcp": 1,
-    "memento": 17,
-    "mode": 1,
+    "memento": 22,
+    "mode": 2,
     "namespace": 2,
-    "obsidian": 2,
-    "open-question": 1,
+    "obsidian": 3,
+    "okf": 3,
+    "open-question": 3,
     "orient": 1,
     "philosophy": 1,
-    "proposal": 1,
+    "proposal": 3,
     "read": 3,
     "retrieval": 1,
     "review": 3,
     "roadmap": 1,
-    "schema": 1,
+    "schema": 2,
+    "scope": 1,
     "summaries": 1,
     "vault": 2,
-    "write": 3,
+    "write": 4,
     "writing": 1
   }
 }

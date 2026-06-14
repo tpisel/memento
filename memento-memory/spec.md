@@ -36,7 +36,7 @@ The code is ground truth for *what is*. The durable layer should therefore hold 
 
 ## 2. Architecture
 
-**Library core, thin transports.** All work — walk vault, compile manifest, read a doc, write a doc with mode validation — lives in a package with no knowledge of how it is invoked. The CLI is a shell over that package. The MCP server (later) is a *second* shell over the identical package, registering the same functions as tools. Get this boundary right and the MCP is a `serve` subcommand, not a rewrite.
+**Library core, thin CLI.** All work — walk vault, compile manifest, read a doc, write a doc with mode validation — lives in a package with no knowledge of how it is invoked. The CLI is a shell over that package, and it is the durable surface agents bind to.
 
 Core API (illustrative):
 
@@ -58,11 +58,11 @@ Write(vault, key, content string, mode WriteMode) error // validates op against 
 List(vault string, f Filter) ([]Entry, error)
 ```
 
-CLI subcommands and MCP tool registrations both call exactly these. Neither contains business logic.
+CLI subcommands call exactly these. The CLI boundary contains no business logic.
 
-**Language: Go.** Single static binary (matches the beads distribution story — curl-install, no runtime), good MCP stdio-server story, sub-second vault walks. Homebrew name `memento` is clear.
+**Language: Go.** Single static binary (matches the beads distribution story — curl-install, no runtime), sub-second vault walks. Homebrew name `memento` is clear.
 
-**The `read`/`write` CLI verbs are built early even though a human rarely types them**, because they are the exact surface the MCP will expose. By the time `serve` is written, that API has been exercised through CLI use and ossified into something trusted — the MCP tool surface is *promoted from* a battle-tested CLI API, never designed speculatively.
+**The `read`/`write` CLI verbs are built early even though a human rarely types them**, because they are the exact surface agents use. That API is exercised through CLI use and ossifies into something trusted rather than being designed speculatively.
 
 ---
 
@@ -134,7 +134,7 @@ Three states, not two:
 
 - **Whole-file read:** `read <key>` returns the body.
 - **Section read:** `read <key>#<heading>` returns a single section, anchored on the heading tree already in the manifest. This is **decomposition at read-time** — the agent sees a doc's H2 outline in the manifest and pulls only the relevant section — and it is the answer to "how do I keep big specs usable without splitting them into files." Pulled forward to **v1/v2**, not deferred.
-- **Links (v3 consumption):** read surfaces a doc's **outlinks and inlinks** so the agent can navigate to more. Inlinks require the whole-vault graph (you cannot know what points *to* X by reading X), but this is computed at **compile time** and stored in the manifest, so read simply surfaces what is already there — the manifest is a runtime input to read, not just a session-start load.
+- **Links (v2 consumption):** read surfaces a doc's **outlinks and inlinks** so the agent can navigate to more. Inlinks require the whole-vault graph (you cannot know what points *to* X by reading X), but this is computed at **compile time** and stored in the manifest, so read simply surfaces what is already there — the manifest is a runtime input to read, not just a session-start load.
 - **Transclusions (`![[x]]`) are NOT resolved or inlined.** Auto-inlining means a doc that embeds five others pulls all five on read — the load-everything problem in a costume, directly against the decomposition goal. Transclusions are surfaced as an **`embed`-typed outlink** instead; the agent chooses whether to pull the target.
 - **Typed links** (`depends-on`, `see-also`, `supersedes`, `embeds`) let the agent traverse selectively rather than chase every organic human association (those are great for serendipitous human browsing, noisy as agent traversal edges). The typed-edge overlay is **grown from observed transitive-relevance misses**, not built speculatively — flat tag-filtered retrieval is the spine; edges are added where a real dependency would otherwise be missed.
 
@@ -153,7 +153,7 @@ Three states, not two:
 | `keyed-upsert` | Add or update structured entries by key | Discoveries, constraints |
 | `read-only` | Readable, not writable via the tool | Frozen specs, accepted ADRs |
 
-The tool **validates the operation against the declared mode before writing**. This is the thing the MCP gate makes reliable that prompt-instruction cannot: an agent can rationalise past a written rule, but a `read-only` doc is *physically* unwritable through the write tool — to change an accepted decision the agent **must** author a superseding record, not quietly rewrite history.
+The tool **validates the operation against the declared mode before writing**. This is what prompt-instruction cannot make reliable on its own: an agent can rationalise past a written rule, but a `read-only` doc is *physically* unwritable through `memento write` — to change an accepted decision the agent **must** author a superseding record, not quietly rewrite history.
 
 ### When the agent should write of its own accord (default triggers)
 
@@ -184,10 +184,10 @@ Trigger-shaped, not discretion-shaped — discretionary "write down useful thing
 
 **Generation is a separate, explicitly-invoked step**, and *who* generates depends on who is driving:
 
-- **Agent-driven (MCP, v3):** the tool returns *"these N files need summaries, here are their bodies"*; the agent writes summaries back through the write tool. This borrows the calling agent's compute — **no API key lives in the tool**. This is the primary path and it is unlocked *by* the MCP, not a later add-on.
+- **Agent-driven (v4 design question):** a CLI workflow can return *"these N files need summaries, here are their bodies"*; the agent writes summaries back through the write tool. This borrows the calling agent's compute — **no API key lives in the tool**. ADR-0019 removed the transport dependency; the remaining design question is the CLI shape, such as `read` with summary-oriented output or `review`/`compile` producing a summary worklist.
 - **Standalone CLI (v4, optional):** a `--summarize` flag shells out to a configured model (e.g. the `claude` binary). Only matters when no agent is in the loop.
 
-So "auto-summarisation" is not a single feature at a fixed version: *detection* ships in v0; *agent-generation* arrives with the MCP at v3; *standalone CLI generation* is a v4 optional. Capability tracks who is driving.
+So "auto-summarisation" is not a single feature at a fixed version: *detection* ships in v0; agent-driven generation and standalone CLI generation remain v4 questions with different drivers. Capability tracks who is driving.
 
 ---
 
@@ -200,7 +200,6 @@ memento init             # adopt-or-create: scaffold/adopt the vault, hook, boot
 memento orient           # print tool-usage orientation baseline + opt-in overlay docs
 memento read  <key|@N>   # whole-file; supports read <key>#<heading>; @N reads a brief entry
 memento write <key>      # append/upsert/section-replace, validated against declared mode
-memento serve            # MCP server (v3) — registers compile/read/write/list as tools
 ```
 
 `compile` flags: `--dir`, `--print` (stdout, no file), `--summarize` (v4).
@@ -235,7 +234,6 @@ Root dispatch errors use `memento: <token>: ...` because no verb has been select
 | Token | When it fires | Sentinel | Recovery hint |
 |---|---|---|---|
 | `unknown-command` | Root dispatch cannot match the command name. | `cli.ErrUnknownCommand` | `Run 'memento help' for usage.` |
-| `not-implemented` | A reserved command exists but is intentionally not implemented yet. | `cli.ErrNotImplemented` | none |
 | `invalid-arguments` | Flag parsing fails, an unexpected positional argument is present, or a required positional argument is missing. | `cli.ErrInvalidArguments` | `Run 'memento help' for usage.` |
 | `vault-not-found` | Vault discovery/opening cannot find a `.memento/` marker. | `vault.ErrVaultNotFound` | none |
 | `multiple-vaults` | Repository discovery finds more than one `.memento/` marker. | `vault.ErrMultipleVaults` | none |
@@ -300,10 +298,10 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 | Ver | Scope |
 |---|---|
 | **v0** | CLI `compile`, `init`, `read`, and minimum `write`. Point at or discover one marker-based vault → canonical `.memento/manifest.json` plus generated `_memento/brief.md` (`--print` to stdout for testing the JSON representation). Includes: `<project>-memory/` init default, `.mementoignore` (subdir walking, glob+comment syntax), tag vocabulary (omitted if no tags exist), heading extraction, out/in link graph as data, bare-markdown fallback, summary-staleness **detection** (flag only, no generation), adopt-or-create init, pre-commit hook, sentinel bootloader injection, `.gitignore` stanza, `memento brief`, whole-file and `#heading` reads, and conservative write support limited to create/append. |
-| **v1** | Hardening and polish around the v0 surfaces after dogfooding: better diagnostics, portability fixes, and any compatibility adjustments needed before the MCP surface is promoted from the CLI. |
-| **v2** | Smarter writes. Tool-read conventions such as `_memento/writing.md` expose agent-facing write rules / triggers / placement conventions once ADR-0010 pins filenames and precedence. Full mode-aware editing, including `section-replace`, `keyed-upsert`, and mechanical `read-only` enforcement. Default ADR convention. |
-| **v3** | MCP server (`serve`). `read` surfaces out/inlinks for navigation. Agent-driven summarisation (borrow caller compute). |
-| **v4** | Standalone CLI auto-summarisation (`--summarize`, configured model). `review` verb for deterministic and agent-assisted maintenance. CLI verb to open Obsidian pointed at the resolved vault. |
+| **v1** | Hardening and polish around the v0 surfaces after dogfooding: better diagnostics, portability fixes, and compatibility adjustments to keep the CLI stable as the durable agent contract. |
+| **v2** | Smarter writes. Tool-read conventions such as `_memento/writing.md` expose agent-facing write rules / triggers / placement conventions once ADR-0010 pins filenames and precedence. Full mode-aware editing, including `section-replace`, `keyed-upsert`, and mechanical `read-only` enforcement. `read` surfaces out/inlinks for navigation. Default ADR convention. |
+| **v3** | Withdrawn by ADR-0019. Former non-transport items were re-homed: link surfaces on `read` to v2; agent-driven summarisation to v4 as a CLI workflow design question. |
+| **v4** | Agent-driven summarisation workflow and standalone CLI auto-summarisation (`--summarize`, configured model). `review` verb for deterministic and agent-assisted maintenance. CLI verb to open Obsidian pointed at the resolved vault. |
 
 ---
 
@@ -314,7 +312,6 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 - **Single source of truth.** The markdown files; the manifest and link graph are derived and cannot drift from them.
 - **Diffable = auditable.** Committed manifest + git makes semantic-memory changes and rot visible in review — the cheapest defence against silent decay.
 - **Structure earns itself from observed failure, not a-priori tidiness.** Applies to the typed-link graph, the `_memento/` filename set, the embedding index, and the taxonomy itself — add cardinality when a failure mode demands it, not before.
-- **Transports are dumb; the core is shared.** The MCP is a second mouth on the same library, promoted from a dogfooded CLI API.
 
 ---
 

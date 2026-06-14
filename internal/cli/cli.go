@@ -31,7 +31,6 @@ Usage:
   memento orient [--dir <vault>]
   memento read [--dir <vault>] <key|@N>
   memento write [--dir <vault>] <key>
-  memento serve
 
 Commands:
   help      Show this help text.
@@ -42,7 +41,6 @@ Commands:
   orient    Print tool-usage orientation and project overlays.
   read      Read a memory note by key or @N entry reference.
   write     Create or append to a memory note from stdin.
-  serve     MCP server (not implemented; see spec §13).
 `
 
 // Run dispatches the CLI and returns a process-style exit code.
@@ -76,9 +74,6 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		return runRead(args[1:], stdout, stderr)
 	case "write":
 		return runWrite(args[1:], stdin, stdout, stderr)
-	case "serve":
-		printCLIError(stderr, "serve", fmt.Errorf("%w: v3; see spec §13", ErrNotImplemented))
-		return 1
 	default:
 		printRootError(stderr, fmt.Errorf("%w %q", ErrUnknownCommand, args[0]))
 		return 2

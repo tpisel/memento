@@ -36,7 +36,6 @@ func TestHelpCommand(t *testing.T) {
 		"read",
 		"memento read [--dir <vault>] <key|@N>",
 		"version",
-		"serve     MCP server (not implemented; see spec §13).",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("Run(help) output %q does not contain %q", out, want)
@@ -83,27 +82,6 @@ func TestUnknownCommand(t *testing.T) {
 	assertRootErrorToken(t, stderr.String(), "unknown-command")
 	if !strings.Contains(stderr.String(), `unknown command "bogus"`) {
 		t.Fatalf("Run(bogus) stderr = %q, want unknown command message", stderr.String())
-	}
-}
-
-func TestServeCommandIsFutureStub(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-
-	code := Run([]string{"serve"}, &stdout, &stderr)
-	if code != 1 {
-		t.Fatalf("Run(serve) exit code = %d, want 1", code)
-	}
-	if stdout.Len() != 0 {
-		t.Fatalf("Run(serve) wrote stdout = %q, want empty", stdout.String())
-	}
-	assertCLIErrorToken(t, stderr.String(), "serve", "not-implemented")
-	for _, want := range []string{"not implemented", "v3", "spec §13"} {
-		if !strings.Contains(stderr.String(), want) {
-			t.Fatalf("Run(serve) stderr = %q, want %q", stderr.String(), want)
-		}
-	}
-	if strings.Contains(stderr.String(), "unknown command") {
-		t.Fatalf("Run(serve) stderr = %q, want non-usage not-implemented error", stderr.String())
 	}
 }
 

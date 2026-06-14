@@ -23,7 +23,7 @@ Same constraint for human readers in Obsidian: a wall of "this document discusse
 
 **Anti-pattern** (describes the question):
 
-> The specification defines several write modes: append-only, section-replace, keyed-upsert, and read-only. Those modes are important because the MCP write surface should eventually enforce memory hygiene mechanically rather than relying on prompt discipline.
+> The specification defines several write modes: append-only, section-replace, keyed-upsert, and read-only. Those modes are important because the write surface should eventually enforce memory hygiene mechanically rather than relying on prompt discipline.
 
 You finish reading and you still don't know what was decided about write modes. You have to open the file.
 

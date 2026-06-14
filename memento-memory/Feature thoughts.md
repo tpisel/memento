@@ -19,7 +19,5 @@ Possible features and affordances:
 
 
 
-I'm back and forth on whether we need an mcp after all. Beads demonstrates that you get fine performance with the cli so likely no need. Just need to manage consistent injection of instructions.
-
-
+Resolved by ADR-0019: memento does not need a second agent transport beyond the CLI. Beads demonstrates that CLI-driven agent workflows perform well enough; the remaining work is consistent instruction injection.
 
