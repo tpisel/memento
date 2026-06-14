@@ -134,6 +134,7 @@ Three states, not two:
 
 - **Whole-file read:** `read <key>` returns the body.
 - **Section read:** `read <key>#<heading>` returns a single section, anchored on the heading tree already in the manifest. This is **decomposition at read-time** — the agent sees a doc's H2 outline in the manifest and pulls only the relevant section — and it is the answer to "how do I keep big specs usable without splitting them into files." Pulled forward to **v1/v2**, not deferred.
+- **Binding state:** `read <key|@N>` writes `binding: ratified` or `binding: unratified` to stderr before stdout content. Stdout remains the note body alone so reads stay pipeable.
 - **Links (v2 consumption):** read surfaces a doc's **outlinks and inlinks** so the agent can navigate to more. Inlinks require the whole-vault graph (you cannot know what points *to* X by reading X), but this is computed at **compile time** and stored in the manifest, so read simply surfaces what is already there — the manifest is a runtime input to read, not just a session-start load.
 - **Transclusions (`![[x]]`) are NOT resolved or inlined.** Auto-inlining means a doc that embeds five others pulls all five on read — the load-everything problem in a costume, directly against the decomposition goal. Transclusions are surfaced as an **`embed`-typed outlink** instead; the agent chooses whether to pull the target.
 - **Typed links** (`depends-on`, `see-also`, `supersedes`, `embeds`) let the agent traverse selectively rather than chase every organic human association (those are great for serendipitous human browsing, noisy as agent traversal edges). The typed-edge overlay is **grown from observed transitive-relevance misses**, not built speculatively — flat tag-filtered retrieval is the spine; edges are added where a real dependency would otherwise be missed.
@@ -153,7 +154,7 @@ Three states, not two:
 | `keyed-upsert` | Add or update structured entries by key | Discoveries, constraints |
 | `read-only` | Readable, not writable via the tool | Frozen specs, accepted ADRs |
 
-The tool **validates the operation against the declared mode before writing**. This is what prompt-instruction cannot make reliable on its own: an agent can rationalise past a written rule, but a `read-only` doc is *physically* unwritable through `memento write` — to change an accepted decision the agent **must** author a superseding record, not quietly rewrite history.
+The tool **validates the operation against the declared mode before writing**. This is what prompt-instruction cannot make reliable on its own: an agent can rationalise past a written rule, but a ratified `read-only` doc is *physically* unwritable through `memento write` — to change an accepted decision after first commit the agent **must** author a superseding record, not quietly rewrite history. ADR-0017 makes the commit-as-review-boundary claim load-bearing for read-only enforcement in v1; the append-only and living edit-window legs remain deferred until the v2 overwrite surface tracked by `memento-88t`.
 
 ### When the agent should write of its own accord (default triggers)
 

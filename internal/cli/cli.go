@@ -289,14 +289,29 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 
 	target := flags.Arg(0)
 	var data []byte
+	var key string
+	var numberedManifest manifest.Manifest
+	var checkBriefHash bool
 	if strings.HasPrefix(target, "@") {
-		data, err = readNumberedEntry(v, strings.TrimPrefix(target, "@"), stderr)
+		data, key, numberedManifest, err = readNumberedEntry(v, strings.TrimPrefix(target, "@"))
+		checkBriefHash = true
 	} else {
 		data, err = note.Read(v, target)
+		key = target
 	}
 	if err != nil {
 		printCLIError(stderr, "read", err)
 		return 1
+	}
+
+	binding, err := note.BindingForReadTarget(v, key)
+	if err != nil {
+		printCLIError(stderr, "read", err)
+		return 1
+	}
+	fmt.Fprintf(stderr, "binding: %s\n", binding)
+	if checkBriefHash {
+		warnIfBriefHashDrift(v, numberedManifest, stderr)
 	}
 
 	if _, err := stdout.Write(data); err != nil {
@@ -306,36 +321,35 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func readNumberedEntry(v vault.Vault, target string, stderr io.Writer) ([]byte, error) {
+func readNumberedEntry(v vault.Vault, target string) ([]byte, string, manifest.Manifest, error) {
 	number, err := strconv.Atoi(target)
 	if err != nil {
-		return nil, fmt.Errorf("%w: entry reference must be @ followed by a number: @%s", ErrInvalidEntryReference, target)
+		return nil, "", manifest.Manifest{}, fmt.Errorf("%w: entry reference must be @ followed by a number: @%s", ErrInvalidEntryReference, target)
 	}
 	if number < 1 {
-		return nil, fmt.Errorf("%w: entry number must be 1 or greater: @%s", ErrNumericOutOfRange, target)
+		return nil, "", manifest.Manifest{}, fmt.Errorf("%w: entry number must be 1 or greater: @%s", ErrNumericOutOfRange, target)
 	}
 
 	m, err := readManifest(v)
 	if err != nil {
-		return nil, err
+		return nil, "", manifest.Manifest{}, err
 	}
 
 	numbered := brief.NumberedEntries(m)
 	if number > len(numbered) {
-		return nil, fmt.Errorf("%w: entry %d does not exist in manifest; manifest has %d entries", ErrNumericOutOfRange, number, len(numbered))
+		return nil, "", manifest.Manifest{}, fmt.Errorf("%w: entry %d does not exist in manifest; manifest has %d entries", ErrNumericOutOfRange, number, len(numbered))
 	}
 
 	key := numbered[number-1].Entry.Key
 	data, err := note.Read(v, key)
 	if err != nil {
 		if errors.Is(err, note.ErrNotFound) {
-			return nil, fmt.Errorf("%w: entry %d's file `%s` no longer exists", manifest.ErrStale, number, key)
+			return nil, "", manifest.Manifest{}, fmt.Errorf("%w: entry %d's file `%s` no longer exists", manifest.ErrStale, number, key)
 		}
-		return nil, err
+		return nil, "", manifest.Manifest{}, err
 	}
 
-	warnIfBriefHashDrift(v, m, stderr)
-	return data, nil
+	return data, key, m, nil
 }
 
 func readManifest(v vault.Vault) (manifest.Manifest, error) {

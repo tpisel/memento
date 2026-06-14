@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -629,13 +630,31 @@ func TestReadPrintsRequestedMarkdownForExplicitDir(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read --dir notes/deep.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(read) stderr = %q, want empty", stderr.String())
+	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+		t.Fatalf("Run(read) stderr = %q, want %q", got, want)
 	}
 
 	want := "# Deep\n\nNested content.\n"
 	if stdout.String() != want {
 		t.Fatalf("Run(read) stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestReadPrintsUnratifiedBindingForUntrackedGitNote(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "note.md", "# Note\n\nDraft.\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"read", "note.md"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read unratified) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if got, want := stderr.String(), "binding: unratified\n"; got != want {
+		t.Fatalf("Run(read unratified) stderr = %q, want %q", got, want)
+	}
+	if want := "# Note\n\nDraft.\n"; stdout.String() != want {
+		t.Fatalf("Run(read unratified) stdout = %q, want %q", stdout.String(), want)
 	}
 }
 
@@ -655,8 +674,8 @@ func TestReadNumericReferenceResolvesAgainstManifestOrdering(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read @2) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(read @2) stderr = %q, want empty", stderr.String())
+	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+		t.Fatalf("Run(read @2) stderr = %q, want %q", got, want)
 	}
 	if want := "# Beta\n\nNested note.\n"; stdout.String() != want {
 		t.Fatalf("Run(read @2) stdout = %q, want %q", stdout.String(), want)
@@ -719,6 +738,9 @@ func TestReadNumericReferenceWarnsWhenManifestHashDiffersFromBrief(t *testing.T)
 	}
 	if want := "# Note\n\nSummary.\n"; stdout.String() != want {
 		t.Fatalf("Run(read @1) stdout = %q, want %q", stdout.String(), want)
+	}
+	if !strings.HasPrefix(stderr.String(), "binding: ratified\n") {
+		t.Fatalf("Run(read @1) stderr = %q, want binding first", stderr.String())
 	}
 	if want := "warn: manifest changed since last brief, numbers may not match your view"; !strings.Contains(stderr.String(), want) {
 		t.Fatalf("Run(read @1) stderr = %q, want %q", stderr.String(), want)
@@ -795,8 +817,8 @@ func TestReadNumericReferenceSkipsHashCheckWhenBriefIsMissing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read @1) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(read @1) stderr = %q, want empty", stderr.String())
+	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+		t.Fatalf("Run(read @1) stderr = %q, want %q", got, want)
 	}
 	if want := "# Note\n\nSummary.\n"; stdout.String() != want {
 		t.Fatalf("Run(read @1) stdout = %q, want %q", stdout.String(), want)
@@ -812,8 +834,8 @@ func TestReadBareDigitPathReadsVaultFile(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read 5.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(read 5.md) stderr = %q, want empty", stderr.String())
+	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+		t.Fatalf("Run(read 5.md) stderr = %q, want %q", got, want)
 	}
 	if want := "# Five\n\nPath note.\n"; stdout.String() != want {
 		t.Fatalf("Run(read 5.md) stdout = %q, want %q", stdout.String(), want)
@@ -850,8 +872,8 @@ func TestReadPrintsRequestedSection(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read section) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(read section) stderr = %q, want empty", stderr.String())
+	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+		t.Fatalf("Run(read section) stderr = %q, want %q", got, want)
 	}
 
 	want := "## Target Heading\n\nTarget content.\n\n"
@@ -1106,7 +1128,7 @@ func TestCLIHelperErrorsWrapStableSentinels(t *testing.T) {
 		if err != nil {
 			t.Fatalf("vault.Open() error = %v, want nil", err)
 		}
-		_, err = readNumberedEntry(v, "abc", io.Discard)
+		_, _, _, err = readNumberedEntry(v, "abc")
 		if !errors.Is(err, ErrInvalidEntryReference) {
 			t.Fatalf("readNumberedEntry(abc) error = %v, want ErrInvalidEntryReference", err)
 		}
@@ -1122,7 +1144,7 @@ func TestCLIHelperErrorsWrapStableSentinels(t *testing.T) {
 		if _, err := writeCompileArtifacts(v); err != nil {
 			t.Fatalf("writeCompileArtifacts() error = %v, want nil", err)
 		}
-		_, err = readNumberedEntry(v, "0", io.Discard)
+		_, _, _, err = readNumberedEntry(v, "0")
 		if !errors.Is(err, ErrNumericOutOfRange) {
 			t.Fatalf("readNumberedEntry(0) error = %v, want ErrNumericOutOfRange", err)
 		}
@@ -1141,7 +1163,7 @@ func TestCLIHelperErrorsWrapStableSentinels(t *testing.T) {
 		if err := os.Remove(filepath.Join(root, "note.md")); err != nil {
 			t.Fatalf("remove note.md: %v", err)
 		}
-		_, err = readNumberedEntry(v, "1", io.Discard)
+		_, _, _, err = readNumberedEntry(v, "1")
 		if !errors.Is(err, manifest.ErrStale) {
 			t.Fatalf("readNumberedEntry(1) error = %v, want manifest.ErrStale", err)
 		}
@@ -1226,6 +1248,23 @@ func readCLIFile(t *testing.T, root, relPath string) string {
 		t.Fatalf("read %q: %v", relPath, err)
 	}
 	return string(data)
+}
+
+func initCLIGit(t *testing.T, root string) {
+	t.Helper()
+
+	runCLIGit(t, root, "init")
+}
+
+func runCLIGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, string(output))
+	}
 }
 
 func readRepoFile(t *testing.T, relPath string) string {

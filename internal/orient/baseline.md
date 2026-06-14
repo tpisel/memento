@@ -5,7 +5,7 @@ Memento is a thin retrieval and writing layer over a human-curated markdown memo
 ## Verbs
 
 - `brief` prints the agent-facing manifest projection: titles, summaries, tags, headings, modes, and numeric read references.
-- `read <key|N>` reads one note, numeric brief entry, or `key#heading` section.
+- `read <key|@N>` reads one note, numeric brief entry, or `key#heading` section. It prints `binding: ratified|unratified` to stderr before stdout content.
 - `write <key>` creates or appends to a note from stdin, subject to the note's declared mode.
 - `compile` rebuilds the manifest and derived brief artifacts from the vault.
 - `init` adopts or creates a vault and installs project bootstrapping artifacts.

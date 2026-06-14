@@ -40,6 +40,7 @@ func TestInitCreatesAgentInstructionsWhenAbsent(t *testing.T) {
 		"Durable project knowledge lives in `sample-app-memory`.",
 		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
 		"Read entries by key or `@N` index with `memento read <key|@N>`.",
+		"`memento read` writes `binding: ratified|unratified` to stderr before stdout content.",
 		"<!-- memento:end -->",
 	} {
 		if !strings.Contains(got, want) {
@@ -161,6 +162,7 @@ func TestInitBootloaderUsesCustomMemoryDirectoryPath(t *testing.T) {
 		"Durable project knowledge lives in `docs/project-memory`.",
 		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
 		"Read entries by key or `@N` index with `memento read <key|@N>`.",
+		"`memento read` writes `binding: ratified|unratified` to stderr before stdout content.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("AGENTS.md = %q, want it to contain %q", got, want)
@@ -639,6 +641,7 @@ func assertPointerBootloader(t *testing.T, relPath, got, memoryPath string) {
 		"Durable project knowledge lives in `" + memoryPath + "`.",
 		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
 		"Read entries by key or `@N` index with `memento read <key|@N>`.",
+		"`memento read` writes `binding: ratified|unratified` to stderr before stdout content.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("%s = %q, want it to contain %q", relPath, got, want)

@@ -3,6 +3,7 @@ package note
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -39,7 +40,41 @@ func TestWriteAppendsExistingMarkdownFile(t *testing.T) {
 	}
 }
 
-func TestWriteRejectsReadOnlyModeWithoutChangingFile(t *testing.T) {
+func TestWriteAppendsUnratifiedReadOnlyMode(t *testing.T) {
+	root := makeVault(t)
+	initGit(t, root)
+	original := "---\nmode: read-only\n---\n# Note\n\nOriginal.\n"
+	writeFile(t, root, "note.md", original)
+
+	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	if err != nil {
+		t.Fatalf("Write(unratified read-only) error = %v, want nil", err)
+	}
+
+	want := original + "\nAppended.\n"
+	if got := readFile(t, root, "note.md"); got != want {
+		t.Fatalf("unratified read-only file = %q, want %q", got, want)
+	}
+}
+
+func TestWriteRejectsRatifiedReadOnlyModeWithoutChangingFile(t *testing.T) {
+	root := makeVault(t)
+	initGit(t, root)
+	original := "---\nmode: read-only\n---\n# Note\n\nOriginal.\n"
+	writeFile(t, root, "note.md", original)
+	commitAll(t, root)
+
+	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	if !errors.Is(err, ErrReadOnly) {
+		t.Fatalf("Write(ratified read-only) error = %v, want ErrReadOnly", err)
+	}
+
+	if got := readFile(t, root, "note.md"); got != original {
+		t.Fatalf("ratified read-only file changed to %q, want %q", got, original)
+	}
+}
+
+func TestWriteRejectsNonGitReadOnlyModeWithoutChangingFile(t *testing.T) {
 	root := makeVault(t)
 	original := "---\nmode: read-only\n---\n# Note\n\nOriginal.\n"
 	writeFile(t, root, "note.md", original)
@@ -51,6 +86,40 @@ func TestWriteRejectsReadOnlyModeWithoutChangingFile(t *testing.T) {
 
 	if got := readFile(t, root, "note.md"); got != original {
 		t.Fatalf("read-only file changed to %q, want %q", got, original)
+	}
+}
+
+func TestWriteAppendsUnratifiedNonReadOnlyModes(t *testing.T) {
+	tests := []struct {
+		name     string
+		original string
+	}{
+		{
+			name:     "append-only",
+			original: "---\nmode: append-only\n---\n# Note\n\nOriginal.\n",
+		},
+		{
+			name:     "missing mode",
+			original: "---\ntitle: Note\n---\n# Note\n\nOriginal.\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := makeVault(t)
+			initGit(t, root)
+			writeFile(t, root, "note.md", tt.original)
+
+			err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+			if err != nil {
+				t.Fatalf("Write(%s) error = %v, want nil", tt.name, err)
+			}
+
+			want := tt.original + "\nAppended.\n"
+			if got := readFile(t, root, "note.md"); got != want {
+				t.Fatalf("appended file = %q, want %q", got, want)
+			}
+		})
 	}
 }
 
@@ -245,6 +314,34 @@ func TestWriteRejectsIgnoredContentPaths(t *testing.T) {
 				t.Fatalf("Write(%q) error = %v, want ErrInvalidKey", key, err)
 			}
 		})
+	}
+}
+
+func initGit(t *testing.T, root string) {
+	t.Helper()
+
+	runGit(t, root, "init")
+}
+
+func commitAll(t *testing.T, root string) {
+	t.Helper()
+
+	runGit(t, root, "add", ".")
+	runGit(t, root,
+		"-c", "user.name=Memento Test",
+		"-c", "user.email=memento-test@example.invalid",
+		"commit", "--no-gpg-sign", "-m", "initial",
+	)
+}
+
+func runGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, string(output))
 	}
 }
 

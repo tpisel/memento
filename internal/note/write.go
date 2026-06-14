@@ -47,7 +47,7 @@ func Write(v vault.Vault, key string, content []byte, opts WriteOptions) error {
 		return err
 	}
 
-	if err := validateAppendMode(key, path); err != nil {
+	if err := validateAppendMode(v, key, path); err != nil {
 		return err
 	}
 
@@ -101,7 +101,7 @@ func normalizeWritableKey(v vault.Vault, key string) (string, error) {
 	return key, nil
 }
 
-func validateAppendMode(key, path string) error {
+func validateAppendMode(v vault.Vault, key, path string) error {
 	source, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -115,6 +115,13 @@ func validateAppendMode(key, path string) error {
 		return fmt.Errorf("extract metadata from %s: %w", key, err)
 	}
 	if meta.Mode == markdown.ModeReadOnly {
+		ratified, err := isRatified(v, key)
+		if err != nil {
+			return err
+		}
+		if !ratified {
+			return nil
+		}
 		return fmt.Errorf("%w: %s", ErrReadOnly, key)
 	}
 	return nil

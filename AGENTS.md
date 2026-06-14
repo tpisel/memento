@@ -24,6 +24,7 @@ When memento CLI support exists, replace the manual memory scan with the manifes
 Durable project knowledge lives in `memento-memory`.
 Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.
 Read entries by key or `@N` index with `memento read <key|@N>`.
+`memento read` writes `binding: ratified|unratified` to stderr before stdout content.
 <!-- memento:end -->
 
 Working state lives in beads (`bd ready`); discoveries that outlive a task go to `memento-memory/`, not beads notes.

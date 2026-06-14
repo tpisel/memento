@@ -25,7 +25,7 @@ The write-mode taxonomy in spec §8 collapses from four modes to three.
 Three further commitments:
 
 1. **`section-replace` and `keyed-upsert` are retired.** They appear in spec §8 as v2 modes but never shipped. The data-shape distinction they encoded (prose sections vs structured entries) is a content concern, not a mode dimension.
-2. **Default mode is `append-only`.** When a doc has no `mode:` field in frontmatter, the write path treats it as `append-only`. Conservative default — agents may extend a doc but not rewrite it without an explicit opt-in from the human author.
+2. **Default mode is `append-only`.** When a doc has no `mode:` field in frontmatter, the write path treats it as `append-only`. Conservative default — agents may extend a doc but not rewrite it without an explicit opt-in from the human author. Per ADR-0017, the default mode binds after first commit; uncommitted notes remain in their edit window.
 3. **`living` imposes no write-shape constraints.** Whole-file overwrites are permitted. The tool does not require the agent to name a section, batch edits, or otherwise structure its writes. This is a deliberate, time-bounded concession to friction reduction (see Context).
 
 ## Context
@@ -59,7 +59,7 @@ Three alternatives were considered for `living` and rejected:
 
 ## Consequences
 
-- v0 ships **`append-only`** (default) **and `read-only`** as the only modes the write path enforces. This matches ADR-0004 (v0 write scope) — create plus append, mode-aware refusal for `read-only`.
+- v0 ships **`append-only`** (default) **and `read-only`** as the only modes the write path enforces. This matches ADR-0004 (v0 write scope) — create plus append, mode-aware refusal for `read-only`. In v1, `read-only` refusal applies only after first commit; unratified read-only notes remain appendable until ratified.
 - v2 adds **`living`** as the editable-doc mode. Its initial implementation is permissive: any write replaces the file body. No batched-edit API to design or implement.
 - The mode system's load-bearing role narrows in v0 to `read-only` enforcement plus append discipline. That is enough to justify the schema; `living`'s contribution is opt-in *unlocking* of writes, not opt-in *structuring* of them.
 - Reduced cardinality (3 vs 4) is easier to teach. The mode names are choosable from intuition: agents add to logs → `append-only`; humans evolve a reference doc → `living`; an accepted decision is frozen → `read-only`.
