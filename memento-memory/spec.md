@@ -287,6 +287,8 @@ Identify relevant entries from the brief; read only the bodies or sections that 
 
 Idempotent and removable (re-running replaces the block; never blind-appends). The block is **parametrised by the resolved dir** and points agents at `memento brief`; the canonical manifest remains at `<vault>/.memento/manifest.json`. Critical, catastrophic-if-wrong items are promoted *out* of the vault and into `AGENTS.md` directly — the head of the distribution is unconditional, the long tail is conditional.
 
+**Renaming the vault directory requires re-running bare `memento init`.** Because discovery is marker-based, `memento init` with no `--dir` flag finds the moved `.memento/` marker and refreshes the path-bearing managed surfaces: the `AGENTS.md`/`CLAUDE.md` bootloader and the pre-commit hook. Until re-init, the pre-commit hook is the broken surface: it still runs `memento compile --dir <old-vault>` and stages `<old-vault>/.memento/manifest.json`, so commits fail loudly instead of silently updating the wrong vault. The current `.gitignore` block uses recursive patterns and should survive a vault rename, but re-running `init` also replaces any older path-pinned managed block.
+
 **Obsidian config is not owned.** `init` does not create or manage `.obsidian/` — a vault is just a folder and Obsidian creates its own config on first open. The only Obsidian-aware action is a `.gitignore` stanza for the per-machine UI noise (`.obsidian/workspace*`, `.obsidian/cache`), which is git hygiene, not config ownership.
 
 `init` runs once per project — **do not gold-plate it.** The durable engineering value is in `compile` and the core read/write API.
