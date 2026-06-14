@@ -317,16 +317,38 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 
 ## 15. Deferred / out of scope / open questions
 
-- **Typed-link traversal policy** — which edge types the agent follows by default. Defer; grow from misses.
-- **Embedding index over summaries** — only if the flat manifest visibly strains (low hundreds of docs). The first response to manifest bloat is *pruning the store*, not adding a graph. Defer.
+V1 close triage, 2026-06-14: this list has been checked against the shipped v0/v1 CLI (`compile`, `brief`, `init`, `orient`, `read`, `write`) and the open-thread notes in `Feature thoughts.md`, `Configurability exploration.md`, and `OKF interop and external compatibility.md`. `Open questions.md` is not present in the vault as of this triage.
+
+Resolved or parked by v1 ADRs:
+
+- **MCP transport** — resolved by ADR-0019. The CLI is the durable agent surface; no `memento serve`/MCP work remains in scope.
+- **Incremental disclosure / shorter reads** — resolved by ADR-0016 and shipped as `@N` brief references plus `read @N`.
+- **Agent orientation surface** — resolved by ADR-0013 and shipped as `memento orient` with `orient: true` overlay docs. Remaining orient niceties (size warning, overlay priority, baseline inspection) are not v2 blockers.
+- **Init-scaffolded human guide** — resolved by ADR-0012 and shipped as `_memento/Using Memento.md`, ignored by compile.
+- **OKF cheap-alignment subset** — resolved by ADR-0018: OKF frontmatter conventions are accepted, and `description:` is a summary fallback. Deeper OKF export/native-mode work remains deferred below.
+- **V1 walk portability** — resolved by ADR-0020: filesystem-returned path spelling is preserved, and symlinks are skipped during vault walks.
+- **Loose v1 nits from `Feature thoughts.md`** — `manifest_path` is present in `.memento/config.toml`; `.gitignore` insertion is sentinel-bounded and vault-relative; `_memento/brief.md` is ignored file-specifically. No further v1 action.
+
+Open items that block planned later work:
+
+- **Tool-read convention filenames and precedence** — target **v2**. Pin `_memento/writing.md` and any write-trigger guidance before implementing richer write workflows. `_memento/review.md` / `_memento/audit.md` can be pinned with the v4 `review` work unless v2 needs them earlier.
+- **Read-time link navigation surface and typed-link traversal policy** — target **v2**. The manifest already stores out/in link graph data; `read` still does not surface it. V2 must decide what link metadata to show and which edge types an agent should normally follow by default.
+- **Post-write manifest/brief refresh guidance** — target **v2**. `write` currently creates/appends only and does not compile afterward. V2 write guidance should decide whether writes print "run `memento compile`", auto-compile, or rely on the pre-commit hook.
+- **Living-mode write implementation** — target **v2**. ADR-0015 retired `section-replace` and `keyed-upsert`; v2 should implement the three-mode model (`append-only`, `living`, `read-only`) rather than the older four-mode table text.
+- **Open-question home** — target **v2** if design-question traffic continues. Today open questions live in ADR sections and proposal notes. A dedicated RFD/open-question convention is useful but should not block v1 close.
+
+Deferred, non-blocking, or post-v4 unless evidence promotes them:
+
+- **Embedding index over summaries** — only if the flat manifest visibly strains (low hundreds of docs). The first response to manifest bloat is *pruning the store*, not adding a graph.
 - **Monorepo / multiple memory dirs / manifest-of-manifests** — out of scope; the "point at a folder" design does not preclude it.
-- **Standalone summariser model wiring** — v4 detail (which binary, config surface, prompt).
+- **Standalone summariser model wiring** — v4 detail (which binary, config surface, prompt). Agent-driven summary worklist shape is also a v4 CLI workflow question after ADR-0019 removed the MCP dependency.
 - **Vault-boundary enforcement** — currently a human-setup convention (open the resolved memory directory as vault root); no tooling guard.
-- **ADR-0010 filename conventions** — pin `_memento/writing.md`, `_memento/review.md`, `_memento/audit.md`, and any precedence rules against memento-shipped defaults.
-- **Token-aware brief sizing** — bytes/lines are the v0 size proxy; tokenizer-backed sizing waits until brief size approaches context budgets.
-- **`init --template=` starters** — opinionated vault structures and starter conventions remain opt-in.
-- **Doc-type-specific brief rendering** — ADRs, specs, and notes render uniformly in v0; specialized rendering waits for observed need.
-- **Unresolved-question convention** — choose a home and naming scheme for open design questions, RFD-style or similar, alongside ADRs.
+- **Token-aware brief/orient sizing** — bytes/lines are the current size proxy. Tokenizer-backed sizing waits until brief or orient output approaches real context-budget limits.
+- **`init --template=` starters / opinionated writer sets** — opt-in starter vault structures remain deferred until repeated greenfield setup friction appears.
+- **Doc-type-specific brief rendering** — ADRs, specs, and notes render uniformly. Specialized rendering waits for observed need, likely alongside review or type-aware frontmatter work.
+- **OKF export or native `format: okf` mode** — deferred by `OKF interop and external compatibility.md` and `Configurability exploration.md`. The default remains Obsidian-aligned; build export/native mode only for a concrete OKF consumer or non-Obsidian deployment.
+- **Edit-window configurability** — deferred by ADR-0017 and `Configurability exploration.md`. Keep the first-commit rule unconfigurable until real friction appears (multi-commit drafting, read-only footguns, or multi-agent races).
+- **Type-aware frontmatter behavior** — `type:` remains Tier 2 convention per ADR-0018. Promote only when a concrete behavior such as type-scoped reads or doc-type rendering needs it.
 
 
 ## Dogfooding note
