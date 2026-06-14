@@ -24,10 +24,6 @@ func BindingForReadTarget(v vault.Vault, target string) (BindingState, error) {
 	if err != nil {
 		return "", err
 	}
-	return BindingForKey(v, key)
-}
-
-func BindingForKey(v vault.Vault, key string) (BindingState, error) {
 	ratified, err := isRatified(v, key)
 	if err != nil {
 		return "", err
@@ -39,11 +35,6 @@ func BindingForKey(v vault.Vault, key string) (BindingState, error) {
 }
 
 func isRatified(v vault.Vault, key string) (bool, error) {
-	key, err := normalizeKey(key)
-	if err != nil {
-		return false, err
-	}
-
 	inside, err := isInsideGitWorkTree(v.Root)
 	if err != nil {
 		return false, err

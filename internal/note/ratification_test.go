@@ -10,23 +10,23 @@ import (
 	"testing"
 )
 
-func TestBindingForKeyTreatsTrackedPathspecMetacharactersLiterally(t *testing.T) {
+func TestBindingForReadTargetTreatsTrackedPathspecMetacharactersLiterally(t *testing.T) {
 	root := makeVault(t)
 	initGit(t, root)
 	key := "foo[bar].md"
 	writeFile(t, root, key, "# Note\n\nTracked.\n")
 	commitAll(t, root)
 
-	got, err := BindingForKey(vaultFromRoot(root), key)
+	got, err := BindingForReadTarget(vaultFromRoot(root), key)
 	if err != nil {
-		t.Fatalf("BindingForKey(%q) error = %v, want nil", key, err)
+		t.Fatalf("BindingForReadTarget(%q) error = %v, want nil", key, err)
 	}
 	if got != BindingRatified {
-		t.Fatalf("BindingForKey(%q) = %s, want %s", key, got, BindingRatified)
+		t.Fatalf("BindingForReadTarget(%q) = %s, want %s", key, got, BindingRatified)
 	}
 }
 
-func TestBindingForKeyDoesNotRatifyUntrackedPathspecMetacharacterMatch(t *testing.T) {
+func TestBindingForReadTargetDoesNotRatifyUntrackedPathspecMetacharacterMatch(t *testing.T) {
 	root := makeVault(t)
 	initGit(t, root)
 	writeFile(t, root, "foobar.md", "# Note\n\nTracked.\n")
@@ -35,16 +35,16 @@ func TestBindingForKeyDoesNotRatifyUntrackedPathspecMetacharacterMatch(t *testin
 	key := "foo*.md"
 	writeFile(t, root, key, "# Note\n\nUntracked.\n")
 
-	got, err := BindingForKey(vaultFromRoot(root), key)
+	got, err := BindingForReadTarget(vaultFromRoot(root), key)
 	if err != nil {
-		t.Fatalf("BindingForKey(%q) error = %v, want nil", key, err)
+		t.Fatalf("BindingForReadTarget(%q) error = %v, want nil", key, err)
 	}
 	if got != BindingUnratified {
-		t.Fatalf("BindingForKey(%q) = %s, want %s", key, got, BindingUnratified)
+		t.Fatalf("BindingForReadTarget(%q) = %s, want %s", key, got, BindingUnratified)
 	}
 }
 
-func TestBindingForKeyTreatsOldGitNotRepositoryAsNonGitVault(t *testing.T) {
+func TestBindingForReadTargetTreatsOldGitNotRepositoryAsNonGitVault(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses a POSIX shell shim")
 	}
@@ -60,16 +60,16 @@ func TestBindingForKeyTreatsOldGitNotRepositoryAsNonGitVault(t *testing.T) {
 	}
 	t.Setenv("PATH", shimDir)
 
-	got, err := BindingForKey(vaultFromRoot(root), "note.md")
+	got, err := BindingForReadTarget(vaultFromRoot(root), "note.md")
 	if err != nil {
-		t.Fatalf("BindingForKey() error = %v, want nil", err)
+		t.Fatalf("BindingForReadTarget() error = %v, want nil", err)
 	}
 	if got != BindingRatified {
-		t.Fatalf("BindingForKey() = %s, want %s", got, BindingRatified)
+		t.Fatalf("BindingForReadTarget() = %s, want %s", got, BindingRatified)
 	}
 }
 
-func TestBindingForKeySurfacesBrokenRepositoryRevParseFailure(t *testing.T) {
+func TestBindingForReadTargetSurfacesBrokenRepositoryRevParseFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses a POSIX shell shim")
 	}
@@ -88,19 +88,19 @@ func TestBindingForKeySurfacesBrokenRepositoryRevParseFailure(t *testing.T) {
 	}
 	t.Setenv("PATH", shimDir)
 
-	_, err := BindingForKey(vaultFromRoot(root), "note.md")
+	_, err := BindingForReadTarget(vaultFromRoot(root), "note.md")
 	if err == nil {
-		t.Fatal("BindingForKey() error = nil, want broken repository error")
+		t.Fatal("BindingForReadTarget() error = nil, want broken repository error")
 	}
 	if !strings.Contains(err.Error(), "check git work tree") {
-		t.Fatalf("BindingForKey() error = %q, want work tree context", err.Error())
+		t.Fatalf("BindingForReadTarget() error = %q, want work tree context", err.Error())
 	}
 	if !strings.Contains(err.Error(), "fatal: not a git repository") {
-		t.Fatalf("BindingForKey() error = %q, want git stderr", err.Error())
+		t.Fatalf("BindingForReadTarget() error = %q, want git stderr", err.Error())
 	}
 }
 
-func TestBindingForKeySurfacesFatalRevParseFailure(t *testing.T) {
+func TestBindingForReadTargetSurfacesFatalRevParseFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses a POSIX shell shim")
 	}
@@ -116,19 +116,19 @@ func TestBindingForKeySurfacesFatalRevParseFailure(t *testing.T) {
 	}
 	t.Setenv("PATH", shimDir)
 
-	_, err := BindingForKey(vaultFromRoot(root), "note.md")
+	_, err := BindingForReadTarget(vaultFromRoot(root), "note.md")
 	if err == nil {
-		t.Fatal("BindingForKey() error = nil, want fatal git error")
+		t.Fatal("BindingForReadTarget() error = nil, want fatal git error")
 	}
 	if !strings.Contains(err.Error(), "check git work tree") {
-		t.Fatalf("BindingForKey() error = %q, want work tree context", err.Error())
+		t.Fatalf("BindingForReadTarget() error = %q, want work tree context", err.Error())
 	}
 	if !strings.Contains(err.Error(), "dubious ownership") {
-		t.Fatalf("BindingForKey() error = %q, want git stderr", err.Error())
+		t.Fatalf("BindingForReadTarget() error = %q, want git stderr", err.Error())
 	}
 }
 
-func TestBindingForKeySurfacesFatalLSFilesFailure(t *testing.T) {
+func TestBindingForReadTargetSurfacesFatalLSFilesFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses a POSIX shell shim")
 	}
@@ -148,19 +148,19 @@ func TestBindingForKeySurfacesFatalLSFilesFailure(t *testing.T) {
 	}
 	t.Setenv("PATH", shimDir)
 
-	_, err := BindingForKey(vaultFromRoot(root), "note.md")
+	_, err := BindingForReadTarget(vaultFromRoot(root), "note.md")
 	if err == nil {
-		t.Fatal("BindingForKey() error = nil, want fatal git error")
+		t.Fatal("BindingForReadTarget() error = nil, want fatal git error")
 	}
 	if !strings.Contains(err.Error(), "check git ratification for note.md") {
-		t.Fatalf("BindingForKey() error = %q, want ratification context", err.Error())
+		t.Fatalf("BindingForReadTarget() error = %q, want ratification context", err.Error())
 	}
 	if !strings.Contains(err.Error(), "bad revision HEAD") {
-		t.Fatalf("BindingForKey() error = %q, want git stderr", err.Error())
+		t.Fatalf("BindingForReadTarget() error = %q, want git stderr", err.Error())
 	}
 }
 
-func TestBindingForKeyFailsWhenGitDisappearsAfterWorkTreeCheck(t *testing.T) {
+func TestBindingForReadTargetFailsWhenGitDisappearsAfterWorkTreeCheck(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test uses a POSIX shell shim")
 	}
@@ -181,11 +181,11 @@ func TestBindingForKeyFailsWhenGitDisappearsAfterWorkTreeCheck(t *testing.T) {
 	t.Setenv("PATH", shimDir)
 	t.Setenv("GIT_SHIM_PATH", shimPath)
 
-	_, err := BindingForKey(vaultFromRoot(root), "note.md")
+	_, err := BindingForReadTarget(vaultFromRoot(root), "note.md")
 	if !errors.Is(err, exec.ErrNotFound) {
-		t.Fatalf("BindingForKey() error = %v, want exec.ErrNotFound", err)
+		t.Fatalf("BindingForReadTarget() error = %v, want exec.ErrNotFound", err)
 	}
 	if !strings.Contains(err.Error(), "check git ratification for note.md") {
-		t.Fatalf("BindingForKey() error = %q, want ratification context", err.Error())
+		t.Fatalf("BindingForReadTarget() error = %q, want ratification context", err.Error())
 	}
 }
