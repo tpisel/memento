@@ -1,5 +1,7 @@
 # memento
 
+![CI](https://github.com/tpisel/memento/actions/workflows/ci.yml/badge.svg)
+
 memento is a markdown-based, in-repo memory substrate for AI agents. It keeps durable project knowledge alongside the code, compiles a small manifest for agent startup, and lets agents read only the notes or sections that are relevant to the current task.
 
 Status: WIP / pre-1.0. CLI verbs, APIs, vault layout, and generated artifacts may change. Treat `memento-memory/spec.md` and the ADRs in `memento-memory/` as the live design surface.
