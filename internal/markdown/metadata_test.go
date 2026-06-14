@@ -88,6 +88,35 @@ Second paragraph.
 	}
 }
 
+func TestExtractMetadataDefaultsMissingModeToAppendOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "no frontmatter",
+			src:  "# Title\n\nBody.\n",
+		},
+		{
+			name: "frontmatter without mode",
+			src:  "---\ntitle: Title\n---\nBody.\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ExtractMetadata("note.md", []byte(tt.src))
+			if err != nil {
+				t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+			}
+
+			if got.Mode != DefaultWriteMode {
+				t.Fatalf("Mode = %q, want default mode %q", got.Mode, DefaultWriteMode)
+			}
+		})
+	}
+}
+
 func TestExtractMetadataTreatsHorizontalRuleSandwichAsBareMarkdown(t *testing.T) {
 	source := []byte(`---
 # Foo

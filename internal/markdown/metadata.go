@@ -26,10 +26,13 @@ var (
 type WriteMode string
 
 const (
-	ModeAppendOnly     WriteMode = "append-only"
+	ModeAppendOnly WriteMode = "append-only"
+	ModeReadOnly   WriteMode = "read-only"
+
+	DefaultWriteMode = ModeAppendOnly
+
 	ModeSectionReplace WriteMode = "section-replace"
 	ModeKeyedUpsert    WriteMode = "keyed-upsert"
-	ModeReadOnly       WriteMode = "read-only"
 )
 
 type Metadata struct {
@@ -98,7 +101,7 @@ func metadataFromParts(relPath string, fm frontmatter, body []byte) Metadata {
 
 	mode := fm.mode
 	if mode == "" {
-		mode = ModeAppendOnly
+		mode = DefaultWriteMode
 	}
 
 	return Metadata{

@@ -92,6 +92,59 @@ func TestWriteAppendsExistingFileWithMissingMode(t *testing.T) {
 	}
 }
 
+func TestWriteRejectsOverwriteForMissingModeLikeAppendOnly(t *testing.T) {
+	appendOnlyErr := rejectedOverwriteError(t, "---\nmode: append-only\n---\n# Note\n\nOriginal.\n")
+
+	tests := []struct {
+		name     string
+		original string
+	}{
+		{
+			name:     "no frontmatter",
+			original: "# Note\n\nOriginal.\n",
+		},
+		{
+			name:     "missing mode",
+			original: "---\ntitle: Note\n---\n# Note\n\nOriginal.\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := makeVault(t)
+			writeFile(t, root, "note.md", tt.original)
+
+			err := Write(vaultFromRoot(root), "note.md", []byte("replacement\n"), WriteOptions{Operation: OperationOverwrite})
+			if !errors.Is(err, ErrUnsupportedWriteOperation) {
+				t.Fatalf("Write(overwrite) error = %v, want ErrUnsupportedWriteOperation", err)
+			}
+			if err.Error() != appendOnlyErr {
+				t.Fatalf("Write(overwrite) error = %q, want same error as append-only %q", err.Error(), appendOnlyErr)
+			}
+
+			if got := readFile(t, root, "note.md"); got != tt.original {
+				t.Fatalf("file changed after rejected overwrite: %q", got)
+			}
+		})
+	}
+}
+
+func rejectedOverwriteError(t *testing.T, original string) string {
+	t.Helper()
+
+	root := makeVault(t)
+	writeFile(t, root, "note.md", original)
+
+	err := Write(vaultFromRoot(root), "note.md", []byte("replacement\n"), WriteOptions{Operation: OperationOverwrite})
+	if !errors.Is(err, ErrUnsupportedWriteOperation) {
+		t.Fatalf("Write(overwrite append-only baseline) error = %v, want ErrUnsupportedWriteOperation", err)
+	}
+	if got := readFile(t, root, "note.md"); got != original {
+		t.Fatalf("append-only baseline changed after rejected overwrite: %q", got)
+	}
+	return err.Error()
+}
+
 func TestWriteRejectsUnreadableFrontmatterWithoutChangingFile(t *testing.T) {
 	root := makeVault(t)
 	original := "---\ntitle\n---\n# Note\n\nOriginal.\n"

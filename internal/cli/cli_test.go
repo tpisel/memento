@@ -291,7 +291,7 @@ func TestCompileWritesDiscoveredManifest(t *testing.T) {
 		"> Any edits to this file will be overwritten on the next compile run.",
 		"## (root)",
 		"### 1. Note",
-		"key: `note.md`",
+		"key: `note.md` | mode: `append-only`",
 	} {
 		if !strings.Contains(string(brief), want) {
 			t.Fatalf("brief contents = %q, want %q", string(brief), want)
@@ -430,7 +430,7 @@ func TestBriefRendersFromManifestWhenBriefIsMissing(t *testing.T) {
 		"> Any edits to this file will be overwritten on the next compile run.",
 		"## (root)",
 		"### 1. Note",
-		"key: `note.md`",
+		"key: `note.md` | mode: `append-only`",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("Run(brief --dir) stdout = %q, want %q", stdout.String(), want)
