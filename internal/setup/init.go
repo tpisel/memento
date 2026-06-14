@@ -25,7 +25,6 @@ const (
 )
 
 const defaultConfig = `# memento vault configuration
-manifest_path = ".memento/manifest.json"
 `
 
 const defaultIgnore = `# memento operational files

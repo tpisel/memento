@@ -24,6 +24,20 @@ func TestInitDerivesDefaultVaultDirFromGitRemote(t *testing.T) {
 	}
 }
 
+func TestInitWritesHeaderOnlyDefaultConfig(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, "memory/.memento/config.toml")
+	want := "# memento vault configuration\n"
+	if got != want {
+		t.Fatalf("config.toml = %q, want %q", got, want)
+	}
+}
+
 func TestInitCreatesAgentInstructionsWhenAbsent(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "sample-app")
 	if err := os.MkdirAll(repo, 0o755); err != nil {

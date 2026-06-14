@@ -336,7 +336,7 @@ Resolved or parked by v1 ADRs:
 - **Init-scaffolded human guide** — resolved by ADR-0012 and shipped as `_memento/Using Memento.md`, ignored by compile.
 - **OKF cheap-alignment subset** — resolved by ADR-0018: OKF frontmatter conventions are accepted, and `description:` is a summary fallback. Deeper OKF export/native-mode work remains deferred below.
 - **V1 walk portability** — resolved by ADR-0020: filesystem-returned path spelling is preserved, and symlinks are skipped during vault walks.
-- **Loose v1 nits from [[Feature thoughts]]** — `manifest_path` is present in `.memento/config.toml`; `.gitignore` insertion is sentinel-bounded and vault-relative; `_memento/brief.md` is ignored file-specifically. No further v1 action.
+- **Loose v1 nits from [[Feature thoughts]]** — `.memento/config.toml` is a header-only extension point with no `manifest_path` knob; `.gitignore` insertion is sentinel-bounded and vault-relative; `_memento/brief.md` is ignored file-specifically. No further v1 action.
 
 Open items that block planned later work:
 
