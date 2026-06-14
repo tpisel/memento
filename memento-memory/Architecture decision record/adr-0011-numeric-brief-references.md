@@ -1,6 +1,7 @@
 ---
 title: Numeric brief references — ephemeral CLI projection over manifest entries
 status: accepted
+superseded_by: "[[Architecture decision record/adr-0016-at-prefixed-numeric-brief-references|ADR-0016]]; partial: Decision bullets on numeric refs and wikilink suffix; Determinism paragraph on hash header location."
 mode: read-only
 date: 2026-06-13
 tags:

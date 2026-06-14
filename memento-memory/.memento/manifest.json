@@ -364,8 +364,8 @@
       "key": "Architecture decision record/adr-0011-numeric-brief-references.md",
       "title": "Numeric brief references — ephemeral CLI projection over manifest entries",
       "summary": "The brief gains a render-time numeric index over top-level entries so `read N` is the short follow-up after `brief`. Numbers exist only in CLI/brief output — never in source, wikilinks, commit messages, or beads tasks. `read N` resolves against `.memento/manifest.json` only, never falls back to a filesystem walk; if the manifest is stale (rename/delete) the call is a hard error that names the fix verbatim. Folder structure surfaces as H2 sections; section addressing stays slug-based.",
-      "bytes": 7689,
-      "lines": 88,
+      "bytes": 7905,
+      "lines": 89,
       "tags": [
         "agents",
         "brief",
@@ -625,6 +625,49 @@
       }
     },
     {
+      "key": "Architecture decision record/adr-0016-at-prefixed-numeric-brief-references.md",
+      "title": "@N-prefixed numeric brief references",
+      "summary": "Numeric manifest references use an explicit `@N` form in both CLI reads and brief wikilink suffixes. Bare digit arguments stay on the normal key/path path. The brief manifest hash lives in frontmatter so Obsidian still recognizes line-1 frontmatter.",
+      "bytes": 4560,
+      "lines": 71,
+      "tags": [
+        "agents",
+        "brief",
+        "memento",
+        "read"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Supersedes",
+          "slug": "supersedes"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
       "key": "Feature thoughts.md",
       "title": "Feature thoughts",
       "summary": "Possible features and affordances:",
@@ -677,6 +720,44 @@
             "resolved": true
           }
         ],
+        "in": []
+      }
+    },
+    {
+      "key": "agent-human coordination failure modes.md",
+      "title": "Agent–human coordination failure modes",
+      "summary": "Backlog/taxonomy of failure states that show up when humans and long-running agents share a queue, a worktree, and a spec. Sort later — collecting raw examples first.",
+      "bytes": 4057,
+      "lines": 38,
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Taxonomy sketch",
+          "slug": "taxonomy-sketch"
+        },
+        {
+          "level": 2,
+          "text": "Examples",
+          "slug": "examples"
+        },
+        {
+          "level": 3,
+          "text": "2026-06-14 — bead memento-2nb.37: mis-spec + mis-dag + wrapper misattribution",
+          "slug": "2026-06-14-bead-memento-2nb37-mis-spec-mis-dag-wrapper-misattribution"
+        },
+        {
+          "level": 2,
+          "text": "Open notes / not-yet-examples",
+          "slug": "open-notes-not-yet-examples"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
         "in": []
       }
     },
@@ -934,10 +1015,10 @@
     }
   ],
   "tags": {
-    "agents": 6,
+    "agents": 7,
     "beads": 2,
     "bootloader": 1,
-    "brief": 2,
+    "brief": 3,
     "compile": 2,
     "config": 1,
     "draft": 1,
@@ -949,7 +1030,7 @@
     "manifest": 3,
     "markdown": 1,
     "mcp": 1,
-    "memento": 16,
+    "memento": 17,
     "mode": 1,
     "namespace": 2,
     "obsidian": 2,
@@ -957,7 +1038,7 @@
     "orient": 1,
     "philosophy": 1,
     "proposal": 1,
-    "read": 2,
+    "read": 3,
     "retrieval": 1,
     "review": 3,
     "roadmap": 1,
