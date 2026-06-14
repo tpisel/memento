@@ -73,6 +73,17 @@ if [ -z "$repo" ]; then
   exit 1
 fi
 
+# Refuse to start with a dirty worktree.
+# The wrapper commits via `git add -A` after each iteration, so any pre-existing
+# modifications or untracked files would otherwise be swept into the next bead's
+# commit — misattributing user WIP to whichever bead the loop happens to pick up.
+if [ -n "$(git -C "$repo" status --porcelain)" ]; then
+  echo "scripts/ralph-loop: refusing to start with a dirty worktree." >&2
+  echo "Commit, stash, or clean these paths first:" >&2
+  git -C "$repo" status --porcelain >&2
+  exit 1
+fi
+
 GOCACHE="${GOCACHE:-/tmp/memento-go-build}"
 GOMODCACHE="${GOMODCACHE:-$repo/.cache/go-mod}"
 export GOCACHE GOMODCACHE
