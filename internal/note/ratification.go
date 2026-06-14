@@ -60,9 +60,6 @@ func isRatified(v vault.Vault, key string) (bool, error) {
 	if errors.As(err, &exitErr) {
 		return false, nil
 	}
-	if errors.Is(err, exec.ErrNotFound) {
-		return true, nil
-	}
 	return false, fmt.Errorf("check git ratification for %s: %w", key, err)
 }
 
