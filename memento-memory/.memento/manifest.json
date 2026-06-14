@@ -24,6 +24,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -62,6 +63,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -105,6 +107,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -141,6 +144,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -178,6 +182,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -215,6 +220,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -252,6 +258,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -300,6 +307,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -344,6 +352,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -396,6 +405,7 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -449,6 +459,164 @@
         }
       ],
       "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0013-orient-verb-and-minimal-bootloader.md",
+      "title": "Orient verb and minimal AGENTS.md bootloader",
+      "summary": "`memento orient` becomes the preferred surface for telling agents how to use the tool. The AGENTS.md / CLAUDE.md block becomes a one-paragraph pointer set at `init` time and not actively managed afterwards. Orient output layers a code-internal baseline (verbs, semantics, triggered preconditions) with a user-curated overlay of docs frontmatter-tagged `orient: true`. Baseline first, user docs alphabetically by key.",
+      "bytes": 6800,
+      "lines": 67,
+      "tags": [
+        "agents",
+        "bootloader",
+        "memento",
+        "orient"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Versioning",
+          "slug": "versioning"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0014-canonical-frontmatter-vocabulary.md",
+      "title": "Canonical frontmatter vocabulary",
+      "summary": "Frontmatter fields are split into three tiers: tool-consumed (schema-locked, memento reads and acts on them), convention (memento sees but does not act on; used for human discipline), and reserved-rejected (will not be supported). Unknown fields are ignored — forward-compatible by default. Per-doc ignore via frontmatter is rejected; collection membership remains `.mementoignore`'s job.",
+      "bytes": 5952,
+      "lines": 78,
+      "tags": [
+        "frontmatter",
+        "memento",
+        "schema"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 3,
+          "text": "Tier 1: Tool-consumed (schema-locked)",
+          "slug": "tier-1-tool-consumed-schema-locked"
+        },
+        {
+          "level": 3,
+          "text": "Tier 2: Convention (memento ignores)",
+          "slug": "tier-2-convention-memento-ignores"
+        },
+        {
+          "level": 3,
+          "text": "Tier 3: Reserved-rejected",
+          "slug": "tier-3-reserved-rejected"
+        },
+        {
+          "level": 3,
+          "text": "Unknown-field policy",
+          "slug": "unknown-field-policy"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0015-write-mode-taxonomy.md",
+      "title": "Write-mode taxonomy — three modes, default append-only, living unconstrained",
+      "summary": "Write-mode collapses from four to three: `append-only`, `living`, `read-only`. `section-replace` and `keyed-upsert` retired before shipping. Docs without a declared `mode:` default to `append-only`. `living` mode currently imposes no API-level enforcement — full-file writes are allowed — pending real-world evidence that silent-drift is a problem worth solving with arcana.",
+      "bytes": 7471,
+      "lines": 77,
+      "tags": [
+        "memento",
+        "mode",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        },
+        {
+          "level": 2,
+          "text": "Supersedes (partial)",
+          "slug": "supersedes-partial"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -460,8 +628,8 @@
       "key": "Feature thoughts.md",
       "title": "Feature thoughts",
       "summary": "Possible features and affordances:",
-      "bytes": 475,
-      "lines": 16,
+      "bytes": 921,
+      "lines": 25,
       "tags": [],
       "headings": [
         {
@@ -476,6 +644,7 @@
         }
       ],
       "mode": "append-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -492,6 +661,7 @@
       "tags": [],
       "headings": [],
       "mode": "append-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -563,6 +733,7 @@
         }
       ],
       "mode": "append-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -574,8 +745,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 26540,
-      "lines": 290,
+      "bytes": 26627,
+      "lines": 291,
       "tags": [],
       "headings": [
         {
@@ -690,6 +861,7 @@
         }
       ],
       "mode": "append-only",
+      "orient": false,
       "updated": "2026-06-13T00:00:00Z",
       "summary_stale": true,
       "links": {
@@ -752,6 +924,7 @@
         }
       ],
       "mode": "append-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -761,12 +934,14 @@
     }
   ],
   "tags": {
-    "agents": 5,
+    "agents": 6,
     "beads": 2,
+    "bootloader": 1,
     "brief": 2,
     "compile": 2,
     "config": 1,
     "draft": 1,
+    "frontmatter": 1,
     "git": 1,
     "ignore": 1,
     "init": 4,
@@ -774,19 +949,22 @@
     "manifest": 3,
     "markdown": 1,
     "mcp": 1,
-    "memento": 13,
+    "memento": 16,
+    "mode": 1,
     "namespace": 2,
     "obsidian": 2,
     "open-question": 1,
+    "orient": 1,
     "philosophy": 1,
     "proposal": 1,
     "read": 2,
     "retrieval": 1,
     "review": 3,
     "roadmap": 1,
+    "schema": 1,
     "summaries": 1,
     "vault": 2,
-    "write": 2,
+    "write": 3,
     "writing": 1
   }
 }

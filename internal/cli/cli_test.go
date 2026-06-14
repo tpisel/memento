@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tpisel/memento/internal/orient"
 )
 
 func TestHelpCommand(t *testing.T) {
@@ -25,6 +27,7 @@ func TestHelpCommand(t *testing.T) {
 		"Usage:",
 		"brief",
 		"compile",
+		"orient",
 		"read",
 		"version",
 		"serve     MCP server (not implemented; see spec §13).",
@@ -455,6 +458,130 @@ func TestBriefFailsWithCompileHintWhenArtifactsAreMissing(t *testing.T) {
 	for _, want := range []string{"manifest", "run memento compile"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("Run(brief --dir) stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+}
+
+func TestOrientPrintsBaselineOnlyWhenNoDocsAreTagged(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(orient) stderr = %q, want empty", stderr.String())
+	}
+	if got, want := stdout.String(), string(orient.Baseline()); got != want {
+		t.Fatalf("Run(orient) stdout =\n%s\nwant baseline:\n%s", got, want)
+	}
+}
+
+func TestOrientAppendsSingleTaggedDocAfterBaseline(t *testing.T) {
+	root := makeCLIVault(t)
+	overlay := "---\norient: true\n---\n# Project Orientation\n\nUse the project guide.\n"
+	writeCLIFile(t, root, "orientation.md", overlay)
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+
+	want := strings.TrimRight(string(orient.Baseline()), "\n") + "\n---\n\n" + strings.TrimRight(overlay, "\n") + "\n"
+	if stdout.String() != want {
+		t.Fatalf("Run(orient) stdout =\n%s\nwant:\n%s", stdout.String(), want)
+	}
+}
+
+func TestOrientSortsMultipleTaggedDocsByManifestKey(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "zeta.md", "---\norient: true\n---\n# Zeta\n")
+	writeCLIFile(t, root, "alpha.md", "---\norient: true\n---\n# Alpha\n")
+	writeCLIFile(t, root, "nested/beta.md", "---\norient: true\n---\n# Beta\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+
+	out := stdout.String()
+	alpha := strings.Index(out, "# Alpha")
+	beta := strings.Index(out, "# Beta")
+	zeta := strings.Index(out, "# Zeta")
+	if alpha < 0 || beta < 0 || zeta < 0 {
+		t.Fatalf("Run(orient) stdout =\n%s\nwant all tagged docs", out)
+	}
+	if !(alpha < beta && beta < zeta) {
+		t.Fatalf("Run(orient) overlay order indexes alpha=%d beta=%d zeta=%d; want key order", alpha, beta, zeta)
+	}
+}
+
+func TestOrientExcludesUntaggedAndExplicitFalseDocs(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "include.md", "---\norient: true\n---\n# Include\n")
+	writeCLIFile(t, root, "untagged.md", "# Untagged\n")
+	writeCLIFile(t, root, "false.md", "---\norient: false\n---\n# False\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "# Include") {
+		t.Fatalf("Run(orient) stdout =\n%s\nwant included tagged doc", out)
+	}
+	for _, forbidden := range []string{"# Untagged", "# False"} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("Run(orient) stdout contains excluded doc %q:\n%s", forbidden, out)
+		}
+	}
+}
+
+func TestOrientFailsWithCompileHintWhenManifestIsMissing(t *testing.T) {
+	root := makeCLIVault(t)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(orient --dir) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(orient --dir) stdout = %q, want empty", stdout.String())
+	}
+	for _, want := range []string{"manifest", "run memento compile"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("Run(orient --dir) stderr = %q, want %q", stderr.String(), want)
 		}
 	}
 }

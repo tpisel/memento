@@ -88,7 +88,7 @@ func TestRenderProducesDeterministicMarkdownProjection(t *testing.T) {
 		t.Fatalf("Render output changed between runs:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
 
-	want := `<!-- manifest: sha256:a9f06e5854be71d292b9f02e4bbc5a1ee22b0c2fa7865ee41f1a4e649eec64c7 -->
+	want := `<!-- manifest: sha256:c41525d503ce363f7fa6183e559a9f53fbd0d621ddf264a0a533d2fe49a3e869 -->
 ---
 mode: read-only
 ---

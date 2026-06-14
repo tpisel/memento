@@ -14,6 +14,7 @@ import (
 	"github.com/tpisel/memento/internal/brief"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/note"
+	"github.com/tpisel/memento/internal/orient"
 	"github.com/tpisel/memento/internal/setup"
 	"github.com/tpisel/memento/internal/vault"
 )
@@ -28,6 +29,7 @@ Usage:
   memento brief [--dir <vault>]
   memento compile [--dir <vault>] [--print]
   memento init [--dir <vault>]
+  memento orient [--dir <vault>]
   memento read [--dir <vault>] <key|N>
   memento write [--dir <vault>] <key>
   memento serve
@@ -38,6 +40,7 @@ Commands:
   brief     Print the agent-facing manifest projection.
   compile   Compile a memory vault manifest.
   init      Adopt or create a memory vault.
+  orient    Print tool-usage orientation and project overlays.
   read      Read a memory note.
   write     Create or append to a memory note from stdin.
   serve     MCP server (not implemented; see spec §13).
@@ -68,6 +71,8 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		return runCompile(args[1:], stdout, stderr)
 	case "init":
 		return runInit(args[1:], stdout, stderr)
+	case "orient":
+		return runOrient(args[1:], stdout, stderr)
 	case "read":
 		return runRead(args[1:], stdout, stderr)
 	case "write":
@@ -80,6 +85,41 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		fmt.Fprint(stderr, "Run 'memento help' for usage.\n")
 		return 2
 	}
+}
+
+func runOrient(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("orient", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	dir := flags.String("dir", "", "memory vault directory")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintf(stderr, "memento orient: unexpected argument %q\n", flags.Arg(0))
+		return 2
+	}
+
+	v, err := resolveVault(*dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "memento orient: %v\n", err)
+		return 1
+	}
+
+	m, err := readManifest(v)
+	if err != nil {
+		fmt.Fprintf(stderr, "memento orient: %v\n", err)
+		return 1
+	}
+	data, err := orient.Render(v, m)
+	if err != nil {
+		fmt.Fprintf(stderr, "memento orient: %v\n", err)
+		return 1
+	}
+	if _, err := stdout.Write(data); err != nil {
+		fmt.Fprintf(stderr, "memento orient: write stdout: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func runBrief(args []string, stdout, stderr io.Writer) int {

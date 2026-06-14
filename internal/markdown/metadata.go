@@ -27,6 +27,7 @@ type WriteMode string
 
 const (
 	ModeAppendOnly WriteMode = "append-only"
+	ModeLiving     WriteMode = "living"
 	ModeReadOnly   WriteMode = "read-only"
 
 	DefaultWriteMode = ModeAppendOnly
@@ -41,6 +42,7 @@ type Metadata struct {
 	Tags         []string
 	Headings     []Heading
 	Mode         WriteMode
+	Orient       bool
 	Updated      time.Time
 	SummaryHash  string
 	BodyHash     string
@@ -58,6 +60,7 @@ type frontmatter struct {
 	summary     string
 	tags        []string
 	mode        WriteMode
+	orient      bool
 	updated     time.Time
 	summaryHash string
 }
@@ -110,6 +113,7 @@ func metadataFromParts(relPath string, fm frontmatter, body []byte) Metadata {
 		Tags:         fm.tags,
 		Headings:     extractHeadings(doc, body),
 		Mode:         mode,
+		Orient:       fm.orient,
 		Updated:      fm.updated,
 		SummaryHash:  fm.summaryHash,
 		BodyHash:     bodyHash,
@@ -266,6 +270,12 @@ func applyFrontmatterField(fm *frontmatter, key, value string) error {
 			return fmt.Errorf("%w: %q", ErrInvalidMode, value)
 		}
 		fm.mode = mode
+	case "orient":
+		orient, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		fm.orient = orient
 	case "updated":
 		updated, err := parseUpdated(cleanScalar(value))
 		if err != nil {
@@ -318,9 +328,20 @@ func parseUpdated(value string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("%w: %q", ErrInvalidUpdated, value)
 }
 
+func parseBool(value string) (bool, error) {
+	switch cleanScalar(value) {
+	case "true":
+		return true, nil
+	case "false", "":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%w: invalid boolean %q", ErrMalformedFrontmatter, value)
+	}
+}
+
 func validMode(mode WriteMode) bool {
 	switch mode {
-	case ModeAppendOnly, ModeSectionReplace, ModeKeyedUpsert, ModeReadOnly:
+	case ModeAppendOnly, ModeLiving, ModeSectionReplace, ModeKeyedUpsert, ModeReadOnly:
 		return true
 	default:
 		return false

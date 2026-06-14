@@ -38,6 +38,7 @@ type Entry struct {
 	Tags         []string           `json:"tags"`
 	Headings     []Heading          `json:"headings"`
 	Mode         markdown.WriteMode `json:"mode"`
+	Orient       bool               `json:"orient"`
 	Updated      string             `json:"updated"`
 	SummaryStale bool               `json:"summary_stale"`
 	Links        Links              `json:"links"`
@@ -110,6 +111,7 @@ func compile(v vault.Vault) (Manifest, []Warning, error) {
 			Tags:         tags,
 			Headings:     manifestHeadings(meta.Headings),
 			Mode:         meta.Mode,
+			Orient:       meta.Orient,
 			Updated:      formatUpdated(meta.Updated),
 			SummaryStale: meta.SummaryStale,
 			Links: Links{

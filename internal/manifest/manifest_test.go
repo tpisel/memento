@@ -75,6 +75,7 @@ Alpha summary.
         }
       ],
       "mode": "append-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -100,6 +101,7 @@ Alpha summary.
         }
       ],
       "mode": "read-only",
+      "orient": false,
       "updated": "2026-06-10T00:00:00Z",
       "summary_stale": true,
       "links": {
@@ -159,6 +161,43 @@ func TestCompileEmptyVaultSerializesEntriesArray(t *testing.T) {
 	want := "{\n  \"entries\": []\n}\n"
 	if string(data) != want {
 		t.Fatalf("empty manifest JSON = %q, want %q", string(data), want)
+	}
+}
+
+func TestCompileEmitsOrientFrontmatterField(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "included.md", "---\norient: true\n---\n# Included\n")
+	writeFile(t, root, "explicit-false.md", "---\norient: false\n---\n# Explicit False\n")
+	writeFile(t, root, "absent.md", "# Absent\n")
+
+	m, err := Compile(vaultFromRoot(root))
+	if err != nil {
+		t.Fatalf("Compile() error = %v, want nil", err)
+	}
+
+	entries := make(map[string]Entry, len(m.Entries))
+	for _, entry := range m.Entries {
+		entries[entry.Key] = entry
+	}
+
+	if !entries["included.md"].Orient {
+		t.Fatal("included.md Orient = false, want true")
+	}
+	for _, key := range []string{"explicit-false.md", "absent.md"} {
+		if entries[key].Orient {
+			t.Fatalf("%s Orient = true, want false", key)
+		}
+	}
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v, want nil", err)
+	}
+	if !bytes.Contains(data, []byte(`"orient": true`)) {
+		t.Fatalf("manifest JSON =\n%s\nwant orient true emitted", data)
+	}
+	if !bytes.Contains(data, []byte(`"orient": false`)) {
+		t.Fatalf("manifest JSON =\n%s\nwant orient false emitted", data)
 	}
 }
 
@@ -261,6 +300,7 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
       "tags": [],
       "headings": [],
       "mode": "append-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -282,6 +322,7 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
       "tags": [],
       "headings": [],
       "mode": "append-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {
@@ -303,6 +344,7 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
       "tags": [],
       "headings": [],
       "mode": "append-only",
+      "orient": false,
       "updated": "",
       "summary_stale": true,
       "links": {

@@ -13,6 +13,7 @@ title: Frontmatter Title
 summary: A concise summary from frontmatter.
 tags: [memento, markdown, v0]
 mode: section-replace
+orient: true
 updated: 2026-06-10
 summary_hash: abc123
 ---
@@ -39,6 +40,9 @@ Body paragraph that should not replace frontmatter summary.
 	}
 	if got.Mode != ModeSectionReplace {
 		t.Fatalf("Mode = %q, want %q", got.Mode, ModeSectionReplace)
+	}
+	if !got.Orient {
+		t.Fatal("Orient = false, want true from frontmatter")
 	}
 	if !got.Updated.Equal(wantUpdated) {
 		t.Fatalf("Updated = %v, want %v", got.Updated, wantUpdated)
@@ -112,6 +116,39 @@ func TestExtractMetadataDefaultsMissingModeToAppendOnly(t *testing.T) {
 
 			if got.Mode != DefaultWriteMode {
 				t.Fatalf("Mode = %q, want default mode %q", got.Mode, DefaultWriteMode)
+			}
+		})
+	}
+}
+
+func TestExtractMetadataDefaultsMissingOrientToFalse(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "no frontmatter",
+			src:  "# Title\n\nBody.\n",
+		},
+		{
+			name: "frontmatter without orient",
+			src:  "---\ntitle: Title\n---\nBody.\n",
+		},
+		{
+			name: "explicit false",
+			src:  "---\norient: false\n---\nBody.\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ExtractMetadata("note.md", []byte(tt.src))
+			if err != nil {
+				t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+			}
+
+			if got.Orient {
+				t.Fatal("Orient = true, want false")
 			}
 		})
 	}
