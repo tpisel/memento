@@ -197,7 +197,7 @@ memento compile          # walk vault → emit manifest (or stdout with --print 
 memento brief            # print the agent-facing manifest projection
 memento init             # adopt-or-create: scaffold/adopt the vault, hook, bootloader (§11)
 memento orient           # print tool-usage orientation baseline + opt-in overlay docs
-memento read  <key>      # whole-file; supports read <key>#<heading>
+memento read  <key|@N>   # whole-file; supports read <key>#<heading>; @N reads a brief entry
 memento write <key>      # append/upsert/section-replace, validated against declared mode
 memento serve            # MCP server (v3) — registers compile/read/write/list as tools
 ```

@@ -30,7 +30,7 @@ Usage:
   memento compile [--dir <vault>] [--print]
   memento init [--dir <vault>]
   memento orient [--dir <vault>]
-  memento read [--dir <vault>] <key|N>
+  memento read [--dir <vault>] <key|@N>
   memento write [--dir <vault>] <key>
   memento serve
 
@@ -41,7 +41,7 @@ Commands:
   compile   Compile a memory vault manifest.
   init      Adopt or create a memory vault.
   orient    Print tool-usage orientation and project overlays.
-  read      Read a memory note.
+  read      Read a memory note by key or @N entry reference.
   write     Create or append to a memory note from stdin.
   serve     MCP server (not implemented; see spec §13).
 `
@@ -311,7 +311,7 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprint(stderr, "memento read: expected exactly one key or entry number\n")
+		fmt.Fprint(stderr, "memento read: expected exactly one key or @N entry reference\n")
 		return 2
 	}
 
@@ -323,8 +323,8 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 
 	target := flags.Arg(0)
 	var data []byte
-	if isAllDigits(target) {
-		data, err = readNumberedEntry(v, target, stderr)
+	if strings.HasPrefix(target, "@") {
+		data, err = readNumberedEntry(v, strings.TrimPrefix(target, "@"), stderr)
 	} else {
 		data, err = note.Read(v, target)
 	}
@@ -351,8 +351,11 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 
 func readNumberedEntry(v vault.Vault, target string, stderr io.Writer) ([]byte, error) {
 	number, err := strconv.Atoi(target)
-	if err != nil || number < 1 {
-		return nil, fmt.Errorf("entry number must be 1 or greater: %s", target)
+	if err != nil {
+		return nil, fmt.Errorf("entry reference must be @ followed by a number: @%s", target)
+	}
+	if number < 1 {
+		return nil, fmt.Errorf("entry number must be 1 or greater: @%s", target)
 	}
 
 	m, err := readManifest(v)
@@ -429,18 +432,6 @@ func briefManifestHash(data []byte) (string, bool) {
 		}
 		rest = next
 	}
-}
-
-func isAllDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, ch := range s {
-		if ch < '0' || ch > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {

@@ -826,7 +826,7 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 26627,
+      "bytes": 26651,
       "lines": 291,
       "tags": [],
       "headings": [
