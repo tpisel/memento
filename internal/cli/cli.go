@@ -291,10 +291,8 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 	var data []byte
 	var key string
 	var numberedManifest manifest.Manifest
-	var checkBriefHash bool
 	if strings.HasPrefix(target, "@") {
 		data, key, numberedManifest, err = readNumberedEntry(v, strings.TrimPrefix(target, "@"))
-		checkBriefHash = true
 	} else {
 		data, err = note.Read(v, target)
 		key = target
@@ -310,7 +308,7 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintf(stderr, "binding: %s\n", binding)
-	if checkBriefHash {
+	if strings.HasPrefix(target, "@") {
 		warnIfBriefHashDrift(v, numberedManifest, stderr)
 	}
 
