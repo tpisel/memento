@@ -149,12 +149,11 @@ Three states, not two:
 
 | Mode | Semantics | Typical use |
 |---|---|---|
-| `append-only` | New content appended; nothing overwritten | Decision logs, ADR history |
-| `section-replace` | Overwrite a named heading's section; others untouched | Living reference docs |
-| `keyed-upsert` | Add or update structured entries by key | Discoveries, constraints |
-| `read-only` | Readable, not writable via the tool | Frozen specs, accepted ADRs |
+| `append-only` | New content appended; ratified content is not overwritten | Decision logs, ADR history |
+| `living` | Appends and full-file overwrites allowed | Discoveries, constraints, reference docs that evolve in place |
+| `read-only` | Readable; ratified content is not writable via the tool | Frozen specs, accepted ADRs |
 
-The tool **validates the operation against the declared mode before writing**. This is what prompt-instruction cannot make reliable on its own: an agent can rationalise past a written rule, but a ratified `read-only` doc is *physically* unwritable through `memento write` — to change an accepted decision after first commit the agent **must** author a superseding record, not quietly rewrite history. ADR-0017 makes the commit-as-review-boundary claim load-bearing for read-only enforcement in v1; the append-only and living edit-window legs remain deferred until the v2 overwrite surface tracked by `memento-88t`.
+The tool **validates the operation against the declared mode before writing**. Append is the default operation; `memento write --overwrite <key>` is an explicit full-file replacement. The selector is explicit rather than mode-driven: ADR-0015 keeps absent or `append-only` frontmatter conservative by default, while ADR-0017 makes unratified rewrites legal without making replacement implicit. This is what prompt-instruction cannot make reliable on its own: an agent can rationalise past a written rule, but a ratified `read-only` doc is *physically* unwritable through `memento write` — to change an accepted decision after first commit the agent **must** author a superseding record, not quietly rewrite history. ADR-0017 makes the commit-as-review-boundary claim load-bearing across all three modes: unratified notes accept appends and overwrites regardless of declared mode; ratified notes obey the mode table above.
 
 ### When the agent should write of its own accord (default triggers)
 
@@ -249,8 +248,8 @@ Root dispatch errors use `memento: <token>: ...` because no verb has been select
 | `invalid-key` | A read/write key is empty, absolute, traversal-shaped, not writable, ignored, or otherwise not a vault-relative note key. | `note.ErrInvalidKey` | none |
 | `key-not-found` | `read <key>` does not find a matching non-ignored markdown entry. | `note.ErrNotFound` | none |
 | `section-not-found` | `read <key>#<section>` finds the note but not the section slug. | `note.ErrSectionNotFound` | none |
-| `unsupported-write-operation` | A library caller asks for a write operation outside v0 append support. | `note.ErrUnsupportedWriteOperation` | none |
-| `mode-rejects-write` | The target note is `mode: read-only`. | `note.ErrReadOnly` | none |
+| `unsupported-write-operation` | A library caller asks for a write operation outside append/overwrite support. | `note.ErrUnsupportedWriteOperation` | none |
+| `mode-rejects-write` | The target note's ratified mode rejects the requested operation. | `note.ErrReadOnly` | none |
 | `ignore-file-invalid` | `.mementoignore` uses unsupported or malformed syntax. | `ignore.ErrUnsupportedNegation`, `ignore.ErrEmptyPattern`, `ignore.ErrEmptySegment`, or `ignore.ErrInvalidRecursiveWildcard` | none |
 | `frontmatter-invalid` | Strict metadata parsing rejects malformed frontmatter, invalid `mode:`, or invalid `updated:` metadata. | `markdown.ErrMalformedFrontmatter`, `markdown.ErrUnterminatedFrontmatter`, `markdown.ErrInvalidMode`, or `markdown.ErrInvalidUpdated` | none |
 | `io-error` | Stdin/stdout or filesystem I/O fails outside a more specific token. | `cli.ErrIO` at the CLI boundary; wrapped OS errors from lower packages remain recoverable with `errors.Is`. | none |
@@ -301,7 +300,7 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 |---|---|
 | **v0** | CLI `compile`, `init`, `read`, and minimum `write`. Point at or discover one marker-based vault → canonical `.memento/manifest.json` plus generated `_memento/brief.md`. Includes: `<project>-memory/` init default, `.mementoignore` (subdir walking, glob+comment syntax), tag vocabulary (omitted if no tags exist), heading extraction, out/in link graph as data, bare-markdown fallback, summary-staleness **detection** (flag only, no generation), adopt-or-create init, pre-commit hook, sentinel bootloader injection, `.gitignore` stanza, `memento brief`, whole-file and `#heading` reads, and conservative write support limited to create/append. |
 | **v1** | Hardening and polish around the v0 surfaces after dogfooding: better diagnostics, portability fixes, and compatibility adjustments to keep the CLI stable as the durable agent contract. |
-| **v2** | Smarter writes. Tool-read conventions such as `_memento/writing.md` expose agent-facing write rules / triggers / placement conventions once ADR-0010 pins filenames and precedence. Full mode-aware editing, including `section-replace`, `keyed-upsert`, and mechanical `read-only` enforcement. `read` surfaces out/inlinks for navigation. Default ADR convention. |
+| **v2** | Smarter writes. Tool-read conventions such as `_memento/writing.md` expose agent-facing write rules / triggers / placement conventions once ADR-0010 pins filenames and precedence. Full mode-aware editing across `append-only`, `living`, and `read-only`, including overwrite support and mechanical `read-only` enforcement. `read` surfaces out/inlinks for navigation. Default ADR convention. |
 | **v3** | Withdrawn by ADR-0019. Former non-transport items were re-homed: link surfaces on `read` to v2; agent-driven summarisation to v4 as a CLI workflow design question. |
 | **v4** | Agent-driven summarisation workflow and standalone CLI auto-summarisation (`--summarize`, configured model). `review` verb for deterministic and agent-assisted maintenance. CLI verb to open Obsidian pointed at the resolved vault. |
 
@@ -336,7 +335,6 @@ Open items that block planned later work:
 - **Tool-read convention filenames and precedence** — target **v2**. Pin `_memento/writing.md` and any write-trigger guidance before implementing richer write workflows. `_memento/review.md` / `_memento/audit.md` can be pinned with the v4 `review` work unless v2 needs them earlier.
 - **Read-time link navigation surface and typed-link traversal policy** — target **v2**. The manifest already stores out/in link graph data; `read` still does not surface it. V2 must decide what link metadata to show and which edge types an agent should normally follow by default.
 - **Post-write manifest/brief refresh guidance** — target **v2**. `write` currently creates/appends only and does not compile afterward. V2 write guidance should decide whether writes print "run `memento compile`", auto-compile, or rely on the pre-commit hook.
-- **Living-mode write implementation** — target **v2**. ADR-0015 retired `section-replace` and `keyed-upsert`; v2 should implement the three-mode model (`append-only`, `living`, `read-only`) rather than the older four-mode table text.
 - **Open-question home** — target **v2** if design-question traffic continues. Today open questions live in ADR sections and proposal notes. A dedicated RFD/open-question convention is useful but should not block v1 close.
 
 Deferred, non-blocking, or post-v4 unless evidence promotes them:

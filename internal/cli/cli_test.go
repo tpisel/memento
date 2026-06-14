@@ -993,6 +993,61 @@ func TestWriteAppendsMarkdownFromStdin(t *testing.T) {
 	}
 }
 
+func TestWriteOverwritesMarkdownFromStdinWithExplicitFlag(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "note.md", "---\nmode: living\n---\n# Note\n\nExisting.\n")
+	commitCLIGit(t, root)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--overwrite", "note.md"},
+		strings.NewReader("---\nmode: living\n---\n# Note\n\nReplacement.\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write --overwrite) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write --overwrite) stdout = %q, want empty", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(write --overwrite) stderr = %q, want empty", stderr.String())
+	}
+
+	want := "---\nmode: living\n---\n# Note\n\nReplacement.\n"
+	if got := readCLIFile(t, root, "note.md"); got != want {
+		t.Fatalf("overwritten note = %q, want %q", got, want)
+	}
+}
+
+func TestWriteOverwriteRejectsRatifiedAppendOnlyMode(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	original := "---\nmode: append-only\n---\n# Note\n\nExisting.\n"
+	writeCLIFile(t, root, "note.md", original)
+	commitCLIGit(t, root)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--overwrite", "note.md"},
+		strings.NewReader("# Replacement\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write --overwrite append-only) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write --overwrite append-only) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write", "mode-rejects-write")
+	if got := readCLIFile(t, root, "note.md"); got != original {
+		t.Fatalf("append-only note changed after rejected overwrite: %q", got)
+	}
+}
+
 func TestWriteRejectsTraversalKey(t *testing.T) {
 	makeCLIVault(t)
 
@@ -1178,7 +1233,6 @@ func TestWriteDoesNotOfferDeferredMutationFlags(t *testing.T) {
 	writeCLIFile(t, root, "note.md", "# Note\n\nOriginal.\n")
 
 	for _, args := range [][]string{
-		{"write", "--overwrite", "note.md"},
 		{"write", "--section", "context", "note.md"},
 		{"write", "--upsert", "key", "note.md"},
 	} {
@@ -1254,6 +1308,17 @@ func initCLIGit(t *testing.T, root string) {
 	t.Helper()
 
 	runCLIGit(t, root, "init")
+}
+
+func commitCLIGit(t *testing.T, root string) {
+	t.Helper()
+
+	runCLIGit(t, root, "add", ".")
+	runCLIGit(t, root,
+		"-c", "user.name=Memento Test",
+		"-c", "user.email=memento-test@example.invalid",
+		"commit", "--no-gpg-sign", "-m", "initial",
+	)
 }
 
 func runCLIGit(t *testing.T, root string, args ...string) {

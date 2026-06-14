@@ -13,7 +13,7 @@ import (
 
 var (
 	ErrUnsupportedWriteOperation = errors.New("unsupported write operation")
-	ErrReadOnly                  = errors.New("read-only note")
+	ErrReadOnly                  = errors.New("mode rejects write")
 )
 
 type WriteOperation string
@@ -33,7 +33,7 @@ func Write(v vault.Vault, key string, content []byte, opts WriteOptions) error {
 	if opts.Operation == "" {
 		opts.Operation = OperationAppend
 	}
-	if opts.Operation != OperationAppend {
+	if opts.Operation != OperationAppend && opts.Operation != OperationOverwrite {
 		return fmt.Errorf("%w: %s", ErrUnsupportedWriteOperation, opts.Operation)
 	}
 
@@ -47,8 +47,15 @@ func Write(v vault.Vault, key string, content []byte, opts WriteOptions) error {
 		return err
 	}
 
-	if err := validateAppendMode(v, key, path); err != nil {
+	if err := validateWriteMode(v, key, path, opts.Operation); err != nil {
 		return err
+	}
+
+	if opts.Operation == OperationOverwrite {
+		if err := os.WriteFile(path, content, 0o644); err != nil {
+			return fmt.Errorf("overwrite %s: %w", key, err)
+		}
+		return nil
 	}
 
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
@@ -56,7 +63,6 @@ func Write(v vault.Vault, key string, content []byte, opts WriteOptions) error {
 		return fmt.Errorf("open %s for append: %w", key, err)
 	}
 	defer file.Close()
-
 	if _, err := file.Write(content); err != nil {
 		return fmt.Errorf("write %s: %w", key, err)
 	}
@@ -101,7 +107,7 @@ func normalizeWritableKey(v vault.Vault, key string) (string, error) {
 	return key, nil
 }
 
-func validateAppendMode(v vault.Vault, key, path string) error {
+func validateWriteMode(v vault.Vault, key, path string, op WriteOperation) error {
 	source, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -114,14 +120,18 @@ func validateAppendMode(v vault.Vault, key, path string) error {
 	if err != nil {
 		return fmt.Errorf("extract metadata from %s: %w", key, err)
 	}
+	ratified, err := isRatified(v, key)
+	if err != nil {
+		return err
+	}
+	if !ratified {
+		return nil
+	}
+
 	if meta.Mode == markdown.ModeReadOnly {
-		ratified, err := isRatified(v, key)
-		if err != nil {
-			return err
-		}
-		if !ratified {
-			return nil
-		}
+		return fmt.Errorf("%w: %s is %s", ErrReadOnly, key, meta.Mode)
+	}
+	if meta.Mode == markdown.ModeAppendOnly && op == OperationOverwrite {
 		return fmt.Errorf("%w: %s", ErrReadOnly, key)
 	}
 	return nil

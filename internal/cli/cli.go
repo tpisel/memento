@@ -30,7 +30,7 @@ Usage:
   memento init [--dir <vault>]
   memento orient
   memento read <key|@N>
-  memento write <key>
+  memento write [--overwrite] <key>
 
 Commands:
   help      Show this help text.
@@ -40,7 +40,7 @@ Commands:
   init      Adopt or create a memory vault.
   orient    Print tool-usage orientation and project overlays.
   read      Read a memory note by key or @N entry reference.
-  write     Create or append to a memory note from stdin.
+  write     Create, append to, or overwrite a memory note from stdin.
 `
 
 // Run dispatches the CLI and returns a process-style exit code.
@@ -396,6 +396,7 @@ func briefManifestHash(data []byte) (string, bool) {
 func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("write", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	overwrite := flags.Bool("overwrite", false, "replace the target note with stdin instead of appending")
 	if err := flags.Parse(args); err != nil {
 		printCLIError(stderr, "write", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
@@ -417,7 +418,11 @@ func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := note.Write(v, flags.Arg(0), data, note.WriteOptions{}); err != nil {
+	opts := note.WriteOptions{}
+	if *overwrite {
+		opts.Operation = note.OperationOverwrite
+	}
+	if err := note.Write(v, flags.Arg(0), data, opts); err != nil {
 		printCLIError(stderr, "write", err)
 		return 1
 	}

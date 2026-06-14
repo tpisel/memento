@@ -6,16 +6,17 @@ Memento is a thin retrieval and writing layer over a human-curated markdown memo
 
 - `brief` prints the agent-facing manifest projection: titles, summaries, tags, headings, modes, and numeric read references.
 - `read <key|@N>` reads one note, numeric brief entry, or `key#heading` section. It prints `binding: ratified|unratified` to stderr before stdout content.
-- `write <key>` creates or appends to a note from stdin, subject to the note's declared mode.
+- `write [--overwrite] <key>` creates, appends to, or overwrites a note from stdin, subject to the note's declared mode.
 - `compile` rebuilds the manifest and derived brief artifacts from the vault.
 - `init` adopts or creates a vault and installs project bootstrapping artifacts.
 - `orient` prints this orientation baseline plus project-curated orientation notes.
 
 ## Write Modes
 
-- `append-only` is the default when `mode:` is absent. Writes append new content; existing content is not rewritten.
-- `living` is for editable reference notes. Writes may replace the file body when that operation is supported.
-- `read-only` is for frozen records such as accepted ADRs. The write tool refuses to change them.
+- `append-only` is the default when `mode:` is absent. Ratified notes accept appends and reject overwrites.
+- `living` is for editable reference notes. Ratified notes accept appends and full-file overwrites.
+- `read-only` is for frozen records such as accepted ADRs. Ratified notes reject appends and overwrites.
+- Unratified notes are still in their edit window and accept appends and overwrites regardless of declared mode.
 
 ## Triggered Preconditions
 

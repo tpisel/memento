@@ -17,8 +17,6 @@ summary: "A document that has not yet been committed to git is in its 'edit wind
 
 A markdown note in the memento vault that has not yet been committed to git is in its **edit window**. While in the edit window, the write gate accepts full-file rewrites regardless of the document's declared `mode:`. The edit window closes the moment the file lands in its first git commit; thereafter the declared mode binds for all subsequent writes.
 
-Implementation note, v1: the shipped slice implements the read-only leg only. Because the v1 write surface supports append but not overwrite, unratified `read-only` notes are appendable and ratified `read-only` notes are refused. Full-file rewrites for unratified `append-only` and `living` notes remain tracked under `memento-88t` with the v2 overwrite surface.
-
 - **Ratification event = first commit.** A file's presence in the repository's tracked tree flips its binding state from *unratified* (edit-window open) to *ratified* (mode enforced). Cheapest predicate: `git ls-files --error-unmatch <path>` returns 0 iff tracked.
 - **Rule applies uniformly across all modes.** `append-only`, `living`, and `read-only` all use the same predicate. A freshly-created note declared `mode: read-only` is freely rewritable until first commit; thereafter the tool refuses writes.
 - **The write gate is the enforcement point.** Read operations are unaffected; only the write path's mode-refusal logic gains the edit-window check.

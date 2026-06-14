@@ -692,8 +692,8 @@
       "key": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
       "title": "Pre-commit edit window for new documents",
       "summary": "A document that has not yet been committed to git is in its 'edit window': the write gate accepts full-file rewrites regardless of declared `mode:`. Once the document is first committed, the declared mode binds for all subsequent writes. Ratification event = first commit, not session boundary. Rule applies uniformly across `append-only`, `living`, and `read-only`.",
-      "bytes": 7975,
-      "lines": 73,
+      "bytes": 7611,
+      "lines": 71,
       "tags": [
         "lifecycle",
         "memento",
@@ -1310,8 +1310,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 35487,
-      "lines": 362,
+      "bytes": 35588,
+      "lines": 360,
       "tags": [],
       "headings": [
         {

@@ -126,8 +126,7 @@ func TestWriteAppendsUnratifiedNonReadOnlyModes(t *testing.T) {
 func TestWriteAppendsExistingFilesWithNonReadOnlyModes(t *testing.T) {
 	for _, mode := range []markdown.WriteMode{
 		markdown.ModeAppendOnly,
-		markdown.ModeSectionReplace,
-		markdown.ModeKeyedUpsert,
+		markdown.ModeLiving,
 	} {
 		t.Run(string(mode), func(t *testing.T) {
 			root := makeVault(t)
@@ -161,9 +160,139 @@ func TestWriteAppendsExistingFileWithMissingMode(t *testing.T) {
 	}
 }
 
-func TestWriteRejectsOverwriteForMissingModeLikeAppendOnly(t *testing.T) {
-	appendOnlyErr := rejectedOverwriteError(t, "---\nmode: append-only\n---\n# Note\n\nOriginal.\n")
+func TestWriteRejectsUnreadableFrontmatterWithoutChangingFile(t *testing.T) {
+	root := makeVault(t)
+	original := "---\ntitle\n---\n# Note\n\nOriginal.\n"
+	writeFile(t, root, "note.md", original)
 
+	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	if !errors.Is(err, markdown.ErrMalformedFrontmatter) {
+		t.Fatalf("Write(malformed frontmatter) error = %v, want ErrMalformedFrontmatter", err)
+	}
+
+	if got := readFile(t, root, "note.md"); got != original {
+		t.Fatalf("malformed-frontmatter file changed to %q, want %q", got, original)
+	}
+}
+
+func TestWriteModeMatrixForRatificationAndOperations(t *testing.T) {
+	tests := []struct {
+		name      string
+		ratified  bool
+		mode      markdown.WriteMode
+		operation WriteOperation
+		wantErr   error
+		want      string
+	}{
+		{
+			name:      "unratified append-only append",
+			mode:      markdown.ModeAppendOnly,
+			operation: OperationAppend,
+			want:      "---\nmode: append-only\n---\n# Note\n\nOriginal.\n\nAppended.\n",
+		},
+		{
+			name:      "unratified append-only overwrite",
+			mode:      markdown.ModeAppendOnly,
+			operation: OperationOverwrite,
+			want:      "# Replacement\n\nChanged.\n",
+		},
+		{
+			name:      "unratified living append",
+			mode:      markdown.ModeLiving,
+			operation: OperationAppend,
+			want:      "---\nmode: living\n---\n# Note\n\nOriginal.\n\nAppended.\n",
+		},
+		{
+			name:      "unratified living overwrite",
+			mode:      markdown.ModeLiving,
+			operation: OperationOverwrite,
+			want:      "# Replacement\n\nChanged.\n",
+		},
+		{
+			name:      "unratified read-only append",
+			mode:      markdown.ModeReadOnly,
+			operation: OperationAppend,
+			want:      "---\nmode: read-only\n---\n# Note\n\nOriginal.\n\nAppended.\n",
+		},
+		{
+			name:      "unratified read-only overwrite",
+			mode:      markdown.ModeReadOnly,
+			operation: OperationOverwrite,
+			want:      "# Replacement\n\nChanged.\n",
+		},
+		{
+			name:      "ratified append-only append",
+			ratified:  true,
+			mode:      markdown.ModeAppendOnly,
+			operation: OperationAppend,
+			want:      "---\nmode: append-only\n---\n# Note\n\nOriginal.\n\nAppended.\n",
+		},
+		{
+			name:      "ratified append-only overwrite",
+			ratified:  true,
+			mode:      markdown.ModeAppendOnly,
+			operation: OperationOverwrite,
+			wantErr:   ErrReadOnly,
+			want:      "---\nmode: append-only\n---\n# Note\n\nOriginal.\n",
+		},
+		{
+			name:      "ratified living append",
+			ratified:  true,
+			mode:      markdown.ModeLiving,
+			operation: OperationAppend,
+			want:      "---\nmode: living\n---\n# Note\n\nOriginal.\n\nAppended.\n",
+		},
+		{
+			name:      "ratified living overwrite",
+			ratified:  true,
+			mode:      markdown.ModeLiving,
+			operation: OperationOverwrite,
+			want:      "# Replacement\n\nChanged.\n",
+		},
+		{
+			name:      "ratified read-only append",
+			ratified:  true,
+			mode:      markdown.ModeReadOnly,
+			operation: OperationAppend,
+			wantErr:   ErrReadOnly,
+			want:      "---\nmode: read-only\n---\n# Note\n\nOriginal.\n",
+		},
+		{
+			name:      "ratified read-only overwrite",
+			ratified:  true,
+			mode:      markdown.ModeReadOnly,
+			operation: OperationOverwrite,
+			wantErr:   ErrReadOnly,
+			want:      "---\nmode: read-only\n---\n# Note\n\nOriginal.\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := makeVault(t)
+			initGit(t, root)
+			original := "---\nmode: " + string(tt.mode) + "\n---\n# Note\n\nOriginal.\n"
+			writeFile(t, root, "note.md", original)
+			if tt.ratified {
+				commitAll(t, root)
+			}
+
+			content := []byte("\nAppended.\n")
+			if tt.operation == OperationOverwrite {
+				content = []byte("# Replacement\n\nChanged.\n")
+			}
+			err := Write(vaultFromRoot(root), "note.md", content, WriteOptions{Operation: tt.operation})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Write(%s) error = %v, want %v", tt.operation, err, tt.wantErr)
+			}
+			if got := readFile(t, root, "note.md"); got != tt.want {
+				t.Fatalf("file after %s = %q, want %q", tt.operation, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWriteRejectsOverwriteForRatifiedMissingModeLikeAppendOnly(t *testing.T) {
 	tests := []struct {
 		name     string
 		original string
@@ -181,14 +310,13 @@ func TestWriteRejectsOverwriteForMissingModeLikeAppendOnly(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := makeVault(t)
+			initGit(t, root)
 			writeFile(t, root, "note.md", tt.original)
+			commitAll(t, root)
 
 			err := Write(vaultFromRoot(root), "note.md", []byte("replacement\n"), WriteOptions{Operation: OperationOverwrite})
-			if !errors.Is(err, ErrUnsupportedWriteOperation) {
-				t.Fatalf("Write(overwrite) error = %v, want ErrUnsupportedWriteOperation", err)
-			}
-			if err.Error() != appendOnlyErr {
-				t.Fatalf("Write(overwrite) error = %q, want same error as append-only %q", err.Error(), appendOnlyErr)
+			if !errors.Is(err, ErrReadOnly) {
+				t.Fatalf("Write(overwrite) error = %v, want ErrReadOnly", err)
 			}
 
 			if got := readFile(t, root, "note.md"); got != tt.original {
@@ -198,40 +326,39 @@ func TestWriteRejectsOverwriteForMissingModeLikeAppendOnly(t *testing.T) {
 	}
 }
 
-func rejectedOverwriteError(t *testing.T, original string) string {
+func TestWriteOverwriteChangingBodyInvalidatesStoredSummaryHash(t *testing.T) {
+	root := makeVault(t)
+	initGit(t, root)
+	originalBody := "# Note\n\nOriginal.\n"
+	originalMeta := metadataFor(t, "note.md", []byte(originalBody))
+	original := "---\nmode: living\nsummary: Original.\nsummary_hash: " + originalMeta.BodyHash + "\n---\n" + originalBody
+	writeFile(t, root, "note.md", original)
+	commitAll(t, root)
+
+	replacement := []byte("---\nmode: living\nsummary: Original.\nsummary_hash: " + originalMeta.BodyHash + "\n---\n# Note\n\nChanged.\n")
+	err := Write(vaultFromRoot(root), "note.md", replacement, WriteOptions{Operation: OperationOverwrite})
+	if err != nil {
+		t.Fatalf("Write(overwrite living with stale summary hash) error = %v, want nil", err)
+	}
+
+	got := metadataFor(t, "note.md", []byte(readFile(t, root, "note.md")))
+	if !got.SummaryStale {
+		t.Fatal("SummaryStale = false, want true after overwrite changes body but preserves old summary_hash")
+	}
+}
+
+func metadataFor(t *testing.T, key string, source []byte) markdown.Metadata {
 	t.Helper()
 
-	root := makeVault(t)
-	writeFile(t, root, "note.md", original)
-
-	err := Write(vaultFromRoot(root), "note.md", []byte("replacement\n"), WriteOptions{Operation: OperationOverwrite})
-	if !errors.Is(err, ErrUnsupportedWriteOperation) {
-		t.Fatalf("Write(overwrite append-only baseline) error = %v, want ErrUnsupportedWriteOperation", err)
+	meta, err := markdown.ExtractMetadata(key, source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata(%s) error = %v", key, err)
 	}
-	if got := readFile(t, root, "note.md"); got != original {
-		t.Fatalf("append-only baseline changed after rejected overwrite: %q", got)
-	}
-	return err.Error()
+	return meta
 }
 
-func TestWriteRejectsUnreadableFrontmatterWithoutChangingFile(t *testing.T) {
-	root := makeVault(t)
-	original := "---\ntitle\n---\n# Note\n\nOriginal.\n"
-	writeFile(t, root, "note.md", original)
-
-	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
-	if !errors.Is(err, markdown.ErrMalformedFrontmatter) {
-		t.Fatalf("Write(malformed frontmatter) error = %v, want ErrMalformedFrontmatter", err)
-	}
-
-	if got := readFile(t, root, "note.md"); got != original {
-		t.Fatalf("malformed-frontmatter file changed to %q, want %q", got, original)
-	}
-}
-
-func TestWriteRejectsOverwriteStyleOperations(t *testing.T) {
+func TestWriteRejectsUnsupportedMutationOperations(t *testing.T) {
 	for _, op := range []WriteOperation{
-		OperationOverwrite,
 		OperationSectionReplace,
 		OperationKeyedUpsert,
 	} {

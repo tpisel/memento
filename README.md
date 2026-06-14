@@ -24,7 +24,7 @@ Current verbs:
 - `memento init [--dir <vault>]` - adopt or create a memory vault.
 - `memento orient` - print tool-usage orientation and project overlays.
 - `memento read <key|@N>` - read a memory note by key or `@N` entry reference.
-- `memento write <key>` - create or append to a memory note from stdin.
+- `memento write [--overwrite] <key>` - create, append to, or overwrite a memory note from stdin.
 
 CLI errors start with stable tokens such as `unknown-command`, `invalid-arguments`, and `manifest-not-found`;
 see `memento-memory/spec.md` for the complete error-token contract.
