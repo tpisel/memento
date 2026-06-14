@@ -407,7 +407,7 @@ Resolved [[beta]], display [[beta|Beta note]], broken [[missing]], and anchored 
 	}
 
 	brief := readCLIFile(t, root, "_memento/brief.md")
-	want := "Resolved [[beta @ 2]], display [[beta|Beta note @ 2]], broken [[missing]], and anchored [[beta#Decision]] links."
+	want := "Resolved [[beta|beta @2]], display [[beta|Beta note @2]], broken [[missing]], and anchored [[beta#Decision]] links."
 	if !strings.Contains(brief, want) {
 		t.Fatalf("brief =\n%s\nwant %q", brief, want)
 	}

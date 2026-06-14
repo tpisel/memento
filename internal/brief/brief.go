@@ -198,9 +198,9 @@ func suffixedWikiLink(raw, currentKey string, resolver *manifest.WikiLinkResolve
 	}
 
 	if hasDisplay {
-		return fmt.Sprintf("[[%s|%s @ %d]]", target, display, number), true
+		return fmt.Sprintf("[[%s|%s @%d]]", target, display, number), true
 	}
-	return fmt.Sprintf("[[%s @ %d]]", target, number), true
+	return fmt.Sprintf("[[%s|%s @%d]]", target, target, number), true
 }
 
 func ManifestHash(m manifest.Manifest) string {

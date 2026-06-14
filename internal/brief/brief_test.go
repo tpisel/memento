@@ -231,7 +231,7 @@ func TestRenderSuffixesResolvedSummaryWikiLinksWithEntryNumbers(t *testing.T) {
 
 	got := string(Render(m))
 	for _, want := range []string{
-		"Resolved [[beta @ 2]], display [[beta|Beta note @ 2]], broken [[missing]], and anchored [[beta#Decision]] links.",
+		"Resolved [[beta|beta @2]], display [[beta|Beta note @2]], broken [[missing]], and anchored [[beta#Decision]] links.",
 		"Target.",
 	} {
 		if !bytes.Contains([]byte(got), []byte(want)) {
