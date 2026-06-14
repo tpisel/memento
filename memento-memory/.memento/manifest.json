@@ -540,8 +540,8 @@
       "key": "Architecture decision record/adr-0014-canonical-frontmatter-vocabulary.md",
       "title": "Canonical frontmatter vocabulary",
       "summary": "Frontmatter fields are split into three tiers: tool-consumed (schema-locked, memento reads and acts on them), convention (memento sees but does not act on; used for human discipline), and reserved-rejected (will not be supported). Unknown fields are ignored — forward-compatible by default. Per-doc ignore via frontmatter is rejected; collection membership remains `.mementoignore`'s job.",
-      "bytes": 5952,
-      "lines": 78,
+      "bytes": 6221,
+      "lines": 79,
       "tags": [
         "frontmatter",
         "memento",
@@ -1310,8 +1310,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 35588,
-      "lines": 360,
+      "bytes": 36031,
+      "lines": 368,
       "tags": [],
       "headings": [
         {

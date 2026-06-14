@@ -85,7 +85,7 @@ Canonical machine form is **JSON** (deterministic to parse), emitted at `<vault>
 
 - **key** — vault-relative path (see §5).
 - **title** — frontmatter `title:`, else H1, else filename.
-- **summary** — see §8 fallback chain.
+- **summary** — see §9 summary-resolution chain.
 - **tags** — from frontmatter.
 - **headings** — the H2/H3 tree (depth-capped to stay scannable). This is most of the value of reading the doc at a fraction of the tokens, and is what enables section-level reads (§7).
 - **mode** — write-mode (§9).
@@ -177,6 +177,14 @@ Trigger-shaped, not discretion-shaped — discretionary "write down useful thing
 ---
 
 ## 9. Summarisation
+
+**Summary resolution is deterministic.** Manifest summaries resolve in this order:
+
+1. Frontmatter `summary:`
+2. Frontmatter `description:` (OKF-aligned fallback, per ADR-0018)
+3. First non-empty markdown paragraph
+
+`summary:` remains the memento-native source of truth. `description:` only contributes when `summary:` is absent, so OKF-authored notes get useful manifest summaries without changing existing memento-authored notes.
 
 **Compile is pure.** Deterministic, no network, hook-safe — it must never make an LLM call, because it runs on a pre-commit hook and a hook that hangs on a flaky/slow/costly network call is unacceptable. Compile therefore does **detection only**: it flags which files are new, summary-less, or body-changed-since-summary.
 

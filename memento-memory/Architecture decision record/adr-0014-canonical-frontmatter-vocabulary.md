@@ -23,7 +23,8 @@ Memento reads these fields and changes behavior in response. Adding a new field 
 | Field | Type | Semantics | Introduced |
 |---|---|---|---|
 | `title` | string | Overrides the H1-derived title for manifest entries | v0 (spec §4) |
-| `summary` | string | Overrides the first-paragraph fallback for manifest summaries | v0 (spec §4) |
+| `summary` | string | Primary manifest summary source; overrides `description:` and the first-paragraph fallback | v0 (spec §4, §9) |
+| `description` | string | OKF-aligned manifest summary fallback used when `summary:` is absent | v1 (ADR-0018, spec §9) |
 | `tags` | list[string] | Manifest tag field and tag-vocabulary input | v0 (spec §4) |
 | `mode` | enum | Write-mode declaration; tool enforces against the declared mode | v0 (spec §8) |
 | `summary_hash` | string | sha256 of body excluding frontmatter; staleness detection | v0 (spec §9) |
@@ -33,7 +34,7 @@ Memento reads these fields and changes behavior in response. Adding a new field 
 
 These fields appear in vault content by user or project convention. Memento parses frontmatter robustly enough not to choke on them, but does not read or act on them. They exist for human discipline.
 
-Examples: `status`, `date`, `id`, `supersedes`, `assignee`, and any project-specific field a user adds.
+Named convention fields include `status`, `date`, `id`, `supersedes`, `assignee`, and the OKF v0.1 fields `type`, `resource`, `timestamp`, and `okf_version` (ADR-0018). Project-specific fields may also appear here.
 
 Convention fields do **not** acquire tool behavior silently. Promoting a convention field to Tier 1 requires an ADR.
 

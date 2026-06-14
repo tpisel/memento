@@ -503,6 +503,35 @@ Fallback summary.
 	}
 }
 
+func TestCompileAcceptsOKFConventionFrontmatterWithoutWarnings(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "okf.md", `---
+title: OKF Note
+type: BigQuery Table
+resource: //bigquery.googleapis.com/projects/demo/datasets/core/tables/events
+timestamp: 2026-06-14T10:30:00Z
+okf_version: "0.1"
+---
+# Ignored H1
+
+OKF convention fields should not warn.
+`)
+
+	m, warnings, err := CompileWithWarnings(vaultFromRoot(root))
+	if err != nil {
+		t.Fatalf("CompileWithWarnings() error = %v, want nil", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("CompileWithWarnings() warnings = %d, want 0: %#v", len(warnings), warnings)
+	}
+	if len(m.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(m.Entries))
+	}
+	if m.Entries[0].Summary != "OKF convention fields should not warn." {
+		t.Fatalf("Summary = %q, want first paragraph fallback", m.Entries[0].Summary)
+	}
+}
+
 func makeVault(t *testing.T) string {
 	t.Helper()
 

@@ -58,6 +58,7 @@ type Heading struct {
 type frontmatter struct {
 	title       string
 	summary     string
+	description string
 	tags        []string
 	mode        WriteMode
 	orient      bool
@@ -98,6 +99,9 @@ func metadataFromParts(relPath string, fm frontmatter, body []byte) Metadata {
 	}
 
 	summary := fm.summary
+	if summary == "" {
+		summary = fm.description
+	}
 	if summary == "" {
 		summary = firstParagraphText(doc, body)
 	}
@@ -258,6 +262,8 @@ func applyFrontmatterField(fm *frontmatter, key, value string) error {
 		fm.title = cleanScalar(value)
 	case "summary":
 		fm.summary = cleanScalar(value)
+	case "description":
+		fm.description = cleanScalar(value)
 	case "tags":
 		tags, err := parseInlineTags(value)
 		if err != nil {
@@ -284,6 +290,8 @@ func applyFrontmatterField(fm *frontmatter, key, value string) error {
 		fm.updated = updated
 	case "summary_hash":
 		fm.summaryHash = cleanScalar(value)
+	case "type", "resource", "timestamp", "okf_version":
+		// OKF convention fields are accepted and ignored by design.
 	default:
 		// Unknown frontmatter is durable human metadata; preserve compatibility by ignoring it.
 	}

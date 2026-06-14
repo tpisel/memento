@@ -206,6 +206,58 @@ The first paragraph should be used.
 	}
 }
 
+func TestSummaryResolutionUsesSummaryThenDescriptionThenFirstParagraph(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "summary wins",
+			src: `---
+summary: Native summary.
+description: OKF description.
+---
+# Title
+
+First paragraph.
+`,
+			want: "Native summary.",
+		},
+		{
+			name: "description fallback",
+			src: `---
+description: OKF description.
+---
+# Title
+
+First paragraph.
+`,
+			want: "OKF description.",
+		},
+		{
+			name: "first paragraph fallback",
+			src: `# Title
+
+First paragraph.
+`,
+			want: "First paragraph.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ExtractMetadata("note.md", []byte(tt.src))
+			if err != nil {
+				t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+			}
+			if got.Summary != tt.want {
+				t.Fatalf("Summary = %q, want %q", got.Summary, tt.want)
+			}
+		})
+	}
+}
+
 func TestExtractMetadataExtractsH2H3HeadingsInSourceOrder(t *testing.T) {
 	source := []byte(`# Document Title
 
