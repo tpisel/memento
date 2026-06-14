@@ -50,7 +50,7 @@ func isRatified(v vault.Vault, key string) (bool, error) {
 		return true, nil
 	}
 
-	cmd := exec.Command("git", "ls-files", "--error-unmatch", "--", filepath.FromSlash(key))
+	cmd := exec.Command("git", "--literal-pathspecs", "ls-files", "--error-unmatch", "--", filepath.FromSlash(key))
 	cmd.Dir = v.Root
 	err = cmd.Run()
 	if err == nil {
@@ -67,7 +67,7 @@ func isRatified(v vault.Vault, key string) (bool, error) {
 }
 
 func isInsideGitWorkTree(root string) (bool, error) {
-	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	cmd := exec.Command("git", "--literal-pathspecs", "rev-parse", "--is-inside-work-tree")
 	cmd.Dir = root
 	output, err := cmd.Output()
 	if err == nil {
