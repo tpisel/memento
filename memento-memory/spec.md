@@ -272,7 +272,6 @@ Root dispatch errors use `memento: <token>: ...` because no verb has been select
 Durable project knowledge lives in `<vault>`.
 Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).
 Identify relevant entries from the brief; read only the bodies or sections that plausibly apply with `memento read <key>`.
-Working state lives in beads (`bd ready`); discoveries that outlive a task go to `<vault>/`, not beads notes.
 <!-- memento:end -->
 ```
 
@@ -317,7 +316,7 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 
 ## 15. Deferred / out of scope / open questions
 
-V1 close triage, 2026-06-14: this list has been checked against the shipped v0/v1 CLI (`compile`, `brief`, `init`, `orient`, `read`, `write`) and the open-thread notes in `Feature thoughts.md`, `Configurability exploration.md`, and `OKF interop and external compatibility.md`. `Open questions.md` is not present in the vault as of this triage.
+V1 close triage, 2026-06-14: this list has been checked against the shipped v0/v1 CLI (`compile`, `brief`, `init`, `orient`, `read`, `write`) and the open-thread notes in [[Feature thoughts]], [[Configurability exploration]], and [[OKF interop and external compatibility]]. [[Open questions]] is not present in the vault as of this triage.
 
 Resolved or parked by v1 ADRs:
 
@@ -327,7 +326,7 @@ Resolved or parked by v1 ADRs:
 - **Init-scaffolded human guide** — resolved by ADR-0012 and shipped as `_memento/Using Memento.md`, ignored by compile.
 - **OKF cheap-alignment subset** — resolved by ADR-0018: OKF frontmatter conventions are accepted, and `description:` is a summary fallback. Deeper OKF export/native-mode work remains deferred below.
 - **V1 walk portability** — resolved by ADR-0020: filesystem-returned path spelling is preserved, and symlinks are skipped during vault walks.
-- **Loose v1 nits from `Feature thoughts.md`** — `manifest_path` is present in `.memento/config.toml`; `.gitignore` insertion is sentinel-bounded and vault-relative; `_memento/brief.md` is ignored file-specifically. No further v1 action.
+- **Loose v1 nits from [[Feature thoughts]]** — `manifest_path` is present in `.memento/config.toml`; `.gitignore` insertion is sentinel-bounded and vault-relative; `_memento/brief.md` is ignored file-specifically. No further v1 action.
 
 Open items that block planned later work:
 
@@ -346,8 +345,8 @@ Deferred, non-blocking, or post-v4 unless evidence promotes them:
 - **Token-aware brief/orient sizing** — bytes/lines are the current size proxy. Tokenizer-backed sizing waits until brief or orient output approaches real context-budget limits.
 - **`init --template=` starters / opinionated writer sets** — opt-in starter vault structures remain deferred until repeated greenfield setup friction appears.
 - **Doc-type-specific brief rendering** — ADRs, specs, and notes render uniformly. Specialized rendering waits for observed need, likely alongside review or type-aware frontmatter work.
-- **OKF export or native `format: okf` mode** — deferred by `OKF interop and external compatibility.md` and `Configurability exploration.md`. The default remains Obsidian-aligned; build export/native mode only for a concrete OKF consumer or non-Obsidian deployment.
-- **Edit-window configurability** — deferred by ADR-0017 and `Configurability exploration.md`. Keep the first-commit rule unconfigurable until real friction appears (multi-commit drafting, read-only footguns, or multi-agent races).
+- **OKF export or native `format: okf` mode** — deferred by [[OKF interop and external compatibility]] and [[Configurability exploration]]. The default remains Obsidian-aligned; build export/native mode only for a concrete OKF consumer or non-Obsidian deployment.
+- **Edit-window configurability** — deferred by ADR-0017 and [[Configurability exploration]]. Keep the first-commit rule unconfigurable until real friction appears (multi-commit drafting, read-only footguns, or multi-agent races).
 - **Type-aware frontmatter behavior** — `type:` remains Tier 2 convention per ADR-0018. Promote only when a concrete behavior such as type-scoped reads or doc-type rendering needs it.
 
 
@@ -357,4 +356,4 @@ We'll dogfood docs in our repo using the same method, though it's likely that we
 
 memento dir is `memento-memory/`
 ADRs in `memento-memory/Architecture decision record/`
-If a non-blocking open question poses itself in development, append to `memento-memory/Open questions.md`, similarly for `memento-memory/Feature ideas.md`
+If a non-blocking open question poses itself in development, append to [[Open questions]], similarly for [[Feature ideas]]

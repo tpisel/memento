@@ -19,9 +19,9 @@ Single incident, three overlapping failures. Useful concrete case study.
 **The spec (bead .37):** "Create ADR-0012 — @N convention for numeric refs, supersedes ADR-0011 details." Blocks beads .38/.39/.40.
 
 **Reality at execution time:**
-- `adr-0012-using-memento-guide.md` already existed and was accepted. The 0012 slot was taken. → **mis-spec**: bead is invalid as written.
+- [[adr-0012-using-memento-guide]] already existed and was accepted. The 0012 slot was taken. → **mis-spec**: bead is invalid as written.
 - ADRs 0013/0014/0015 existed as untracked WIP in the worktree — user-authored ahead of ralph but never committed under a bead. Sibling beads .42/.43/.44 referenced these ADRs ("Per ADR-0013, implement orient") and assumed they were canonical. → **side-channel state** + **mis-dag**: the "design ADR → implementation bead" ordering was broken — implementation beads were in the queue while the ADRs they cite lived only as untracked files.
-- The ralph-loop wrapper's commit step (`git add -A` after each iteration) didn't distinguish "this iteration's agent changes" from "pre-existing user WIP." When .37's agent correctly stopped without edits, the wrapper swept up the user's untracked ADRs and the modified `Feature thoughts.md` into a commit titled `memento-2nb.37: ADR-0012 — @N convention…`. Title and content unrelated. → **wrapper misattribution**.
+- The ralph-loop wrapper's commit step (`git add -A` after each iteration) didn't distinguish "this iteration's agent changes" from "pre-existing user WIP." When .37's agent correctly stopped without edits, the wrapper swept up the user's untracked ADRs and the modified [[Feature thoughts]] into a commit titled `memento-2nb.37: ADR-0012 — @N convention…`. Title and content unrelated. → **wrapper misattribution**.
 - Bead .37 was never closed (the agent left a comment, not a close). The queue's `--ready` filter skipped it because it stayed `IN_PROGRESS`; ralph happily moved on. → **stale claim**, plus the spec problem was invisible to the operator until review.
 
 **Recovery:** dropped the bogus commit via `git rebase --onto ee7906e^ ee7906e HEAD`, restored the 5 WIP files from the orphaned commit blob, reset .37 to OPEN with a comment explaining the situation, patched ralph-loop to refuse a dirty worktree at start.

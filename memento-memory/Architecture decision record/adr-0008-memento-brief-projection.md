@@ -38,7 +38,7 @@ OS-level locks (chmod, immutable bits) are deliberately not used: cross-platform
 
 The current manifest is consumed as JSON. That JSON carries structural overhead (field names, empty `links` arrays, HTML-escape leakage like `<` and `&` from Go's default encoder) that costs agent context tokens without aiding retrieval. Markdown is the native medium for both the agent surface and the human-via-Obsidian surface; JSON remains the right surface for machine consumers (the compile pipeline and future tooling).
 
-Manifest summaries today are extracted from the first paragraph after the title heading (`internal/markdown/metadata.go:firstParagraphText`). Frontmatter `summary:` overrides that fallback. The summary discipline ("lead with the decision, not the question") is a content concern that the brief surfaces but does not enforce — see `memento-memory/what makes a good summary.md`.
+Manifest summaries today are extracted from the first paragraph after the title heading (`internal/markdown/metadata.go:firstParagraphText`). Frontmatter `summary:` overrides that fallback. The summary discipline ("lead with the decision, not the question") is a content concern that the brief surfaces but does not enforce — see [[what makes a good summary]].
 
 Two alternatives were considered and rejected:
 

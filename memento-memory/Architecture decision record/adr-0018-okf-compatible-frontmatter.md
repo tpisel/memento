@@ -51,11 +51,11 @@ The following deeper OKF alignment steps are **not** adopted and remain deferred
 - **`type:` synthesis on bare markdown.** memento's bare-frontmatter tolerance (ADR-0005, spec §11) does not synthesise `type:` for missing-frontmatter docs.
 - **Special handling of conventional section headings.** `# Schema`, `# Examples`, `# Citations` appear in the heading tree like any other heading; no type-aware rendering.
 
-These items are export-shim concerns or dual-mode deployment concerns. They depend on decisions that have not been made; see `Configurability exploration.md` for the open thread.
+These items are export-shim concerns or dual-mode deployment concerns. They depend on decisions that have not been made; see [[Configurability exploration]] for the open thread.
 
 ## Context
 
-OKF v0.1 was announced 2026-06-13 by Google Cloud. Full alignment analysis lives in `OKF interop and external compatibility.md`. This ADR captures the *free subset* of alignment — frontmatter additions that interoperate with OKF producers and consumers without changing memento's existing model, breaking the Obsidian-aligned default, or pre-building infrastructure for unproven use cases.
+OKF v0.1 was announced 2026-06-13 by Google Cloud. Full alignment analysis lives in [[OKF interop and external compatibility]]. This ADR captures the *free subset* of alignment — frontmatter additions that interoperate with OKF producers and consumers without changing memento's existing model, breaking the Obsidian-aligned default, or pre-building infrastructure for unproven use cases.
 
 Three motivations:
 
@@ -87,5 +87,5 @@ Three motivations:
 ## Related
 
 - ADR-0014 (canonical frontmatter vocabulary): this ADR extends Tier 2 and adds one Tier 1 fallback. ADR-0014's unknown-field policy is the reason this ADR is cheap.
-- `OKF interop and external compatibility.md`: full alignment analysis behind the deferred items, including the dual-mode posture.
-- `Configurability exploration.md`: dual-mode init thread.
+- [[OKF interop and external compatibility]]: full alignment analysis behind the deferred items, including the dual-mode posture.
+- [[Configurability exploration]]: dual-mode init thread.

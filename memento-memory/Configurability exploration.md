@@ -45,14 +45,14 @@ Append new threads below as further axes emerge. Do not edit prior threads in pl
 
 **Cheap constraints already adopted** (no `format:` toggle needed today, but they keep the option alive):
 
-- Typed-link information lives in frontmatter and the compiled manifest only, never in markdown body link syntax. Pinned in `OKF interop and external compatibility.md`.
+- Typed-link information lives in frontmatter and the compiled manifest only, never in markdown body link syntax. Pinned in [[OKF interop and external compatibility]].
 - Manifest schema is link-syntax-agnostic — stores resolved keys and typed-link metadata, not raw link text (spec §4).
 - Memento-flavoured filenames live under `.memento/` and `_memento/` namespaces only. The vault root is left untouched, leaving `index.md` and `log.md` available for OKF reservation if dual-mode ever lands.
 - ADR-0018 aligns the cheap subset of frontmatter conventions, narrowing the eventual cost of dual-mode.
 
 **Trigger for implementation:** A concrete user surfaces with a non-Obsidian deployment intent, *or* an OKF consumer ecosystem emerges where bidirectional editing (not just export) is the natural shape, *or* OKF v0.2+ tightens compatibility expectations.
 
-**Related:** `OKF interop and external compatibility.md` (full alignment analysis, addendum on dual-mode posture), ADR-0018 (OKF-compatible frontmatter conventions).
+**Related:** [[OKF interop and external compatibility]] (full alignment analysis, addendum on dual-mode posture), ADR-0018 (OKF-compatible frontmatter conventions).
 
 ## Thread 2 — edit-window policy for new documents
 

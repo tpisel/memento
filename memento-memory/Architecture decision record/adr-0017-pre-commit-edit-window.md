@@ -68,4 +68,4 @@ If the footgun produces real incidents, revisit with `read-only` as a special ca
 
 ## Related
 
-- `Configurability exploration.md`: per-mode override, commit-count boundary, and other knobs that could relax or tighten the edit-window rule if evidence demands.
+- [[Configurability exploration]]: per-mode override, commit-count boundary, and other knobs that could relax or tighten the edit-window rule if evidence demands.

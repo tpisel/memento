@@ -37,7 +37,7 @@ A frontmatter stable-`id:` system was rejected in spec.md §5 as authoring frict
 
 Two adjacent ideas were considered and rejected:
 
-- **`brief --index` (titles only, no summaries).** Rejected: the brief's design (ADR-0008, `what makes a good summary.md`) leans hard on summaries carrying the load-bearing fact. An index-only mode invites decide-by-title and degrades retrieval quality. If brief output is too noisy, tighten summaries — do not offer a shallower variant.
+- **`brief --index` (titles only, no summaries).** Rejected: the brief's design (ADR-0008, [[what makes a good summary]]) leans hard on summaries carrying the load-bearing fact. An index-only mode invites decide-by-title and degrades retrieval quality. If brief output is too noisy, tighten summaries — do not offer a shallower variant.
 - **Two-level numeric refs for section reads (`read 4 2`).** Rejected: section slugs are greppable from rendered brief output, round-trip with wikilinks (`[[adr-0003#Ignore Semantics]]`), and self-document in shell history. Numeric pairs save a few characters per call but cannot be read back later and conflict with future positional CLI arguments.
 
 ## Determinism and the staleness contract

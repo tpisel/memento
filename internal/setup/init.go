@@ -440,7 +440,6 @@ func bootloaderBlock(repoRoot string, v vault.Vault) string {
 		fmt.Sprintf("Durable project knowledge lives in `%s`.", memoryPath),
 		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
 		"Read entries by key or `@N` index with `memento read <key|@N>`.",
-		fmt.Sprintf("Working state lives in beads (`bd ready`); discoveries that outlive a task go to `%s/`, not beads notes.", memoryPath),
 		bootloaderEndSentinel,
 	}, "\n")
 }

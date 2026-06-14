@@ -22,10 +22,11 @@ When memento CLI support exists, replace the manual memory scan with the manifes
 
 <!-- memento:start -->
 Durable project knowledge lives in `memento-memory`.
-Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).
-Identify relevant entries from the brief; read only the bodies or sections that plausibly apply with `memento read <key>`.
-Working state lives in beads (`bd ready`); discoveries that outlive a task go to `memento-memory/`, not beads notes.
+Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.
+Read entries by key or `@N` index with `memento read <key|@N>`.
 <!-- memento:end -->
+
+Working state lives in beads (`bd ready`); discoveries that outlive a task go to `memento-memory/`, not beads notes.
 
 **This repo only — invoking memento:** memento is being built in this repo. The block above refers to `memento` as if it were on `$PATH`. In this repo, invoke it as `go run ./cmd/memento <verb>` or `just run <verb>` (e.g., `just run brief`, `just run read <key>`).
 
