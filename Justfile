@@ -18,6 +18,9 @@ build:
     mkdir -p /tmp/memento-build
     go build -o /tmp/memento-build/memento ./cmd/memento
 
+bench:
+    go test -bench=. -benchmem ./internal/cli/
+
 run *args:
     go run ./cmd/memento {{args}}
 

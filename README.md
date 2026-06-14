@@ -26,6 +26,16 @@ Current verbs:
 - `memento write <key>` - create or append to a note from stdin.
 - `memento serve` - MCP server entrypoint; currently a stub.
 
+## Performance
+
+`memento compile` is expected to stay sub-second and safe for pre-commit hooks. The synthetic-vault gate is:
+
+```sh
+just bench
+```
+
+Current baseline for `BenchmarkCompile500Docs`: 18,019,817 ns/op, 22.2 MB/op, 108,096 allocs/op on Apple M2 Max, macOS arm64. The same 500-document fixture is covered by `TestCompileWithin1s`, which is skipped under `go test -short`.
+
 ## Vault Layout
 
 Notes live in a project memory directory such as `memento-memory/`. The canonical manifest is written to `<vault>/.memento/manifest.json`, and tool-relevant human-readable artifacts live under `<vault>/_memento/`. See `memento-memory/spec.md` for the full model.
