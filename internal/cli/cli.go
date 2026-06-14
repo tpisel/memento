@@ -408,17 +408,27 @@ func warnIfBriefHashDrift(v vault.Vault, m manifest.Manifest, stderr io.Writer) 
 }
 
 func briefManifestHash(data []byte) (string, bool) {
-	line := string(data)
-	if before, _, ok := strings.Cut(line, "\n"); ok {
-		line = before
-	}
-
-	const prefix = "<!-- manifest: "
-	const suffix = " -->"
-	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
+	text := string(data)
+	line, rest, ok := strings.Cut(text, "\n")
+	if !ok || strings.TrimSuffix(line, "\r") != "---" {
 		return "", false
 	}
-	return strings.TrimSuffix(strings.TrimPrefix(line, prefix), suffix), true
+
+	for {
+		line, next, hasNext := strings.Cut(rest, "\n")
+		line = strings.TrimSuffix(line, "\r")
+		if line == "---" {
+			return "", false
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if ok && strings.TrimSpace(key) == "manifest" {
+			return strings.TrimSpace(value), true
+		}
+		if !hasNext {
+			return "", false
+		}
+		rest = next
+	}
 }
 
 func isAllDigits(s string) bool {

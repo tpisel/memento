@@ -98,8 +98,7 @@ func Render(m manifest.Manifest) []byte {
 // and includes detected tool-consumed files in the footer.
 func RenderWithToolFiles(m manifest.Manifest, toolFiles []string) []byte {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "<!-- manifest: %s -->\n", ManifestHash(m))
-	b.WriteString("---\nmode: read-only\n---\n")
+	fmt.Fprintf(&b, "---\nmode: read-only\nmanifest: %s\n---\n", ManifestHash(m))
 	b.WriteString(Banner)
 	b.WriteString("\n\n# Memento Brief\n")
 
