@@ -38,7 +38,8 @@ func TestInitCreatesAgentInstructionsWhenAbsent(t *testing.T) {
 	for _, want := range []string{
 		"<!-- memento:start -->",
 		"Durable project knowledge lives in `sample-app-memory`.",
-		"Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).",
+		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
+		"Read entries by key or `@N` index with `memento read <key|@N>`.",
 		"<!-- memento:end -->",
 	} {
 		if !strings.Contains(got, want) {
@@ -62,7 +63,7 @@ func TestInitAppendsBootloaderToExistingAgentInstructions(t *testing.T) {
 	if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
 		t.Fatalf("AGENTS.md start sentinel count = %d, want 1; contents = %q", count, got)
 	}
-	assertBriefRoutedBootloader(t, "AGENTS.md", got, "memory")
+	assertPointerBootloader(t, "AGENTS.md", got, "memory")
 }
 
 func TestInitAppendsBootloaderToExistingClaudeInstructions(t *testing.T) {
@@ -80,7 +81,7 @@ func TestInitAppendsBootloaderToExistingClaudeInstructions(t *testing.T) {
 	if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
 		t.Fatalf("CLAUDE.md start sentinel count = %d, want 1; contents = %q", count, got)
 	}
-	assertBriefRoutedBootloader(t, "CLAUDE.md", got, "memory")
+	assertPointerBootloader(t, "CLAUDE.md", got, "memory")
 	if _, err := os.Stat(filepath.Join(repo, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("AGENTS.md stat err = %v, want file not to exist", err)
 	}
@@ -100,7 +101,7 @@ func TestInitInjectsBootloaderIntoAgentsAndClaudeWhenBothExist(t *testing.T) {
 		if count := strings.Count(got, "<!-- memento:start -->"); count != 1 {
 			t.Fatalf("%s start sentinel count = %d, want 1; contents = %q", relPath, count, got)
 		}
-		assertBriefRoutedBootloader(t, relPath, got, "memory")
+		assertPointerBootloader(t, relPath, got, "memory")
 	}
 }
 
@@ -118,7 +119,7 @@ func TestInitReplacesExistingBootloaderBlock(t *testing.T) {
 			t.Fatalf("AGENTS.md = %q, want it to contain %q", got, want)
 		}
 	}
-	assertBriefRoutedBootloader(t, "AGENTS.md", got, "project-memory")
+	assertPointerBootloader(t, "AGENTS.md", got, "project-memory")
 	if strings.Contains(got, "old block") {
 		t.Fatalf("AGENTS.md = %q, want old bootloader removed", got)
 	}
@@ -138,7 +139,7 @@ func TestInitReplacesExistingBootloaderBlockInEveryPresentInstructionFile(t *tes
 
 	for _, relPath := range []string{"AGENTS.md", "CLAUDE.md"} {
 		got := readSetupFile(t, repo, relPath)
-		assertBriefRoutedBootloader(t, relPath, got, "project-memory")
+		assertPointerBootloader(t, relPath, got, "project-memory")
 		if strings.Contains(got, "old agents block") || strings.Contains(got, "old claude block") {
 			t.Fatalf("%s = %q, want old bootloader removed", relPath, got)
 		}
@@ -158,7 +159,8 @@ func TestInitBootloaderUsesCustomMemoryDirectoryPath(t *testing.T) {
 	got := readSetupFile(t, repo, "AGENTS.md")
 	for _, want := range []string{
 		"Durable project knowledge lives in `docs/project-memory`.",
-		"Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).",
+		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
+		"Read entries by key or `@N` index with `memento read <key|@N>`.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("AGENTS.md = %q, want it to contain %q", got, want)
@@ -523,7 +525,7 @@ func TestInitCanUseConfiguredAgentInstructionFile(t *testing.T) {
 	}
 
 	got := readSetupFile(t, repo, "CLAUDE.md")
-	assertBriefRoutedBootloader(t, "CLAUDE.md", got, "memory")
+	assertPointerBootloader(t, "CLAUDE.md", got, "memory")
 	if _, err := os.Stat(filepath.Join(repo, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("AGENTS.md stat err = %v, want file not to exist", err)
 	}
@@ -630,13 +632,13 @@ func readSetupFile(t *testing.T, root, relPath string) string {
 	return string(data)
 }
 
-func assertBriefRoutedBootloader(t *testing.T, relPath, got, memoryPath string) {
+func assertPointerBootloader(t *testing.T, relPath, got, memoryPath string) {
 	t.Helper()
 
 	for _, want := range []string{
 		"Durable project knowledge lives in `" + memoryPath + "`.",
-		"Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).",
-		"Identify relevant entries from the brief; read only the bodies or sections that plausibly apply with `memento read <key>`.",
+		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
+		"Read entries by key or `@N` index with `memento read <key|@N>`.",
 		"Working state lives in beads (`bd ready`); discoveries that outlive a task go to `" + memoryPath + "/`, not beads notes.",
 	} {
 		if !strings.Contains(got, want) {
@@ -647,6 +649,9 @@ func assertBriefRoutedBootloader(t *testing.T, relPath, got, memoryPath string) 
 	for _, unwanted := range []string{
 		"manifest.json",
 		"scan the manifest",
+		"agent-facing manifest projection",
+		"Identify relevant entries",
+		"read only the bodies",
 	} {
 		if strings.Contains(got, unwanted) {
 			t.Fatalf("%s = %q, want no raw manifest guidance containing %q", relPath, got, unwanted)

@@ -302,6 +302,36 @@ func TestCompileWritesDiscoveredManifest(t *testing.T) {
 	}
 }
 
+func TestNonInitVerbsDoNotRefreshAgentInstructionsBootloader(t *testing.T) {
+	repo := t.TempDir()
+	root := filepath.Join(repo, "project-memory")
+	if err := os.MkdirAll(filepath.Join(root, ".memento"), 0o755); err != nil {
+		t.Fatalf("mkdir marker: %v", err)
+	}
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+	agentInstructions := "# Agent Instructions\n\n<!-- memento:start -->\nold bootloader block\n<!-- memento:end -->\n"
+	writeCLIFile(t, repo, "AGENTS.md", agentInstructions)
+	chdirCLI(t, repo)
+
+	for _, args := range [][]string{
+		{"compile"},
+		{"brief"},
+		{"orient"},
+		{"read", "note.md"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := Run(args, &stdout, &stderr)
+			if code != 0 {
+				t.Fatalf("Run(%v) exit code = %d, want 0; stderr = %q", args, code, stderr.String())
+			}
+			if got := readCLIFile(t, repo, "AGENTS.md"); got != agentInstructions {
+				t.Fatalf("AGENTS.md changed after Run(%v):\ngot:\n%s\nwant:\n%s", args, got, agentInstructions)
+			}
+		})
+	}
+}
+
 func TestCompileWritesManifestAndWarnsWhenBriefWriteFails(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
