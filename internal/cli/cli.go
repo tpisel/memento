@@ -78,45 +78,45 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	case "write":
 		return runWrite(args[1:], stdin, stdout, stderr)
 	case "serve":
-		fmt.Fprint(stderr, "memento serve: not implemented (v3; see spec §13)\n")
+		printCLIError(stderr, "serve", fmt.Errorf("%w: v3; see spec §13", ErrNotImplemented))
 		return 1
 	default:
-		fmt.Fprintf(stderr, "memento: unknown command %q\n\n", args[0])
-		fmt.Fprint(stderr, "Run 'memento help' for usage.\n")
+		printRootError(stderr, fmt.Errorf("%w %q", ErrUnknownCommand, args[0]))
 		return 2
 	}
 }
 
 func runOrient(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("orient", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags.SetOutput(io.Discard)
 	dir := flags.String("dir", "", "memory vault directory")
 	if err := flags.Parse(args); err != nil {
+		printCLIError(stderr, "orient", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintf(stderr, "memento orient: unexpected argument %q\n", flags.Arg(0))
+		printCLIError(stderr, "orient", fmt.Errorf("%w: unexpected argument %q", ErrInvalidArguments, flags.Arg(0)))
 		return 2
 	}
 
 	v, err := resolveVault(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento orient: %v\n", err)
+		printCLIError(stderr, "orient", err)
 		return 1
 	}
 
 	m, err := readManifest(v)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento orient: %v\n", err)
+		printCLIError(stderr, "orient", err)
 		return 1
 	}
 	data, err := orient.Render(v, m)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento orient: %v\n", err)
+		printCLIError(stderr, "orient", err)
 		return 1
 	}
 	if _, err := stdout.Write(data); err != nil {
-		fmt.Fprintf(stderr, "memento orient: write stdout: %v\n", err)
+		printCLIError(stderr, "orient", fmt.Errorf("%w: write stdout: %v", ErrIO, err))
 		return 1
 	}
 	return 0
@@ -124,29 +124,30 @@ func runOrient(args []string, stdout, stderr io.Writer) int {
 
 func runBrief(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("brief", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags.SetOutput(io.Discard)
 	dir := flags.String("dir", "", "memory vault directory")
 	if err := flags.Parse(args); err != nil {
+		printCLIError(stderr, "brief", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintf(stderr, "memento brief: unexpected argument %q\n", flags.Arg(0))
+		printCLIError(stderr, "brief", fmt.Errorf("%w: unexpected argument %q", ErrInvalidArguments, flags.Arg(0)))
 		return 2
 	}
 
 	v, err := resolveVault(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento brief: %v\n", err)
+		printCLIError(stderr, "brief", err)
 		return 1
 	}
 
 	data, err := readOrRenderBrief(v)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento brief: %v\n", err)
+		printCLIError(stderr, "brief", err)
 		return 1
 	}
 	if _, err := stdout.Write(data); err != nil {
-		fmt.Fprintf(stderr, "memento brief: write stdout: %v\n", err)
+		printCLIError(stderr, "brief", fmt.Errorf("%w: write stdout: %v", ErrIO, err))
 		return 1
 	}
 	return 0
@@ -165,14 +166,14 @@ func readOrRenderBrief(v vault.Vault) ([]byte, error) {
 	data, err = os.ReadFile(v.ManifestPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("manifest missing at %s; run memento compile", v.ManifestPath)
+			return nil, fmt.Errorf("%w: missing at %s", manifest.ErrNotFound, v.ManifestPath)
 		}
 		return nil, fmt.Errorf("read manifest: %w", err)
 	}
 
 	var m manifest.Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("decode manifest: %w", err)
+		return nil, fmt.Errorf("%w: decode %s: %v", manifest.ErrInvalid, v.ManifestPath, err)
 	}
 	if err := writeBriefArtifact(v, m); err != nil {
 		return nil, err
@@ -187,37 +188,38 @@ func readOrRenderBrief(v vault.Vault) ([]byte, error) {
 
 func runCompile(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("compile", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags.SetOutput(io.Discard)
 	dir := flags.String("dir", "", "memory vault directory")
 	printOnly := flags.Bool("print", false, "print manifest JSON to stdout")
 	if err := flags.Parse(args); err != nil {
+		printCLIError(stderr, "compile", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintf(stderr, "memento compile: unexpected argument %q\n", flags.Arg(0))
+		printCLIError(stderr, "compile", fmt.Errorf("%w: unexpected argument %q", ErrInvalidArguments, flags.Arg(0)))
 		return 2
 	}
 
 	v, err := compileVault(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento compile: %v\n", err)
+		printCLIError(stderr, "compile", err)
 		return 1
 	}
 
 	if *printOnly {
 		m, warnings, err := manifest.CompileWithWarnings(v)
 		if err != nil {
-			fmt.Fprintf(stderr, "memento compile: %v\n", err)
+			printCLIError(stderr, "compile", err)
 			return 1
 		}
 		printCompileWarnings(stderr, warnings)
 		data, err := manifest.Marshal(m)
 		if err != nil {
-			fmt.Fprintf(stderr, "memento compile: %v\n", err)
+			printCLIError(stderr, "compile", fmt.Errorf("%w: marshal manifest: %v", ErrIO, err))
 			return 1
 		}
 		if _, err := stdout.Write(data); err != nil {
-			fmt.Fprintf(stderr, "memento compile: write stdout: %v\n", err)
+			printCLIError(stderr, "compile", fmt.Errorf("%w: write stdout: %v", ErrIO, err))
 			return 1
 		}
 		return 0
@@ -225,7 +227,7 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 
 	warnings, err := writeCompileArtifacts(v)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento compile: %v\n", err)
+		printCLIError(stderr, "compile", err)
 		return 1
 	}
 	printCompileWarnings(stderr, warnings)
@@ -278,25 +280,26 @@ func printCompileWarnings(stderr io.Writer, warnings []manifest.Warning) {
 
 func runInit(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags.SetOutput(io.Discard)
 	dir := flags.String("dir", "", "memory vault directory")
 	if err := flags.Parse(args); err != nil {
+		printCLIError(stderr, "init", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintf(stderr, "memento init: unexpected argument %q\n", flags.Arg(0))
+		printCLIError(stderr, "init", fmt.Errorf("%w: unexpected argument %q", ErrInvalidArguments, flags.Arg(0)))
 		return 2
 	}
 
 	wd, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(stderr, "memento init: get current directory: %v\n", err)
+		printCLIError(stderr, "init", fmt.Errorf("%w: get current directory: %v", ErrIO, err))
 		return 1
 	}
 
 	v, err := setup.Init(wd, *dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento init: %v\n", err)
+		printCLIError(stderr, "init", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "Initialized memento vault: %s\n", v.Root)
@@ -305,19 +308,20 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 
 func runRead(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("read", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags.SetOutput(io.Discard)
 	dir := flags.String("dir", "", "memory vault directory")
 	if err := flags.Parse(args); err != nil {
+		printCLIError(stderr, "read", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprint(stderr, "memento read: expected exactly one key or @N entry reference\n")
+		printCLIError(stderr, "read", fmt.Errorf("%w: expected exactly one key or @N entry reference", ErrInvalidArguments))
 		return 2
 	}
 
 	v, err := resolveVault(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento read: %v\n", err)
+		printCLIError(stderr, "read", err)
 		return 1
 	}
 
@@ -329,21 +333,12 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		data, err = note.Read(v, target)
 	}
 	if err != nil {
-		switch {
-		case errors.Is(err, note.ErrInvalidKey):
-			fmt.Fprintf(stderr, "memento read: %v\n", err)
-		case errors.Is(err, note.ErrSectionNotFound):
-			fmt.Fprintf(stderr, "memento read: section not found: %s\n", flags.Arg(0))
-		case errors.Is(err, note.ErrNotFound):
-			fmt.Fprintf(stderr, "memento read: key not found: %s\n", flags.Arg(0))
-		default:
-			fmt.Fprintf(stderr, "memento read: %v\n", err)
-		}
+		printCLIError(stderr, "read", err)
 		return 1
 	}
 
 	if _, err := stdout.Write(data); err != nil {
-		fmt.Fprintf(stderr, "memento read: write stdout: %v\n", err)
+		printCLIError(stderr, "read", fmt.Errorf("%w: write stdout: %v", ErrIO, err))
 		return 1
 	}
 	return 0
@@ -352,10 +347,10 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 func readNumberedEntry(v vault.Vault, target string, stderr io.Writer) ([]byte, error) {
 	number, err := strconv.Atoi(target)
 	if err != nil {
-		return nil, fmt.Errorf("entry reference must be @ followed by a number: @%s", target)
+		return nil, fmt.Errorf("%w: entry reference must be @ followed by a number: @%s", ErrInvalidEntryReference, target)
 	}
 	if number < 1 {
-		return nil, fmt.Errorf("entry number must be 1 or greater: @%s", target)
+		return nil, fmt.Errorf("%w: entry number must be 1 or greater: @%s", ErrNumericOutOfRange, target)
 	}
 
 	m, err := readManifest(v)
@@ -365,14 +360,14 @@ func readNumberedEntry(v vault.Vault, target string, stderr io.Writer) ([]byte, 
 
 	numbered := brief.NumberedEntries(m)
 	if number > len(numbered) {
-		return nil, fmt.Errorf("entry %d does not exist in manifest; manifest has %d entries", number, len(numbered))
+		return nil, fmt.Errorf("%w: entry %d does not exist in manifest; manifest has %d entries", ErrNumericOutOfRange, number, len(numbered))
 	}
 
 	key := numbered[number-1].Entry.Key
 	data, err := note.Read(v, key)
 	if err != nil {
 		if errors.Is(err, note.ErrNotFound) {
-			return nil, fmt.Errorf("entry %d's file `%s` no longer exists.\nmanifest is stale; run: memento compile && memento brief\nnote: entry numbers will likely shift after compile.", number, key)
+			return nil, fmt.Errorf("%w: entry %d's file `%s` no longer exists", manifest.ErrStale, number, key)
 		}
 		return nil, err
 	}
@@ -385,14 +380,14 @@ func readManifest(v vault.Vault) (manifest.Manifest, error) {
 	data, err := os.ReadFile(v.ManifestPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return manifest.Manifest{}, fmt.Errorf("manifest missing at %s; run memento compile", v.ManifestPath)
+			return manifest.Manifest{}, fmt.Errorf("%w: missing at %s", manifest.ErrNotFound, v.ManifestPath)
 		}
 		return manifest.Manifest{}, fmt.Errorf("read manifest: %w", err)
 	}
 
 	var m manifest.Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return manifest.Manifest{}, fmt.Errorf("decode manifest: %w", err)
+		return manifest.Manifest{}, fmt.Errorf("%w: decode %s: %v", manifest.ErrInvalid, v.ManifestPath, err)
 	}
 	return m, nil
 }
@@ -436,39 +431,31 @@ func briefManifestHash(data []byte) (string, bool) {
 
 func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("write", flag.ContinueOnError)
-	flags.SetOutput(stderr)
+	flags.SetOutput(io.Discard)
 	dir := flags.String("dir", "", "memory vault directory")
 	if err := flags.Parse(args); err != nil {
+		printCLIError(stderr, "write", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
 		return 2
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprint(stderr, "memento write: expected exactly one key\n")
+		printCLIError(stderr, "write", fmt.Errorf("%w: expected exactly one key", ErrInvalidArguments))
 		return 2
 	}
 
 	v, err := resolveVault(*dir)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento write: %v\n", err)
+		printCLIError(stderr, "write", err)
 		return 1
 	}
 
 	data, err := io.ReadAll(stdin)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento write: read stdin: %v\n", err)
+		printCLIError(stderr, "write", fmt.Errorf("%w: read stdin: %v", ErrIO, err))
 		return 1
 	}
 
 	if err := note.Write(v, flags.Arg(0), data, note.WriteOptions{}); err != nil {
-		switch {
-		case errors.Is(err, note.ErrInvalidKey):
-			fmt.Fprintf(stderr, "memento write: %v\n", err)
-		case errors.Is(err, note.ErrUnsupportedWriteOperation):
-			fmt.Fprintf(stderr, "memento write: %v\n", err)
-		case errors.Is(err, note.ErrReadOnly):
-			fmt.Fprintf(stderr, "memento write: %v\n", err)
-		default:
-			fmt.Fprintf(stderr, "memento write: %v\n", err)
-		}
+		printCLIError(stderr, "write", err)
 		return 1
 	}
 	return 0

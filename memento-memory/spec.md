@@ -204,6 +204,38 @@ memento serve            # MCP server (v3) — registers compile/read/write/list
 
 `compile` flags: `--dir`, `--print` (stdout, no file), `--summarize` (v4).
 
+### Error tokens
+
+All user-facing CLI errors use a stable token before the human-readable reason:
+
+```text
+memento <verb>: <token>: <one-line reason>
+<optional recovery hint>
+```
+
+Root dispatch errors use `memento: <token>: ...` because no verb has been selected yet. Warning lines, such as compile warnings for lenient frontmatter recovery, are not part of this error-token contract.
+
+| Token | When it fires | Sentinel | Recovery hint |
+|---|---|---|---|
+| `unknown-command` | Root dispatch cannot match the command name. | `cli.ErrUnknownCommand` | `Run 'memento help' for usage.` |
+| `not-implemented` | A reserved command exists but is intentionally not implemented yet. | `cli.ErrNotImplemented` | none |
+| `invalid-arguments` | Flag parsing fails, an unexpected positional argument is present, or a required positional argument is missing. | `cli.ErrInvalidArguments` | `Run 'memento help' for usage.` |
+| `vault-not-found` | Vault discovery/opening cannot find a `.memento/` marker. | `vault.ErrVaultNotFound` | none |
+| `multiple-vaults` | Repository discovery finds more than one `.memento/` marker. | `vault.ErrMultipleVaults` | none |
+| `manifest-not-found` | A verb needs `.memento/manifest.json` and it is missing. | `manifest.ErrNotFound` | `run: memento compile` |
+| `manifest-invalid` | `.memento/manifest.json` cannot be decoded. | `manifest.ErrInvalid` | none |
+| `manifest-stale` | `read @N` resolves to a manifest entry whose file no longer exists. | `manifest.ErrStale` | `run: memento compile && memento brief`; `note: entry numbers will likely shift after compile.` |
+| `invalid-entry-reference` | An `@N` read target is not `@` followed by a number. | `cli.ErrInvalidEntryReference` | none |
+| `numeric-out-of-range` | An `@N` read target is less than 1 or greater than the manifest entry count. | `cli.ErrNumericOutOfRange` | none |
+| `invalid-key` | A read/write key is empty, absolute, traversal-shaped, not writable, ignored, or otherwise not a vault-relative note key. | `note.ErrInvalidKey` | none |
+| `key-not-found` | `read <key>` does not find a matching non-ignored markdown entry. | `note.ErrNotFound` | none |
+| `section-not-found` | `read <key>#<section>` finds the note but not the section slug. | `note.ErrSectionNotFound` | none |
+| `unsupported-write-operation` | A library caller asks for a write operation outside v0 append support. | `note.ErrUnsupportedWriteOperation` | none |
+| `mode-rejects-write` | The target note is `mode: read-only`. | `note.ErrReadOnly` | none |
+| `ignore-file-invalid` | `.mementoignore` uses unsupported or malformed syntax. | `ignore.ErrUnsupportedNegation`, `ignore.ErrEmptyPattern`, `ignore.ErrEmptySegment`, or `ignore.ErrInvalidRecursiveWildcard` | none |
+| `frontmatter-invalid` | Strict metadata parsing rejects malformed frontmatter, invalid `mode:`, or invalid `updated:` metadata. | `markdown.ErrMalformedFrontmatter`, `markdown.ErrUnterminatedFrontmatter`, `markdown.ErrInvalidMode`, or `markdown.ErrInvalidUpdated` | none |
+| `io-error` | Stdin/stdout or filesystem I/O fails outside a more specific token. | `cli.ErrIO` at the CLI boundary; wrapped OS errors from lower packages remain recoverable with `errors.Is`. | none |
+
 ---
 
 ## 11. `init` & adoption flows

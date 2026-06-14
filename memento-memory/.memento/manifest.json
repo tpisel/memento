@@ -826,8 +826,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 26651,
-      "lines": 291,
+      "bytes": 29863,
+      "lines": 323,
       "tags": [],
       "headings": [
         {
@@ -909,6 +909,11 @@
           "level": 2,
           "text": "10. CLI surface",
           "slug": "10-cli-surface"
+        },
+        {
+          "level": 3,
+          "text": "Error tokens",
+          "slug": "error-tokens"
         },
         {
           "level": 2,

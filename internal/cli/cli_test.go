@@ -2,12 +2,17 @@ package cli
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/tpisel/memento/internal/manifest"
+	"github.com/tpisel/memento/internal/note"
 	"github.com/tpisel/memento/internal/orient"
+	"github.com/tpisel/memento/internal/vault"
 )
 
 func TestHelpCommand(t *testing.T) {
@@ -75,6 +80,7 @@ func TestUnknownCommand(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(bogus) wrote stdout = %q, want empty", stdout.String())
 	}
+	assertRootErrorToken(t, stderr.String(), "unknown-command")
 	if !strings.Contains(stderr.String(), `unknown command "bogus"`) {
 		t.Fatalf("Run(bogus) stderr = %q, want unknown command message", stderr.String())
 	}
@@ -90,6 +96,7 @@ func TestServeCommandIsFutureStub(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(serve) wrote stdout = %q, want empty", stdout.String())
 	}
+	assertCLIErrorToken(t, stderr.String(), "serve", "not-implemented")
 	for _, want := range []string{"not implemented", "v3", "spec §13"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("Run(serve) stderr = %q, want %q", stderr.String(), want)
@@ -486,7 +493,8 @@ func TestBriefFailsWithCompileHintWhenArtifactsAreMissing(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(brief --dir) stdout = %q, want empty", stdout.String())
 	}
-	for _, want := range []string{"manifest", "run memento compile"} {
+	assertCLIErrorToken(t, stderr.String(), "brief", "manifest-not-found")
+	for _, want := range []string{"manifest", "run: memento compile"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("Run(brief --dir) stderr = %q, want %q", stderr.String(), want)
 		}
@@ -610,7 +618,8 @@ func TestOrientFailsWithCompileHintWhenManifestIsMissing(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(orient --dir) stdout = %q, want empty", stdout.String())
 	}
-	for _, want := range []string{"manifest", "run memento compile"} {
+	assertCLIErrorToken(t, stderr.String(), "orient", "manifest-not-found")
+	for _, want := range []string{"manifest", "run: memento compile"} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("Run(orient --dir) stderr = %q, want %q", stderr.String(), want)
 		}
@@ -681,9 +690,10 @@ func TestReadNumericReferenceFailsWithStaleManifestMessageForMissingFile(t *test
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(read @1) stdout = %q, want empty", stdout.String())
 	}
+	assertCLIErrorToken(t, stderr.String(), "read", "manifest-stale")
 	for _, want := range []string{
-		"entry 1's file `note.md` no longer exists.",
-		"manifest is stale; run: memento compile && memento brief",
+		"entry 1's file `note.md` no longer exists",
+		"run: memento compile && memento brief",
 		"note: entry numbers will likely shift after compile.",
 	} {
 		if !strings.Contains(stderr.String(), want) {
@@ -829,6 +839,7 @@ func TestReadInvalidNumericReferenceFailsCleanly(t *testing.T) {
 			if stdout.Len() != 0 {
 				t.Fatalf("Run(read %s) stdout = %q, want empty", target, stdout.String())
 			}
+			assertCLIErrorToken(t, stderr.String(), "read", "invalid-entry-reference")
 			if want := "entry reference must be @ followed by a number: " + target; !strings.Contains(stderr.String(), want) {
 				t.Fatalf("Run(read %s) stderr = %q, want %q", target, stderr.String(), want)
 			}
@@ -867,6 +878,7 @@ func TestReadFailsClearlyForUnknownSection(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(read unknown section) stdout = %q, want empty", stdout.String())
 	}
+	assertCLIErrorToken(t, stderr.String(), "read", "section-not-found")
 	if !strings.Contains(stderr.String(), "section not found") {
 		t.Fatalf("Run(read unknown section) stderr = %q, want section not found message", stderr.String())
 	}
@@ -887,6 +899,7 @@ func TestReadFailsClearlyForMissingOrIgnoredKey(t *testing.T) {
 			if stdout.Len() != 0 {
 				t.Fatalf("Run(read %s) stdout = %q, want empty", key, stdout.String())
 			}
+			assertCLIErrorToken(t, stderr.String(), "read", "key-not-found")
 			if !strings.Contains(stderr.String(), "not found") {
 				t.Fatalf("Run(read %s) stderr = %q, want not found message", key, stderr.String())
 			}
@@ -905,6 +918,7 @@ func TestReadRejectsTraversalKey(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(read traversal) stdout = %q, want empty", stdout.String())
 	}
+	assertCLIErrorToken(t, stderr.String(), "read", "invalid-key")
 	if !strings.Contains(stderr.String(), "invalid key") {
 		t.Fatalf("Run(read traversal) stderr = %q, want invalid key message", stderr.String())
 	}
@@ -979,9 +993,156 @@ func TestWriteRejectsTraversalKey(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write traversal) stdout = %q, want empty", stdout.String())
 	}
+	assertCLIErrorToken(t, stderr.String(), "write", "invalid-key")
 	if !strings.Contains(stderr.String(), "invalid key") {
 		t.Fatalf("Run(write traversal) stderr = %q, want invalid key message", stderr.String())
 	}
+}
+
+func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
+	t.Run("invalid arguments", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"read"}, &stdout, &stderr)
+		if code != 2 {
+			t.Fatalf("Run(read) exit code = %d, want 2", code)
+		}
+		assertCLIErrorToken(t, stderr.String(), "read", "invalid-arguments")
+	})
+
+	t.Run("vault not found", func(t *testing.T) {
+		root := t.TempDir()
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"read", "--dir", root, "note.md"}, &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("Run(read --dir missing-vault) exit code = %d, want 1", code)
+		}
+		assertCLIErrorToken(t, stderr.String(), "read", "vault-not-found")
+	})
+
+	t.Run("numeric out of range", func(t *testing.T) {
+		root := makeCLIVault(t)
+		writeCLIFile(t, root, "note.md", "# Note\n")
+		var compileStdout, compileStderr bytes.Buffer
+		code := Run([]string{"compile", "--dir", root}, &compileStdout, &compileStderr)
+		if code != 0 {
+			t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+		}
+
+		var stdout, stderr bytes.Buffer
+		code = Run([]string{"read", "--dir", root, "@2"}, &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("Run(read @2) exit code = %d, want 1", code)
+		}
+		assertCLIErrorToken(t, stderr.String(), "read", "numeric-out-of-range")
+	})
+
+	t.Run("ignore file invalid", func(t *testing.T) {
+		root := makeCLIVault(t)
+		writeCLIFile(t, root, ".mementoignore", "!unsupported\n")
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"compile", "--dir", root, "--print"}, &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("Run(compile invalid ignore) exit code = %d, want 1", code)
+		}
+		assertCLIErrorToken(t, stderr.String(), "compile", "ignore-file-invalid")
+	})
+
+	t.Run("manifest invalid", func(t *testing.T) {
+		root := makeCLIVault(t)
+		writeCLIFile(t, root, ".memento/manifest.json", "{not json")
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("Run(orient invalid manifest) exit code = %d, want 1", code)
+		}
+		assertCLIErrorToken(t, stderr.String(), "orient", "manifest-invalid")
+	})
+
+	t.Run("frontmatter invalid", func(t *testing.T) {
+		root := makeCLIVault(t)
+		writeCLIFile(t, root, "note.md", "---\ntitle\n---\n# Note\n")
+		var stdout, stderr bytes.Buffer
+		code := RunWithInput([]string{"write", "--dir", root, "note.md"}, strings.NewReader("append\n"), &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("Run(write invalid frontmatter) exit code = %d, want 1", code)
+		}
+		assertCLIErrorToken(t, stderr.String(), "write", "frontmatter-invalid")
+	})
+
+	t.Run("mode rejects write", func(t *testing.T) {
+		root := makeCLIVault(t)
+		writeCLIFile(t, root, "frozen.md", "---\nmode: read-only\n---\n# Frozen\n")
+		var stdout, stderr bytes.Buffer
+		code := RunWithInput([]string{"write", "--dir", root, "frozen.md"}, strings.NewReader("append\n"), &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("Run(write read-only) exit code = %d, want 1", code)
+		}
+		assertCLIErrorToken(t, stderr.String(), "write", "mode-rejects-write")
+	})
+}
+
+func TestCLIHelperErrorsWrapStableSentinels(t *testing.T) {
+	t.Run("manifest not found", func(t *testing.T) {
+		root := makeCLIVault(t)
+		v, err := vault.Open(root)
+		if err != nil {
+			t.Fatalf("vault.Open() error = %v, want nil", err)
+		}
+		_, err = readManifest(v)
+		if !errors.Is(err, manifest.ErrNotFound) {
+			t.Fatalf("readManifest() error = %v, want manifest.ErrNotFound", err)
+		}
+	})
+
+	t.Run("invalid entry reference", func(t *testing.T) {
+		root := makeCLIVault(t)
+		v, err := vault.Open(root)
+		if err != nil {
+			t.Fatalf("vault.Open() error = %v, want nil", err)
+		}
+		_, err = readNumberedEntry(v, "abc", io.Discard)
+		if !errors.Is(err, ErrInvalidEntryReference) {
+			t.Fatalf("readNumberedEntry(abc) error = %v, want ErrInvalidEntryReference", err)
+		}
+	})
+
+	t.Run("numeric out of range", func(t *testing.T) {
+		root := makeCLIVault(t)
+		writeCLIFile(t, root, "note.md", "# Note\n")
+		v, err := vault.Open(root)
+		if err != nil {
+			t.Fatalf("vault.Open() error = %v, want nil", err)
+		}
+		if _, err := writeCompileArtifacts(v); err != nil {
+			t.Fatalf("writeCompileArtifacts() error = %v, want nil", err)
+		}
+		_, err = readNumberedEntry(v, "0", io.Discard)
+		if !errors.Is(err, ErrNumericOutOfRange) {
+			t.Fatalf("readNumberedEntry(0) error = %v, want ErrNumericOutOfRange", err)
+		}
+	})
+
+	t.Run("manifest stale", func(t *testing.T) {
+		root := makeCLIVault(t)
+		writeCLIFile(t, root, "note.md", "# Note\n")
+		v, err := vault.Open(root)
+		if err != nil {
+			t.Fatalf("vault.Open() error = %v, want nil", err)
+		}
+		if _, err := writeCompileArtifacts(v); err != nil {
+			t.Fatalf("writeCompileArtifacts() error = %v, want nil", err)
+		}
+		if err := os.Remove(filepath.Join(root, "note.md")); err != nil {
+			t.Fatalf("remove note.md: %v", err)
+		}
+		_, err = readNumberedEntry(v, "1", io.Discard)
+		if !errors.Is(err, manifest.ErrStale) {
+			t.Fatalf("readNumberedEntry(1) error = %v, want manifest.ErrStale", err)
+		}
+		if errors.Is(err, note.ErrNotFound) {
+			t.Fatalf("readNumberedEntry(1) error = %v, should expose manifest staleness instead of note not found", err)
+		}
+	})
 }
 
 func TestWriteDoesNotOfferDeferredMutationFlags(t *testing.T) {
@@ -1006,6 +1167,24 @@ func TestWriteDoesNotOfferDeferredMutationFlags(t *testing.T) {
 				t.Fatalf("note changed after unsupported mutation flag: %q", got)
 			}
 		})
+	}
+}
+
+func assertCLIErrorToken(t *testing.T, stderr, verb, token string) {
+	t.Helper()
+
+	want := "memento " + verb + ": " + token + ":"
+	if !strings.Contains(stderr, want) {
+		t.Fatalf("stderr = %q, want token prefix %q", stderr, want)
+	}
+}
+
+func assertRootErrorToken(t *testing.T, stderr, token string) {
+	t.Helper()
+
+	want := "memento: " + token + ":"
+	if !strings.Contains(stderr, want) {
+		t.Fatalf("stderr = %q, want token prefix %q", stderr, want)
 	}
 }
 
