@@ -48,44 +48,46 @@ type propertyNote struct {
 func TestCompileIdempotencyProperty(t *testing.T) {
 	checkIdempotencyProperty(t, "compile", func(seed int64) idempotencyCase {
 		return generateIdempotencyCase(seed)
-	}, func(base string, c idempotencyCase) string {
-		return checkCompileIdempotent(base, c)
+	}, func(tb testing.TB, base string, c idempotencyCase) string {
+		return checkCompileIdempotent(tb, base, c)
 	})
 }
 
 func TestBriefIdempotencyProperty(t *testing.T) {
 	checkIdempotencyProperty(t, "brief", func(seed int64) idempotencyCase {
 		return generateIdempotencyCase(seed)
-	}, func(base string, c idempotencyCase) string {
-		return checkBriefIdempotent(base, c)
+	}, func(tb testing.TB, base string, c idempotencyCase) string {
+		return checkBriefIdempotent(tb, base, c)
 	})
 }
 
 func TestInitIdempotencyProperty(t *testing.T) {
 	checkIdempotencyProperty(t, "init", func(seed int64) idempotencyCase {
 		return generateIdempotencyCase(seed)
-	}, func(base string, c idempotencyCase) string {
-		return checkInitIdempotent(base, c)
+	}, func(tb testing.TB, base string, c idempotencyCase) string {
+		return checkInitIdempotent(tb, base, c)
 	})
 }
 
-func checkIdempotencyProperty(t *testing.T, name string, generate func(int64) idempotencyCase, check func(string, idempotencyCase) string) {
+func checkIdempotencyProperty(t *testing.T, name string, generate func(int64) idempotencyCase, check func(testing.TB, string, idempotencyCase) string) {
 	t.Helper()
 
 	base := t.TempDir()
 	for seed := int64(0); seed < idempotencyPropertyRuns; seed++ {
 		c := generate(seed)
 		caseRoot := filepath.Join(base, fmt.Sprintf("%s-seed-%02d", name, seed))
-		if failure := check(caseRoot, c); failure != "" {
+		if failure := check(t, caseRoot, c); failure != "" {
 			shrunk := shrinkIdempotencyCase(c, func(candidate idempotencyCase) string {
-				return check(filepath.Join(base, fmt.Sprintf("%s-seed-%02d-shrink", name, seed)), candidate)
+				return check(t, filepath.Join(base, fmt.Sprintf("%s-seed-%02d-shrink", name, seed)), candidate)
 			})
 			t.Fatalf("%s idempotency property failed for seed %d\nfailure: %s\nminimal counter-example:\n%s", name, seed, failure, formatIdempotencyCase(shrunk))
 		}
 	}
 }
 
-func checkCompileIdempotent(root string, c idempotencyCase) string {
+func checkCompileIdempotent(tb testing.TB, root string, c idempotencyCase) string {
+	tb.Helper()
+
 	if err := resetDir(root); err != nil {
 		return err.Error()
 	}
@@ -93,7 +95,7 @@ func checkCompileIdempotent(root string, c idempotencyCase) string {
 		return err.Error()
 	}
 
-	if failure := runCLIInDirExpectSuccessExpectingStdout(root, []string{"compile"}, true); failure != "" {
+	if failure := runCLIInDirExpectSuccessExpectingStdout(tb, root, []string{"compile"}, true); failure != "" {
 		return "first compile: " + failure
 	}
 	firstManifest, err := os.ReadFile(filepath.Join(root, ".memento", "manifest.json"))
@@ -105,7 +107,7 @@ func checkCompileIdempotent(root string, c idempotencyCase) string {
 		return fmt.Sprintf("read first brief: %v", err)
 	}
 
-	if failure := runCLIInDirExpectSuccessExpectingStdout(root, []string{"compile"}, true); failure != "" {
+	if failure := runCLIInDirExpectSuccessExpectingStdout(tb, root, []string{"compile"}, true); failure != "" {
 		return "second compile: " + failure
 	}
 	secondManifest, err := os.ReadFile(filepath.Join(root, ".memento", "manifest.json"))
@@ -126,14 +128,16 @@ func checkCompileIdempotent(root string, c idempotencyCase) string {
 	return ""
 }
 
-func checkBriefIdempotent(root string, c idempotencyCase) string {
+func checkBriefIdempotent(tb testing.TB, root string, c idempotencyCase) string {
+	tb.Helper()
+
 	if err := resetDir(root); err != nil {
 		return err.Error()
 	}
 	if err := writeVaultCase(root, c); err != nil {
 		return err.Error()
 	}
-	if failure := runCLIInDirExpectSuccessExpectingStdout(root, []string{"compile"}, true); failure != "" {
+	if failure := runCLIInDirExpectSuccessExpectingStdout(tb, root, []string{"compile"}, true); failure != "" {
 		return "compile setup: " + failure
 	}
 	if err := os.Remove(filepath.Join(root, "_memento", "brief.md")); err != nil {
@@ -141,7 +145,7 @@ func checkBriefIdempotent(root string, c idempotencyCase) string {
 	}
 
 	var firstOut bytes.Buffer
-	if failure := runCLIInDirExpectSuccessWithStdout(root, []string{"brief"}, &firstOut); failure != "" {
+	if failure := runCLIInDirExpectSuccessWithStdout(tb, root, []string{"brief"}, &firstOut); failure != "" {
 		return "first brief: " + failure
 	}
 	if err := setAllFileTimes(root, fixedSnapshotTime); err != nil {
@@ -153,7 +157,7 @@ func checkBriefIdempotent(root string, c idempotencyCase) string {
 	}
 
 	var secondOut bytes.Buffer
-	if failure := runCLIInDirExpectSuccessWithStdout(root, []string{"brief"}, &secondOut); failure != "" {
+	if failure := runCLIInDirExpectSuccessWithStdout(tb, root, []string{"brief"}, &secondOut); failure != "" {
 		return "second brief: " + failure
 	}
 	secondSnapshot, err := snapshotFiles(root)
@@ -170,7 +174,9 @@ func checkBriefIdempotent(root string, c idempotencyCase) string {
 	return ""
 }
 
-func checkInitIdempotent(root string, c idempotencyCase) string {
+func checkInitIdempotent(tb testing.TB, root string, c idempotencyCase) string {
+	tb.Helper()
+
 	if err := resetDir(root); err != nil {
 		return err.Error()
 	}
@@ -179,7 +185,7 @@ func checkInitIdempotent(root string, c idempotencyCase) string {
 		return err.Error()
 	}
 
-	if failure := runCLIInDirExpectSuccess(repo, []string{"init", "--dir", "memory"}); failure != "" {
+	if failure := runCLIInDirExpectSuccess(tb, repo, []string{"init", "--dir", "memory"}); failure != "" {
 		return "first init: " + failure
 	}
 	if err := setAllFileTimes(repo, fixedSnapshotTime); err != nil {
@@ -190,7 +196,7 @@ func checkInitIdempotent(root string, c idempotencyCase) string {
 		return fmt.Sprintf("snapshot after first init: %v", err)
 	}
 
-	if failure := runCLIInDirExpectSuccess(repo, []string{"init", "--dir", "memory"}); failure != "" {
+	if failure := runCLIInDirExpectSuccess(tb, repo, []string{"init", "--dir", "memory"}); failure != "" {
 		return "second init: " + failure
 	}
 	secondSnapshot, err := snapshotFiles(repo)
@@ -401,19 +407,27 @@ func titleWords(text string) string {
 	return strings.Join(parts, " ")
 }
 
-func runCLIInDirExpectSuccess(dir string, args []string) string {
-	return runCLIInDirExpectSuccessExpectingStdout(dir, args, false)
+func runCLIInDirExpectSuccess(tb testing.TB, dir string, args []string) string {
+	tb.Helper()
+
+	return runCLIInDirExpectSuccessExpectingStdout(tb, dir, args, false)
 }
 
-func runCLIInDirExpectSuccessWithStdout(dir string, args []string, stdoutSink *bytes.Buffer) string {
-	return runCLIInDir(dir, args, stdoutSink, false)
+func runCLIInDirExpectSuccessWithStdout(tb testing.TB, dir string, args []string, stdoutSink *bytes.Buffer) string {
+	tb.Helper()
+
+	return runCLIInDir(tb, dir, args, stdoutSink, false)
 }
 
-func runCLIInDirExpectSuccessExpectingStdout(dir string, args []string, wantEmptyStdout bool) string {
-	return runCLIInDir(dir, args, nil, wantEmptyStdout)
+func runCLIInDirExpectSuccessExpectingStdout(tb testing.TB, dir string, args []string, wantEmptyStdout bool) string {
+	tb.Helper()
+
+	return runCLIInDir(tb, dir, args, nil, wantEmptyStdout)
 }
 
-func runCLIInDir(dir string, args []string, stdoutSink *bytes.Buffer, wantEmptyStdout bool) string {
+func runCLIInDir(tb testing.TB, dir string, args []string, stdoutSink *bytes.Buffer, wantEmptyStdout bool) string {
+	tb.Helper()
+
 	previous, err := os.Getwd()
 	if err != nil {
 		return fmt.Sprintf("getwd: %v", err)
@@ -422,7 +436,9 @@ func runCLIInDir(dir string, args []string, stdoutSink *bytes.Buffer, wantEmptyS
 		return fmt.Sprintf("chdir %q: %v", dir, err)
 	}
 	defer func() {
-		_ = os.Chdir(previous)
+		if err := os.Chdir(previous); err != nil {
+			tb.Fatalf("restore cwd: %v", err)
+		}
 	}()
 	return runCLIExpectSuccessWithStdout(args, stdoutSink, wantEmptyStdout)
 }
