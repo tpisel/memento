@@ -3,6 +3,9 @@ set shell := ["sh", "-eu", "-c"]
 export GOCACHE := env_var_or_default("GOCACHE", justfile_directory() / ".cache/go-build")
 export GOMODCACHE := env_var_or_default("GOMODCACHE", justfile_directory() / ".cache/go-mod")
 
+default:
+    @just --list
+
 fmt:
     gofmt -w cmd internal
 

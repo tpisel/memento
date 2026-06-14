@@ -3,6 +3,7 @@ package setup
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -572,6 +573,9 @@ func TestInitCreatesPreCommitHookWhenAbsent(t *testing.T) {
 	info, err := os.Stat(filepath.Join(repo, ".git/hooks/pre-commit"))
 	if err != nil {
 		t.Fatalf("stat pre-commit hook: %v", err)
+	}
+	if runtime.GOOS == "windows" {
+		return
 	}
 	if info.Mode().Perm()&0o111 == 0 {
 		t.Fatalf("pre-commit hook mode = %v, want executable bit set", info.Mode().Perm())

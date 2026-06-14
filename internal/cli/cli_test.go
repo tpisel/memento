@@ -1360,6 +1360,7 @@ func readmeCurrentVerbUsages(readme string) []string {
 	var usages []string
 	inList := false
 	for _, line := range strings.Split(readme, "\n") {
+		line = strings.TrimRight(line, "\r")
 		if line == "Current verbs:" {
 			inList = true
 			continue
