@@ -108,6 +108,14 @@ func normalizeWritableKey(v vault.Vault, key string) (string, error) {
 }
 
 func validateWriteMode(v vault.Vault, key, path string, op WriteOperation) error {
+	ratified, err := isRatified(v, key)
+	if err != nil {
+		return err
+	}
+	if !ratified {
+		return nil
+	}
+
 	source, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -119,13 +127,6 @@ func validateWriteMode(v vault.Vault, key, path string, op WriteOperation) error
 	meta, err := markdown.ExtractMetadata(key, source)
 	if err != nil {
 		return fmt.Errorf("extract metadata from %s: %w", key, err)
-	}
-	ratified, err := isRatified(v, key)
-	if err != nil {
-		return err
-	}
-	if !ratified {
-		return nil
 	}
 
 	if meta.Mode == markdown.ModeReadOnly {

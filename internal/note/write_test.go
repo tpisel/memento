@@ -57,6 +57,23 @@ func TestWriteAppendsUnratifiedReadOnlyMode(t *testing.T) {
 	}
 }
 
+func TestWriteSkipsMetadataParsingForUnratifiedExistingFile(t *testing.T) {
+	root := makeVault(t)
+	initGit(t, root)
+	original := "---\ntitle\n---\n# Note\n\nOriginal.\n"
+	writeFile(t, root, "note.md", original)
+
+	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	if err != nil {
+		t.Fatalf("Write(unratified malformed frontmatter) error = %v, want nil", err)
+	}
+
+	want := original + "\nAppended.\n"
+	if got := readFile(t, root, "note.md"); got != want {
+		t.Fatalf("unratified malformed-frontmatter file = %q, want %q", got, want)
+	}
+}
+
 func TestWriteRejectsRatifiedReadOnlyModeWithoutChangingFile(t *testing.T) {
 	root := makeVault(t)
 	initGit(t, root)
