@@ -29,7 +29,8 @@ go.work.sum
 .cache/
 
 # Ralph loop run logs
-logs/
+logs/*
+!logs/memento-fb0.9-*.log
 
 # os cruft
 .DS_Store
