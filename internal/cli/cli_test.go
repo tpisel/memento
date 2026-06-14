@@ -43,6 +43,31 @@ func TestHelpCommand(t *testing.T) {
 	}
 }
 
+func TestReadmeCurrentVerbsMatchHelp(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	code := Run([]string{"help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(help) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(help) wrote stderr = %q, want empty", stderr.String())
+	}
+
+	readme := readRepoFile(t, "README.md")
+	got := readmeCurrentVerbUsages(readme)
+	want := helpUsageLines(stdout.String())
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("README current verbs = %v, want help usage = %v", got, want)
+	}
+
+	gotNames := commandNamesFromUsages(got)
+	wantNames := helpCommandNames(stdout.String())
+	if strings.Join(gotNames, "\n") != strings.Join(wantNames, "\n") {
+		t.Fatalf("README current verb names = %v, want help commands = %v", gotNames, wantNames)
+	}
+}
+
 func TestDefaultCommandShowsHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
@@ -1208,6 +1233,118 @@ func readCLIFile(t *testing.T, root, relPath string) string {
 		t.Fatalf("read %q: %v", relPath, err)
 	}
 	return string(data)
+}
+
+func readRepoFile(t *testing.T, relPath string) string {
+	t.Helper()
+
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for {
+		path := filepath.Join(dir, filepath.FromSlash(relPath))
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return string(data)
+		}
+		if !os.IsNotExist(err) {
+			t.Fatalf("read %q: %v", path, err)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("find repo file %q from %q: not found", relPath, dir)
+		}
+		dir = parent
+	}
+}
+
+func readmeCurrentVerbUsages(readme string) []string {
+	var usages []string
+	inList := false
+	for _, line := range strings.Split(readme, "\n") {
+		if line == "Current verbs:" {
+			inList = true
+			continue
+		}
+		if !inList {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			if len(usages) > 0 {
+				break
+			}
+			continue
+		}
+		const prefix = "- `memento "
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(line, prefix)
+		usage, _, ok := strings.Cut(rest, "`")
+		if ok {
+			usages = append(usages, "memento "+usage)
+		}
+	}
+	return usages
+}
+
+func helpUsageLines(help string) []string {
+	var usages []string
+	inUsage := false
+	for _, line := range strings.Split(help, "\n") {
+		if line == "Usage:" {
+			inUsage = true
+			continue
+		}
+		if !inUsage {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			if len(usages) > 0 {
+				break
+			}
+			continue
+		}
+		usages = append(usages, strings.TrimSpace(line))
+	}
+	return usages
+}
+
+func commandNamesFromUsages(usages []string) []string {
+	var names []string
+	for _, usage := range usages {
+		fields := strings.Fields(usage)
+		if len(fields) >= 2 {
+			names = append(names, fields[1])
+		}
+	}
+	return names
+}
+
+func helpCommandNames(help string) []string {
+	var names []string
+	inCommands := false
+	for _, line := range strings.Split(help, "\n") {
+		if line == "Commands:" {
+			inCommands = true
+			continue
+		}
+		if !inCommands {
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			if len(names) > 0 {
+				break
+			}
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) > 0 {
+			names = append(names, fields[0])
+		}
+	}
+	return names
 }
 
 func chdirCLI(t *testing.T, dir string) {
