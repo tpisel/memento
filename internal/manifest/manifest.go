@@ -3,6 +3,7 @@ package manifest
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -16,9 +17,12 @@ import (
 )
 
 type Manifest struct {
-	Entries []Entry        `json:"entries"`
-	Tags    map[string]int `json:"tags,omitempty"`
+	SchemaVersion int            `json:"schema_version"`
+	Entries       []Entry        `json:"entries"`
+	Tags          map[string]int `json:"tags,omitempty"`
 }
+
+const CurrentSchemaVersion = 1
 
 type Warning struct {
 	Path string
@@ -130,11 +134,47 @@ func compile(v vault.Vault) (Manifest, []Warning, error) {
 	})
 	populateLinkGraph(entries, sources)
 
-	manifest := Manifest{Entries: entries}
+	manifest := Manifest{
+		SchemaVersion: CurrentSchemaVersion,
+		Entries:       entries,
+	}
 	if len(tagCounts) > 0 {
 		manifest.Tags = tagCounts
 	}
 	return manifest, warnings, nil
+}
+
+func Decode(data []byte) (Manifest, error) {
+	var m Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return Manifest{}, fmt.Errorf("%w: decode manifest: %v", ErrInvalid, err)
+	}
+	if m.SchemaVersion != CurrentSchemaVersion {
+		return Manifest{}, fmt.Errorf("%w: schema_version %d is unsupported; supported schema_version is %d", ErrSchemaUnsupported, m.SchemaVersion, CurrentSchemaVersion)
+	}
+	return m, nil
+}
+
+func Load(v vault.Vault) (Manifest, error) {
+	data, err := os.ReadFile(v.ManifestPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return Manifest{}, fmt.Errorf("%w: missing at %s", ErrNotFound, v.ManifestPath)
+		}
+		return Manifest{}, fmt.Errorf("read manifest: %w", err)
+	}
+
+	m, err := Decode(data)
+	if err != nil {
+		if errors.Is(err, ErrInvalid) {
+			return Manifest{}, fmt.Errorf("%w: decode %s: %v", ErrInvalid, v.ManifestPath, err)
+		}
+		if errors.Is(err, ErrSchemaUnsupported) {
+			return Manifest{}, fmt.Errorf("%w: %s", err, v.ManifestPath)
+		}
+		return Manifest{}, err
+	}
+	return m, nil
 }
 
 func Marshal(m Manifest) ([]byte, error) {

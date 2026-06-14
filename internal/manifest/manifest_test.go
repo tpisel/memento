@@ -2,8 +2,10 @@ package manifest
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/tpisel/memento/internal/vault"
@@ -59,6 +61,7 @@ Alpha summary.
 	}
 
 	want := `{
+  "schema_version": 1,
   "entries": [
     {
       "key": "alpha.md",
@@ -158,9 +161,85 @@ func TestCompileEmptyVaultSerializesEntriesArray(t *testing.T) {
 		t.Fatalf("Marshal() error = %v, want nil", err)
 	}
 
-	want := "{\n  \"entries\": []\n}\n"
+	want := "{\n  \"schema_version\": 1,\n  \"entries\": []\n}\n"
 	if string(data) != want {
 		t.Fatalf("empty manifest JSON = %q, want %q", string(data), want)
+	}
+}
+
+func TestCompileManifestMatchesSchemaFixture(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "alpha.md", "# Alpha\n\nAlpha summary.\n\n## Decision\n")
+	writeFile(t, root, "zeta.md", `---
+title: Zeta
+summary: Zeta summary.
+tags: [v0, memento]
+mode: read-only
+updated: 2026-06-10
+summary_hash: mismatch
+---
+
+# Ignored H1
+
+## Context
+
+Zeta body.
+`)
+
+	m, err := Compile(vaultFromRoot(root))
+	if err != nil {
+		t.Fatalf("Compile() error = %v, want nil", err)
+	}
+	got, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal(compiled) error = %v, want nil", err)
+	}
+
+	fixture, err := os.ReadFile(filepath.Join("testdata", "manifest_v1.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	fixtureManifest, err := Decode(fixture)
+	if err != nil {
+		t.Fatalf("Decode(fixture) error = %v, want nil", err)
+	}
+	want, err := Marshal(fixtureManifest)
+	if err != nil {
+		t.Fatalf("Marshal(fixture) error = %v, want nil", err)
+	}
+
+	if !bytes.Equal(got, want) {
+		t.Fatalf("compiled manifest =\n%s\nwant fixture:\n%s", got, want)
+	}
+}
+
+func TestDecodeRejectsUnsupportedSchemaVersion(t *testing.T) {
+	tests := map[string]string{
+		"missing": `{"entries":[]}`,
+		"future":  `{"schema_version":2,"entries":[]}`,
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := Decode([]byte(input))
+			if !errors.Is(err, ErrSchemaUnsupported) {
+				t.Fatalf("Decode() error = %v, want ErrSchemaUnsupported", err)
+			}
+			if !strings.Contains(err.Error(), "schema_version") {
+				t.Fatalf("Decode() error = %v, want schema_version detail", err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsUnsupportedSchemaVersion(t *testing.T) {
+	root := makeVault(t)
+	v := vaultFromRoot(root)
+	writeFile(t, root, ".memento/manifest.json", `{"entries":[]}`)
+
+	_, err := Load(v)
+	if !errors.Is(err, ErrSchemaUnsupported) {
+		t.Fatalf("Load() error = %v, want ErrSchemaUnsupported", err)
 	}
 }
 
@@ -290,6 +369,7 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
 	}
 
 	want := `{
+  "schema_version": 1,
   "entries": [
     {
       "key": "Embeds/Thing.md",

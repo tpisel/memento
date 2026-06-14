@@ -57,6 +57,8 @@ func errorToken(err error) string {
 		return "manifest-not-found"
 	case errors.Is(err, manifest.ErrInvalid):
 		return "manifest-invalid"
+	case errors.Is(err, manifest.ErrSchemaUnsupported):
+		return "manifest-schema-unsupported"
 	case errors.Is(err, manifest.ErrStale):
 		return "manifest-stale"
 	case errors.Is(err, note.ErrInvalidKey):

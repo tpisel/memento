@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "entries": [
     {
       "key": "Architecture decision record/adr-0001-vault-naming.md",
@@ -826,8 +827,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 29863,
-      "lines": 323,
+      "bytes": 31964,
+      "lines": 341,
       "tags": [],
       "headings": [
         {
@@ -912,6 +913,11 @@
         },
         {
           "level": 3,
+          "text": "Brief render contract",
+          "slug": "brief-render-contract"
+        },
+        {
+          "level": 3,
           "text": "Error tokens",
           "slug": "error-tokens"
         },
@@ -952,6 +958,11 @@
       "summary_stale": true,
       "links": {
         "out": [
+          {
+            "target": "target",
+            "type": "wiki",
+            "resolved": false
+          },
           {
             "target": "wikilinks",
             "type": "wiki",

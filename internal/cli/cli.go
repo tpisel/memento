@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -163,17 +162,9 @@ func readOrRenderBrief(v vault.Vault) ([]byte, error) {
 		return nil, fmt.Errorf("read brief: %w", err)
 	}
 
-	data, err = os.ReadFile(v.ManifestPath)
+	m, err := manifest.Load(v)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("%w: missing at %s", manifest.ErrNotFound, v.ManifestPath)
-		}
-		return nil, fmt.Errorf("read manifest: %w", err)
-	}
-
-	var m manifest.Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("%w: decode %s: %v", manifest.ErrInvalid, v.ManifestPath, err)
+		return nil, err
 	}
 	if err := writeBriefArtifact(v, m); err != nil {
 		return nil, err
@@ -377,19 +368,7 @@ func readNumberedEntry(v vault.Vault, target string, stderr io.Writer) ([]byte, 
 }
 
 func readManifest(v vault.Vault) (manifest.Manifest, error) {
-	data, err := os.ReadFile(v.ManifestPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return manifest.Manifest{}, fmt.Errorf("%w: missing at %s", manifest.ErrNotFound, v.ManifestPath)
-		}
-		return manifest.Manifest{}, fmt.Errorf("read manifest: %w", err)
-	}
-
-	var m manifest.Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
-		return manifest.Manifest{}, fmt.Errorf("%w: decode %s: %v", manifest.ErrInvalid, v.ManifestPath, err)
-	}
-	return m, nil
+	return manifest.Load(v)
 }
 
 func warnIfBriefHashDrift(v vault.Vault, m manifest.Manifest, stderr io.Writer) {

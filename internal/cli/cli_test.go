@@ -1058,6 +1058,17 @@ func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
 		assertCLIErrorToken(t, stderr.String(), "orient", "manifest-invalid")
 	})
 
+	t.Run("manifest schema unsupported", func(t *testing.T) {
+		root := makeCLIVault(t)
+		writeCLIFile(t, root, ".memento/manifest.json", `{"entries":[]}`)
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"orient", "--dir", root}, &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("Run(orient unsupported schema) exit code = %d, want 1", code)
+		}
+		assertCLIErrorToken(t, stderr.String(), "orient", "manifest-schema-unsupported")
+	})
+
 	t.Run("frontmatter invalid", func(t *testing.T) {
 		root := makeCLIVault(t)
 		writeCLIFile(t, root, "note.md", "---\ntitle\n---\n# Note\n")
