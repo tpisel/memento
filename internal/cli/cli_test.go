@@ -1496,7 +1496,7 @@ func TestWriteFailureDoesNotRecompile(t *testing.T) {
 	}
 }
 
-func TestWritePersistsBodyButReturnsFailureWhenRecompileFails(t *testing.T) {
+func TestWritePersistsBodyButReturnsPartialSuccessWhenRecompileFails(t *testing.T) {
 	root := makeCLIVault(t)
 	previous := writeCompileArtifactsAfterWrite
 	writeCompileArtifactsAfterWrite = func(vault.Vault) ([]manifest.Warning, int, error) {
@@ -1513,14 +1513,14 @@ func TestWritePersistsBodyButReturnsFailureWhenRecompileFails(t *testing.T) {
 		&stdout,
 		&stderr,
 	)
-	if code != 1 {
-		t.Fatalf("Run(write compile failure) exit code = %d, want 1", code)
+	if code != 3 {
+		t.Fatalf("Run(write compile failure) exit code = %d, want 3", code)
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write compile failure) stdout = %q, want empty", stdout.String())
 	}
 	for _, want := range []string{
-		"memento write: warning: recompile failed after successful write:",
+		"memento write: warning: write succeeded but recompile failed; run 'memento compile' to refresh the manifest:",
 		"injected compile failure",
 	} {
 		if !strings.Contains(stderr.String(), want) {

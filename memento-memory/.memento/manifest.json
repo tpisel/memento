@@ -1127,7 +1127,7 @@
       "key": "Architecture decision record/adr-0022-auto-compile-after-write.md",
       "title": "Auto-compile after successful write",
       "summary": "`memento write` runs `compile` after a successful body write. The recompile keeps the manifest and brief consistent with the in-session view of the vault, so a subsequent `memento read @N` or `memento brief` reflects the write without an explicit recompile step. The cost is bounded — `BenchmarkCompile500Docs` measures ~18ms on Apple M2 Max — and idempotent with the pre-commit hook. No `--no-compile` opt-out shipped; revisit if real batch-write friction appears.",
-      "bytes": 7598,
+      "bytes": 7818,
       "lines": 71,
       "tags": [
         "compile",

@@ -649,8 +649,8 @@ func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	warnings, count, err := writeCompileArtifactsAfterWrite(v)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento write: warning: recompile failed after successful write: %v\n", err)
-		return 1
+		fmt.Fprintf(stderr, "memento write: warning: write succeeded but recompile failed; run 'memento compile' to refresh the manifest: %v\n", err)
+		return 3
 	}
 	printCompileWarnings(stderr, warnings)
 	fmt.Fprintf(stderr, "compiled: %d entries\n", count)
