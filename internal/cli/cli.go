@@ -7,11 +7,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/tpisel/memento/internal/brief"
 	"github.com/tpisel/memento/internal/manifest"
+	"github.com/tpisel/memento/internal/markdown"
 	"github.com/tpisel/memento/internal/note"
 	"github.com/tpisel/memento/internal/orient"
 	"github.com/tpisel/memento/internal/setup"
@@ -303,6 +305,10 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		printCLIError(stderr, "read", err)
 		return 1
 	}
+	readKey := key
+	if fileKey, _, hasSection := strings.Cut(readKey, "#"); hasSection {
+		readKey = fileKey
+	}
 
 	binding, err := note.BindingForReadTarget(v, key)
 	if err != nil {
@@ -317,7 +323,13 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if ok {
-		for _, line := range readLinkSurfaceLines(linkManifest, key) {
+		var lines []string
+		if _, section, hasSection := strings.Cut(target, "#"); hasSection {
+			lines = readSectionLinkSurfaceLines(linkManifest, readKey, section, data, sectionInlinksAnchorFiltered)
+		} else {
+			lines = readLinkSurfaceLines(linkManifest, readKey)
+		}
+		for _, line := range lines {
 			fmt.Fprintln(stderr, line)
 		}
 	}
@@ -333,9 +345,6 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 }
 
 func manifestForReadLinks(v vault.Vault, target string, numberedManifest manifest.Manifest) (manifest.Manifest, bool, error) {
-	if _, _, hasSection := strings.Cut(target, "#"); hasSection {
-		return manifest.Manifest{}, false, nil
-	}
 	if strings.HasPrefix(target, "@") {
 		return numberedManifest, true, nil
 	}
@@ -355,7 +364,10 @@ func readLinkSurfaceLines(m manifest.Manifest, key string) []string {
 	if !ok {
 		return nil
 	}
+	return readLinkSurfaceLinesForEntry(m, entry)
+}
 
+func readLinkSurfaceLinesForEntry(m manifest.Manifest, entry manifest.Entry) []string {
 	numberByKey := map[string]int{}
 	for _, numbered := range brief.NumberedEntries(m) {
 		numberByKey[numbered.Entry.Key] = numbered.Number
@@ -375,6 +387,111 @@ func readLinkSurfaceLines(m manifest.Manifest, key string) []string {
 		lines = append(lines, "transcluded-by: "+strings.Join(entries, ", "))
 	}
 	return lines
+}
+
+type sectionInlinksMode int
+
+const (
+	sectionInlinksAnchorFiltered sectionInlinksMode = iota
+	sectionInlinksFileScoped
+)
+
+func readSectionLinkSurfaceLines(m manifest.Manifest, key, section string, data []byte, mode sectionInlinksMode) []string {
+	entry, ok := manifestEntryByKey(m, key)
+	if !ok {
+		return nil
+	}
+
+	sectionEntry := entry
+	sectionEntry.Links.Out = sectionOutLinks(m, key, data)
+	if mode == sectionInlinksAnchorFiltered {
+		sectionSlug, ok := entrySectionSlug(entry, section)
+		if !ok {
+			sectionSlug = section
+		}
+		sectionEntry.Links.In = sectionInLinks(entry, sectionSlug)
+	}
+
+	return readLinkSurfaceLinesForEntry(m, sectionEntry)
+}
+
+func sectionOutLinks(m manifest.Manifest, currentKey string, source []byte) []manifest.OutLink {
+	resolver := manifest.NewWikiLinkResolver(m.Entries)
+	rawLinks := markdown.ExtractWikiLinks(source)
+	links := make([]sectionOutLink, 0, len(rawLinks))
+	seen := map[string]bool{}
+
+	for _, raw := range rawLinks {
+		target, resolved := resolver.Resolve(currentKey, raw.Target)
+		link := manifest.OutLink{
+			Target:   target,
+			Type:     raw.Type,
+			Resolved: resolved,
+			Anchor:   raw.Anchor,
+		}
+		key := fmt.Sprintf("%s\x00%s\x00%s\x00%t", link.Target, link.Type, link.Anchor, link.Resolved)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		links = append(links, sectionOutLink{OutLink: link, occurrence: raw.Occurrence})
+	}
+
+	sort.Slice(links, func(i, j int) bool {
+		if links[i].Target != links[j].Target {
+			return links[i].Target < links[j].Target
+		}
+		if links[i].occurrence != links[j].occurrence {
+			return links[i].occurrence < links[j].occurrence
+		}
+		if links[i].Anchor != links[j].Anchor {
+			return links[i].Anchor < links[j].Anchor
+		}
+		return links[i].Type < links[j].Type
+	})
+
+	out := make([]manifest.OutLink, 0, len(links))
+	for _, link := range links {
+		out = append(out, link.OutLink)
+	}
+	return out
+}
+
+type sectionOutLink struct {
+	manifest.OutLink
+	occurrence int
+}
+
+func sectionInLinks(entry manifest.Entry, sectionSlug string) []manifest.InLink {
+	links := []manifest.InLink{}
+	for _, link := range entry.Links.In {
+		if link.Anchor == "" {
+			continue
+		}
+		if inLinkAnchorMatchesSection(entry, link.Anchor, sectionSlug) {
+			links = append(links, link)
+		}
+	}
+	return links
+}
+
+func entrySectionSlug(entry manifest.Entry, section string) (string, bool) {
+	for _, heading := range entry.Headings {
+		if section == heading.Slug || section == heading.Text {
+			return heading.Slug, true
+		}
+	}
+	return "", false
+}
+
+func inLinkAnchorMatchesSection(entry manifest.Entry, anchor, sectionSlug string) bool {
+	for _, heading := range entry.Headings {
+		if heading.Slug != sectionSlug {
+			continue
+		}
+		return anchor == heading.Slug || anchor == heading.Text
+	}
+	return anchor == sectionSlug
 }
 
 func manifestEntryByKey(m manifest.Manifest, key string) (manifest.Entry, bool) {
