@@ -685,7 +685,7 @@ func TestOrientFailsWithCompileHintWhenManifestIsMissing(t *testing.T) {
 	}
 }
 
-func TestReadPrintsRequestedMarkdownForExplicitDir(t *testing.T) {
+func TestReadWithoutManifestPrintsRequestedMarkdownAndLinkSurfaceHint(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "notes/deep.md", "# Deep\n\nNested content.\n")
 
@@ -694,8 +694,14 @@ func TestReadPrintsRequestedMarkdownForExplicitDir(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read --dir notes/deep.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\n"; got != want {
-		t.Fatalf("Run(read) stderr = %q, want %q", got, want)
+	wantStderr := "binding: ratified\nnote: no manifest; link surface unavailable. run: memento compile\n"
+	if got := stderr.String(); got != wantStderr {
+		t.Fatalf("Run(read) stderr = %q, want %q", got, wantStderr)
+	}
+	for _, forbidden := range []string{"inlinks:", "outlinks:", "transcludes:", "transcluded-by:"} {
+		if strings.Contains(stderr.String(), forbidden) {
+			t.Fatalf("Run(read) stderr = %q, want no role line %q", stderr.String(), forbidden)
+		}
 	}
 
 	want := "# Deep\n\nNested content.\n"
@@ -714,8 +720,9 @@ func TestReadPrintsUnratifiedBindingForUntrackedGitNote(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read unratified) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: unratified\n"; got != want {
-		t.Fatalf("Run(read unratified) stderr = %q, want %q", got, want)
+	wantStderr := "binding: unratified\nnote: no manifest; link surface unavailable. run: memento compile\n"
+	if got := stderr.String(); got != wantStderr {
+		t.Fatalf("Run(read unratified) stderr = %q, want %q", got, wantStderr)
 	}
 	if want := "# Note\n\nDraft.\n"; stdout.String() != want {
 		t.Fatalf("Run(read unratified) stdout = %q, want %q", stdout.String(), want)
@@ -1202,8 +1209,9 @@ func TestReadBareDigitPathReadsVaultFile(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read 5.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\n"; got != want {
-		t.Fatalf("Run(read 5.md) stderr = %q, want %q", got, want)
+	wantStderr := "binding: ratified\nnote: no manifest; link surface unavailable. run: memento compile\n"
+	if got := stderr.String(); got != wantStderr {
+		t.Fatalf("Run(read 5.md) stderr = %q, want %q", got, wantStderr)
 	}
 	if want := "# Five\n\nPath note.\n"; stdout.String() != want {
 		t.Fatalf("Run(read 5.md) stdout = %q, want %q", stdout.String(), want)
@@ -1240,8 +1248,9 @@ func TestReadPrintsRequestedSection(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read section) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\n"; got != want {
-		t.Fatalf("Run(read section) stderr = %q, want %q", got, want)
+	wantStderr := "binding: ratified\nnote: no manifest; link surface unavailable. run: memento compile\n"
+	if got := stderr.String(); got != wantStderr {
+		t.Fatalf("Run(read section) stderr = %q, want %q", got, wantStderr)
 	}
 
 	want := "## Target Heading\n\nTarget content.\n\n"

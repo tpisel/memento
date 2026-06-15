@@ -24,6 +24,8 @@ var version = "dev"
 
 var writeCompileArtifactsAfterWrite = writeCompileArtifacts
 
+const readNoManifestLinkSurfaceHint = "note: no manifest; link surface unavailable. run: memento compile"
+
 const helpText = `memento
 
 Usage:
@@ -333,6 +335,8 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		for _, line := range lines {
 			fmt.Fprintln(stderr, line)
 		}
+	} else {
+		fmt.Fprintln(stderr, readNoManifestLinkSurfaceHint)
 	}
 	if strings.HasPrefix(target, "@") {
 		warnIfBriefHashDrift(v, numberedManifest, stderr)
