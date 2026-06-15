@@ -20,6 +20,8 @@ import (
 
 var version = "dev"
 
+var writeCompileArtifactsAfterWrite = writeCompileArtifacts
+
 const helpText = `memento
 
 Usage:
@@ -40,7 +42,7 @@ Commands:
   init      Adopt or create a memory vault.
   orient    Print tool-usage orientation and project overlays.
   read      Read a memory note by key or @N entry reference.
-  write     Create, append to, or overwrite a memory note from stdin.
+  write     Create, append to, or overwrite a memory note from stdin, then compile.
 `
 
 // Run dispatches the CLI and returns a process-style exit code.
@@ -188,7 +190,7 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	warnings, err := writeCompileArtifacts(v)
+	warnings, _, err := writeCompileArtifacts(v)
 	if err != nil {
 		printCLIError(stderr, "compile", err)
 		return 1
@@ -197,27 +199,27 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func writeCompileArtifacts(v vault.Vault) ([]manifest.Warning, error) {
+func writeCompileArtifacts(v vault.Vault) ([]manifest.Warning, int, error) {
 	m, warnings, err := manifest.CompileWithWarnings(v)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	data, err := manifest.Marshal(m)
 	if err != nil {
-		return nil, fmt.Errorf("marshal manifest: %w", err)
+		return nil, 0, fmt.Errorf("marshal manifest: %w", err)
 	}
 	if err := os.MkdirAll(v.MarkerDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create marker directory: %w", err)
+		return nil, 0, fmt.Errorf("create marker directory: %w", err)
 	}
 	if err := os.WriteFile(v.ManifestPath, data, 0o644); err != nil {
-		return nil, fmt.Errorf("write manifest: %w", err)
+		return nil, 0, fmt.Errorf("write manifest: %w", err)
 	}
 
 	if err := writeBriefArtifact(v, m); err != nil {
 		warnings = append(warnings, manifest.Warning{Path: filepath.ToSlash(filepath.Join(vault.ToolDirName, vault.BriefFileName)), Err: err})
 	}
-	return warnings, nil
+	return warnings, len(m.Entries), nil
 }
 
 func writeBriefArtifact(v vault.Vault, m manifest.Manifest) error {
@@ -424,6 +426,13 @@ func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		printCLIError(stderr, "write", err)
 		return 1
 	}
+	warnings, count, err := writeCompileArtifactsAfterWrite(v)
+	if err != nil {
+		fmt.Fprintf(stderr, "memento write: warning: recompile failed after successful write: %v\n", err)
+		return 1
+	}
+	printCompileWarnings(stderr, warnings)
+	fmt.Fprintf(stderr, "compiled: %d entries\n", count)
 	return 0
 }
 

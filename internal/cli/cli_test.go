@@ -956,13 +956,21 @@ func TestWriteCreatesMarkdownFromStdin(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write create) stdout = %q, want empty", stdout.String())
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(write create) stderr = %q, want empty", stderr.String())
+	if got, want := stderr.String(), "compiled: 1 entries\n"; got != want {
+		t.Fatalf("Run(write create) stderr = %q, want %q", got, want)
 	}
 
 	want := "# New\n\nDurable note.\n"
 	if got := readCLIFile(t, root, "notes/new.md"); got != want {
 		t.Fatalf("written note = %q, want %q", got, want)
+	}
+	manifest := readCLIFile(t, root, ".memento/manifest.json")
+	if !strings.Contains(manifest, `"key": "notes/new.md"`) {
+		t.Fatalf("manifest after write = %q, want new note entry", manifest)
+	}
+	brief := readCLIFile(t, root, "_memento/brief.md")
+	if !strings.Contains(brief, "key: `notes/new.md` | mode: `append-only`") {
+		t.Fatalf("brief after write = %q, want new note entry", brief)
 	}
 }
 
@@ -983,13 +991,17 @@ func TestWriteAppendsMarkdownFromStdin(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write append) stdout = %q, want empty", stdout.String())
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(write append) stderr = %q, want empty", stderr.String())
+	if got, want := stderr.String(), "compiled: 1 entries\n"; got != want {
+		t.Fatalf("Run(write append) stderr = %q, want %q", got, want)
 	}
 
 	want := "# Note\n\nExisting.\n\nAppended.\n"
 	if got := readCLIFile(t, root, "note.md"); got != want {
 		t.Fatalf("appended note = %q, want %q", got, want)
+	}
+	manifest := readCLIFile(t, root, ".memento/manifest.json")
+	if !strings.Contains(manifest, `"summary": "Existing."`) {
+		t.Fatalf("manifest after append = %q, want appended note compiled", manifest)
 	}
 }
 
@@ -1012,13 +1024,102 @@ func TestWriteOverwritesMarkdownFromStdinWithExplicitFlag(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write --overwrite) stdout = %q, want empty", stdout.String())
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(write --overwrite) stderr = %q, want empty", stderr.String())
+	if got, want := stderr.String(), "compiled: 1 entries\n"; got != want {
+		t.Fatalf("Run(write --overwrite) stderr = %q, want %q", got, want)
 	}
 
 	want := "---\nmode: living\n---\n# Note\n\nReplacement.\n"
 	if got := readCLIFile(t, root, "note.md"); got != want {
 		t.Fatalf("overwritten note = %q, want %q", got, want)
+	}
+}
+
+func TestWriteFailureDoesNotRecompile(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	original := "---\nmode: append-only\n---\n# Note\n\nExisting.\n"
+	writeCLIFile(t, root, "note.md", original)
+	commitCLIGit(t, root)
+	writeCLIFile(t, root, ".memento/manifest.json", "sentinel manifest\n")
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--overwrite", "note.md"},
+		strings.NewReader("# Replacement\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write --overwrite append-only) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write --overwrite append-only) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write", "mode-rejects-write")
+	if got := readCLIFile(t, root, ".memento/manifest.json"); got != "sentinel manifest\n" {
+		t.Fatalf("manifest changed after rejected write: %q", got)
+	}
+	if got := readCLIFile(t, root, "note.md"); got != original {
+		t.Fatalf("append-only note changed after rejected overwrite: %q", got)
+	}
+}
+
+func TestWritePersistsBodyButReturnsFailureWhenRecompileFails(t *testing.T) {
+	root := makeCLIVault(t)
+	previous := writeCompileArtifactsAfterWrite
+	writeCompileArtifactsAfterWrite = func(vault.Vault) ([]manifest.Warning, int, error) {
+		return nil, 0, errors.New("injected compile failure")
+	}
+	t.Cleanup(func() {
+		writeCompileArtifactsAfterWrite = previous
+	})
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "persisted.md"},
+		strings.NewReader("# Persisted\n\nBody.\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write compile failure) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write compile failure) stdout = %q, want empty", stdout.String())
+	}
+	for _, want := range []string{
+		"memento write: warning: recompile failed after successful write:",
+		"injected compile failure",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("Run(write compile failure) stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+	if got := readCLIFile(t, root, "persisted.md"); got != "# Persisted\n\nBody.\n" {
+		t.Fatalf("written body after recompile failure = %q", got)
+	}
+}
+
+func TestSequentialWritesLeaveManifestAtFinalState(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+
+	for _, body := range []string{"# Note\n\nFirst.\n", "# Note\n\nSecond.\n"} {
+		var stdout, stderr bytes.Buffer
+		code := RunWithInput(
+			[]string{"write", "--overwrite", "note.md"},
+			strings.NewReader(body),
+			&stdout,
+			&stderr,
+		)
+		if code != 0 {
+			t.Fatalf("Run(write --overwrite note.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
+		}
+	}
+
+	manifest := readCLIFile(t, root, ".memento/manifest.json")
+	if strings.Contains(manifest, `"summary": "First."`) || !strings.Contains(manifest, `"summary": "Second."`) {
+		t.Fatalf("manifest after sequential writes = %q, want final summary only", manifest)
 	}
 }
 
@@ -1196,7 +1297,7 @@ func TestCLIHelperErrorsWrapStableSentinels(t *testing.T) {
 		if err != nil {
 			t.Fatalf("vault.Open() error = %v, want nil", err)
 		}
-		if _, err := writeCompileArtifacts(v); err != nil {
+		if _, _, err := writeCompileArtifacts(v); err != nil {
 			t.Fatalf("writeCompileArtifacts() error = %v, want nil", err)
 		}
 		_, _, _, err = readNumberedEntry(v, "0")
@@ -1212,7 +1313,7 @@ func TestCLIHelperErrorsWrapStableSentinels(t *testing.T) {
 		if err != nil {
 			t.Fatalf("vault.Open() error = %v, want nil", err)
 		}
-		if _, err := writeCompileArtifacts(v); err != nil {
+		if _, _, err := writeCompileArtifacts(v); err != nil {
 			t.Fatalf("writeCompileArtifacts() error = %v, want nil", err)
 		}
 		if err := os.Remove(filepath.Join(root, "note.md")); err != nil {
