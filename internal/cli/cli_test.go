@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -275,6 +276,9 @@ func TestCompileWritesDiscoveredManifest(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(compile) stdout = %q, want empty", stdout.String())
 	}
+	if got, want := stderr.String(), compiledStatusLine(1); got != want {
+		t.Fatalf("Run(compile) stderr = %q, want %q", got, want)
+	}
 
 	manifestPath := filepath.Join(root, ".memento", "manifest.json")
 	contents, err := os.ReadFile(manifestPath)
@@ -407,6 +411,9 @@ Resolved [[beta]], display [[beta|Beta note]], broken [[missing]], and anchored 
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(compile) stdout = %q, want empty", stdout.String())
+	}
+	if got, want := stderr.String(), compiledStatusLine(2); got != want {
+		t.Fatalf("Run(compile) stderr = %q, want %q", got, want)
 	}
 
 	brief := readCLIFile(t, root, "_memento/brief.md")
@@ -1290,7 +1297,7 @@ func TestWriteCreatesMarkdownFromStdin(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write create) stdout = %q, want empty", stdout.String())
 	}
-	if got, want := stderr.String(), "compiled: 1 entries\n"; got != want {
+	if got, want := stderr.String(), compiledStatusLine(1); got != want {
 		t.Fatalf("Run(write create) stderr = %q, want %q", got, want)
 	}
 
@@ -1344,7 +1351,7 @@ func TestWriteAppendsMarkdownFromStdin(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write append) stdout = %q, want empty", stdout.String())
 	}
-	if got, want := stderr.String(), "compiled: 1 entries\n"; got != want {
+	if got, want := stderr.String(), compiledStatusLine(1); got != want {
 		t.Fatalf("Run(write append) stderr = %q, want %q", got, want)
 	}
 
@@ -1377,13 +1384,49 @@ func TestWriteOverwritesMarkdownFromStdinWithExplicitFlag(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write --overwrite) stdout = %q, want empty", stdout.String())
 	}
-	if got, want := stderr.String(), "compiled: 1 entries\n"; got != want {
+	if got, want := stderr.String(), compiledStatusLine(1); got != want {
 		t.Fatalf("Run(write --overwrite) stderr = %q, want %q", got, want)
 	}
 
 	want := "---\nmode: living\n---\n# Note\n\nReplacement.\n"
 	if got := readCLIFile(t, root, "note.md"); got != want {
 		t.Fatalf("overwritten note = %q, want %q", got, want)
+	}
+}
+
+func TestCompileAndWriteReportSameCompiledLineFormat(t *testing.T) {
+	compileRoot := makeCLIVault(t)
+	writeCLIFile(t, compileRoot, "note.md", "# Note\n\nSummary.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+	if compileStdout.Len() != 0 {
+		t.Fatalf("Run(compile) stdout = %q, want empty", compileStdout.String())
+	}
+
+	makeCLIVault(t)
+	var writeStdout, writeStderr bytes.Buffer
+	code = RunWithInput(
+		[]string{"write", "note.md"},
+		strings.NewReader("# Note\n\nSummary.\n"),
+		&writeStdout,
+		&writeStderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write) exit code = %d, want 0; stderr = %q", code, writeStderr.String())
+	}
+	if writeStdout.Len() != 0 {
+		t.Fatalf("Run(write) stdout = %q, want empty", writeStdout.String())
+	}
+
+	if got, want := compileStderr.String(), writeStderr.String(); got != want {
+		t.Fatalf("compile stderr = %q, want write stderr %q", got, want)
+	}
+	if got, want := compileStderr.String(), compiledStatusLine(1); got != want {
+		t.Fatalf("compiled line = %q, want %q", got, want)
 	}
 }
 
@@ -1722,6 +1765,18 @@ func assertRootErrorToken(t *testing.T, stderr, token string) {
 	if !strings.Contains(stderr, want) {
 		t.Fatalf("stderr = %q, want token prefix %q", stderr, want)
 	}
+}
+
+func compiledStatusLine(count int) string {
+	return fmt.Sprintf("compiled: %d entries\n", count)
+}
+
+func isCompiledStatusLine(line string) bool {
+	var count int
+	if _, err := fmt.Sscanf(line, "compiled: %d entries\n", &count); err != nil {
+		return false
+	}
+	return line == compiledStatusLine(count)
 }
 
 func makeCLIVault(t *testing.T) string {

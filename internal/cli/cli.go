@@ -192,12 +192,13 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	warnings, _, err := writeCompileArtifacts(v)
+	warnings, count, err := writeCompileArtifacts(v)
 	if err != nil {
 		printCLIError(stderr, "compile", err)
 		return 1
 	}
 	printCompileWarnings(stderr, warnings)
+	fmt.Fprintf(stderr, "compiled: %d entries\n", count)
 	return 0
 }
 

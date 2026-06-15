@@ -95,7 +95,7 @@ func checkCompileIdempotent(tb testing.TB, root string, c idempotencyCase) strin
 		return err.Error()
 	}
 
-	if failure := runCLIInDirExpectSuccessExpectingStdout(tb, root, []string{"compile"}, true); failure != "" {
+	if failure := runCompileInDirExpectSuccess(tb, root); failure != "" {
 		return "first compile: " + failure
 	}
 	firstManifest, err := os.ReadFile(filepath.Join(root, ".memento", "manifest.json"))
@@ -107,7 +107,7 @@ func checkCompileIdempotent(tb testing.TB, root string, c idempotencyCase) strin
 		return fmt.Sprintf("read first brief: %v", err)
 	}
 
-	if failure := runCLIInDirExpectSuccessExpectingStdout(tb, root, []string{"compile"}, true); failure != "" {
+	if failure := runCompileInDirExpectSuccess(tb, root); failure != "" {
 		return "second compile: " + failure
 	}
 	secondManifest, err := os.ReadFile(filepath.Join(root, ".memento", "manifest.json"))
@@ -137,7 +137,7 @@ func checkBriefIdempotent(tb testing.TB, root string, c idempotencyCase) string 
 	if err := writeVaultCase(root, c); err != nil {
 		return err.Error()
 	}
-	if failure := runCLIInDirExpectSuccessExpectingStdout(tb, root, []string{"compile"}, true); failure != "" {
+	if failure := runCompileInDirExpectSuccess(tb, root); failure != "" {
 		return "compile setup: " + failure
 	}
 	if err := os.Remove(filepath.Join(root, "_memento", "brief.md")); err != nil {
@@ -379,6 +379,12 @@ func runCLIExpectSuccess(args []string, wantEmptyStdout bool) string {
 }
 
 func runCLIExpectSuccessWithStdout(args []string, stdoutSink *bytes.Buffer, wantEmptyStdout bool) string {
+	return runCLIExpectSuccessWithStdoutAndStderr(args, stdoutSink, wantEmptyStdout, func(stderr string) bool {
+		return stderr == ""
+	})
+}
+
+func runCLIExpectSuccessWithStdoutAndStderr(args []string, stdoutSink *bytes.Buffer, wantEmptyStdout bool, stderrOK func(string) bool) string {
 	var stdout, stderr bytes.Buffer
 	code := Run(args, &stdout, &stderr)
 	if stdoutSink != nil {
@@ -387,8 +393,8 @@ func runCLIExpectSuccessWithStdout(args []string, stdoutSink *bytes.Buffer, want
 	if code != 0 {
 		return fmt.Sprintf("exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if stderr.Len() != 0 {
-		return fmt.Sprintf("stderr = %q, want empty", stderr.String())
+	if !stderrOK(stderr.String()) {
+		return fmt.Sprintf("stderr = %q, want expected output", stderr.String())
 	}
 	if wantEmptyStdout && stdout.Len() != 0 {
 		return fmt.Sprintf("stdout = %q, want empty", stdout.String())
@@ -425,7 +431,19 @@ func runCLIInDirExpectSuccessExpectingStdout(tb testing.TB, dir string, args []s
 	return runCLIInDir(tb, dir, args, nil, wantEmptyStdout)
 }
 
+func runCompileInDirExpectSuccess(tb testing.TB, dir string) string {
+	tb.Helper()
+
+	return runCLIInDirWithStderr(tb, dir, []string{"compile"}, nil, true, isCompiledStatusLine)
+}
+
 func runCLIInDir(tb testing.TB, dir string, args []string, stdoutSink *bytes.Buffer, wantEmptyStdout bool) string {
+	return runCLIInDirWithStderr(tb, dir, args, stdoutSink, wantEmptyStdout, func(stderr string) bool {
+		return stderr == ""
+	})
+}
+
+func runCLIInDirWithStderr(tb testing.TB, dir string, args []string, stdoutSink *bytes.Buffer, wantEmptyStdout bool, stderrOK func(string) bool) string {
 	tb.Helper()
 
 	previous, err := os.Getwd()
@@ -440,7 +458,7 @@ func runCLIInDir(tb testing.TB, dir string, args []string, stdoutSink *bytes.Buf
 			tb.Fatalf("restore cwd: %v", err)
 		}
 	}()
-	return runCLIExpectSuccessWithStdout(args, stdoutSink, wantEmptyStdout)
+	return runCLIExpectSuccessWithStdoutAndStderr(args, stdoutSink, wantEmptyStdout, stderrOK)
 }
 
 func resetDir(root string) error {

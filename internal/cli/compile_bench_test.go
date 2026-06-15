@@ -30,8 +30,8 @@ func TestCompileWithin1s(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("memento compile stdout = %q, want empty", stdout)
 	}
-	if stderr != "" {
-		t.Fatalf("memento compile stderr = %q, want empty", stderr)
+	if want := compiledStatusLine(syntheticCompileDocCount); stderr != want {
+		t.Fatalf("memento compile stderr = %q, want %q", stderr, want)
 	}
 	if elapsed >= time.Second {
 		t.Fatalf("memento compile for %d synthetic docs took %s, want < 1s", syntheticCompileDocCount, elapsed)
@@ -52,8 +52,8 @@ func BenchmarkCompile500Docs(b *testing.B) {
 		if stdout != "" {
 			b.Fatalf("memento compile stdout = %q, want empty", stdout)
 		}
-		if stderr != "" {
-			b.Fatalf("memento compile stderr = %q, want empty", stderr)
+		if want := compiledStatusLine(syntheticCompileDocCount); stderr != want {
+			b.Fatalf("memento compile stderr = %q, want %q", stderr, want)
 		}
 	}
 }
