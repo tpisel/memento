@@ -466,6 +466,139 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
 	}
 }
 
+func TestCompilePreservesAnchoredWikiLinksInManifest(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "source.md", `# Source
+
+Links to [[Target#Decision|the target decision]], [[Target#Context]], [[#Local Heading]], and [[Missing#Anchor]].
+
+## Local Heading
+`)
+	writeFile(t, root, "Target.md", `# Target
+
+## Decision
+
+Decision text.
+
+## Context
+
+Context text.
+`)
+
+	m, err := Compile(vaultFromRoot(root))
+	if err != nil {
+		t.Fatalf("Compile() error = %v, want nil", err)
+	}
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v, want nil", err)
+	}
+
+	want := `{
+  "schema_version": 1,
+  "entries": [
+    {
+      "key": "Target.md",
+      "title": "Target",
+      "summary": "Decision text.",
+      "bytes": 65,
+      "lines": 9,
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": [
+          {
+            "source": "source.md",
+            "type": "wiki",
+            "anchor": "Context"
+          },
+          {
+            "source": "source.md",
+            "type": "wiki",
+            "anchor": "Decision"
+          }
+        ]
+      }
+    },
+    {
+      "key": "source.md",
+      "title": "Source",
+      "summary": "Links to [[Target#Decision|the target decision]], [[Target#Context]], [[#Local Heading]], and [[Missing#Anchor]].",
+      "bytes": 142,
+      "lines": 5,
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Local Heading",
+          "slug": "local-heading"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "Missing",
+            "type": "wiki",
+            "resolved": false,
+            "anchor": "Anchor"
+          },
+          {
+            "target": "Target.md",
+            "type": "wiki",
+            "resolved": true,
+            "anchor": "Decision"
+          },
+          {
+            "target": "Target.md",
+            "type": "wiki",
+            "resolved": true,
+            "anchor": "Context"
+          },
+          {
+            "target": "source.md",
+            "type": "wiki",
+            "resolved": true,
+            "anchor": "Local Heading"
+          }
+        ],
+        "in": [
+          {
+            "source": "source.md",
+            "type": "wiki",
+            "anchor": "Local Heading"
+          }
+        ]
+      }
+    }
+  ]
+}
+`
+	if string(data) != want {
+		t.Fatalf("manifest JSON =\n%s\nwant:\n%s", data, want)
+	}
+}
+
 func TestCompileWarnsAndFallsBackForMalformedFrontmatter(t *testing.T) {
 	root := makeVault(t)
 	writeFile(t, root, "broken.md", `---

@@ -14,6 +14,7 @@ const (
 
 type WikiLink struct {
 	Target     string
+	Anchor     string
 	Type       WikiLinkType
 	Occurrence int
 }
@@ -40,14 +41,15 @@ func ExtractWikiLinks(source []byte) []WikiLink {
 
 		raw := strings.TrimSpace(string(body[start+2 : end]))
 		target, _, _ := strings.Cut(raw, "|")
-		target = strings.TrimSpace(target)
-		if target != "" {
+		target, anchor := splitWikiTarget(target)
+		if target != "" || anchor != "" {
 			linkType := WikiLinkTypeWiki
 			if start > 0 && body[start-1] == '!' {
 				linkType = WikiLinkTypeEmbed
 			}
 			links = append(links, WikiLink{
 				Target:     target,
+				Anchor:     anchor,
 				Type:       linkType,
 				Occurrence: len(links),
 			})
@@ -55,4 +57,14 @@ func ExtractWikiLinks(source []byte) []WikiLink {
 		pos = end + 2
 	}
 	return links
+}
+
+func splitWikiTarget(target string) (string, string) {
+	target = strings.TrimSpace(target)
+	target, _, _ = strings.Cut(target, "^")
+	file, anchor, hasAnchor := strings.Cut(target, "#")
+	if !hasAnchor {
+		return strings.TrimSpace(file), ""
+	}
+	return strings.TrimSpace(file), strings.TrimSpace(anchor)
 }

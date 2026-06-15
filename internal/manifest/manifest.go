@@ -63,12 +63,14 @@ type OutLink struct {
 	Target     string                `json:"target"`
 	Type       markdown.WikiLinkType `json:"type"`
 	Resolved   bool                  `json:"resolved"`
+	Anchor     string                `json:"anchor,omitempty"`
 	occurrence int
 }
 
 type InLink struct {
 	Source string                `json:"source"`
 	Type   markdown.WikiLinkType `json:"type"`
+	Anchor string                `json:"anchor,omitempty"`
 }
 
 func Compile(v vault.Vault) (Manifest, error) {
@@ -271,6 +273,7 @@ func populateLinkGraph(entries []Entry, sources map[string][]byte) {
 			target.Links.In = append(target.Links.In, InLink{
 				Source: entries[i].Key,
 				Type:   out.Type,
+				Anchor: out.Anchor,
 			})
 		}
 	}
@@ -279,6 +282,9 @@ func populateLinkGraph(entries []Entry, sources map[string][]byte) {
 		sort.Slice(entries[i].Links.In, func(a, b int) bool {
 			if entries[i].Links.In[a].Source != entries[i].Links.In[b].Source {
 				return entries[i].Links.In[a].Source < entries[i].Links.In[b].Source
+			}
+			if entries[i].Links.In[a].Anchor != entries[i].Links.In[b].Anchor {
+				return entries[i].Links.In[a].Anchor < entries[i].Links.In[b].Anchor
 			}
 			return entries[i].Links.In[a].Type < entries[i].Links.In[b].Type
 		})
@@ -299,9 +305,10 @@ func wikiOutLinks(currentKey string, source []byte, resolver *linkResolver) []Ou
 			Target:     target,
 			Type:       raw.Type,
 			Resolved:   resolved,
+			Anchor:     raw.Anchor,
 			occurrence: raw.Occurrence,
 		}
-		key := fmt.Sprintf("%s\x00%s\x00%t", link.Target, link.Type, link.Resolved)
+		key := fmt.Sprintf("%s\x00%s\x00%s\x00%t", link.Target, link.Type, link.Anchor, link.Resolved)
 		if seen[key] {
 			continue
 		}
@@ -315,6 +322,9 @@ func wikiOutLinks(currentKey string, source []byte, resolver *linkResolver) []Ou
 		}
 		if links[i].occurrence != links[j].occurrence {
 			return links[i].occurrence < links[j].occurrence
+		}
+		if links[i].Anchor != links[j].Anchor {
+			return links[i].Anchor < links[j].Anchor
 		}
 		return links[i].Type < links[j].Type
 	})

@@ -5,14 +5,14 @@ import "testing"
 func TestExtractWikiLinks(t *testing.T) {
 	source := []byte(`# Note
 
-See [[Alpha]], [[Beta|friendly label]], and ![[Embeds/Thing]].
+See [[Alpha]], [[Beta#Decision|friendly label]], and ![[Embeds/Thing]].
 Ignore [markdown](link.md) and incomplete [[Nope.
 `)
 
 	got := ExtractWikiLinks(source)
 	want := []WikiLink{
 		{Target: "Alpha", Type: WikiLinkTypeWiki, Occurrence: 0},
-		{Target: "Beta", Type: WikiLinkTypeWiki, Occurrence: 1},
+		{Target: "Beta", Anchor: "Decision", Type: WikiLinkTypeWiki, Occurrence: 1},
 		{Target: "Embeds/Thing", Type: WikiLinkTypeEmbed, Occurrence: 2},
 	}
 
