@@ -452,7 +452,7 @@ func bootloaderBlock(repoRoot string, v vault.Vault) string {
 		fmt.Sprintf("Durable project knowledge lives in `%s`.", memoryPath),
 		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
 		"Read entries by key or `@N` index with `memento read <key|@N>`.",
-		"`memento read` writes `binding: ratified|unratified` to stderr before stdout content.",
+		"`memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
 		bootloaderEndSentinel,
 	}, "\n")
 }

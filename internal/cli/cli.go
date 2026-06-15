@@ -310,6 +310,17 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintf(stderr, "binding: %s\n", binding)
+
+	linkManifest, ok, err := manifestForReadLinks(v, target, numberedManifest)
+	if err != nil {
+		printCLIError(stderr, "read", err)
+		return 1
+	}
+	if ok {
+		for _, line := range readLinkSurfaceLines(linkManifest, key) {
+			fmt.Fprintln(stderr, line)
+		}
+	}
 	if strings.HasPrefix(target, "@") {
 		warnIfBriefHashDrift(v, numberedManifest, stderr)
 	}
@@ -319,6 +330,94 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func manifestForReadLinks(v vault.Vault, target string, numberedManifest manifest.Manifest) (manifest.Manifest, bool, error) {
+	if _, _, hasSection := strings.Cut(target, "#"); hasSection {
+		return manifest.Manifest{}, false, nil
+	}
+	if strings.HasPrefix(target, "@") {
+		return numberedManifest, true, nil
+	}
+
+	m, err := readManifest(v)
+	if err != nil {
+		if errors.Is(err, manifest.ErrNotFound) {
+			return manifest.Manifest{}, false, nil
+		}
+		return manifest.Manifest{}, false, err
+	}
+	return m, true, nil
+}
+
+func readLinkSurfaceLines(m manifest.Manifest, key string) []string {
+	entry, ok := manifestEntryByKey(m, key)
+	if !ok {
+		return nil
+	}
+
+	numberByKey := map[string]int{}
+	for _, numbered := range brief.NumberedEntries(m) {
+		numberByKey[numbered.Entry.Key] = numbered.Number
+	}
+
+	lines := []string{}
+	if entries := linkSurfaceInEntries(entry.Links.In, numberByKey, "wiki"); len(entries) > 0 {
+		lines = append(lines, "inlinks: "+strings.Join(entries, ", "))
+	}
+	if entries := linkSurfaceOutEntries(entry.Links.Out, numberByKey, "wiki"); len(entries) > 0 {
+		lines = append(lines, "outlinks: "+strings.Join(entries, ", "))
+	}
+	if entries := linkSurfaceOutEntries(entry.Links.Out, numberByKey, "embed"); len(entries) > 0 {
+		lines = append(lines, "transcludes: "+strings.Join(entries, ", "))
+	}
+	if entries := linkSurfaceInEntries(entry.Links.In, numberByKey, "embed"); len(entries) > 0 {
+		lines = append(lines, "transcluded-by: "+strings.Join(entries, ", "))
+	}
+	return lines
+}
+
+func manifestEntryByKey(m manifest.Manifest, key string) (manifest.Entry, bool) {
+	for _, entry := range m.Entries {
+		if entry.Key == key {
+			return entry, true
+		}
+	}
+	return manifest.Entry{}, false
+}
+
+func linkSurfaceOutEntries(links []manifest.OutLink, numberByKey map[string]int, linkType string) []string {
+	entries := []string{}
+	for _, link := range links {
+		if string(link.Type) != linkType {
+			continue
+		}
+		target := link.Target
+		if !link.Resolved && link.Anchor != "" {
+			target += "#" + link.Anchor
+		}
+		entries = append(entries, linkSurfaceEntry(target, link.Resolved, numberByKey))
+	}
+	return entries
+}
+
+func linkSurfaceInEntries(links []manifest.InLink, numberByKey map[string]int, linkType string) []string {
+	entries := []string{}
+	for _, link := range links {
+		if string(link.Type) != linkType {
+			continue
+		}
+		entries = append(entries, linkSurfaceEntry(link.Source, true, numberByKey))
+	}
+	return entries
+}
+
+func linkSurfaceEntry(key string, resolved bool, numberByKey map[string]int) string {
+	number, ok := numberByKey[key]
+	if resolved && ok {
+		return fmt.Sprintf("%s @%d", key, number)
+	}
+	return key
 }
 
 func readNumberedEntry(v vault.Vault, target string) ([]byte, string, manifest.Manifest, error) {

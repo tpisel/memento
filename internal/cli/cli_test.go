@@ -735,6 +735,132 @@ func TestReadNumericReferenceResolvesAgainstManifestOrdering(t *testing.T) {
 	}
 }
 
+func TestReadEmitsLinkSurfaceOnStderrWithoutChangingStdout(t *testing.T) {
+	root := makeCLIVault(t)
+	body := "# Subject\n\nLinks to [[outbound.md]], [[Missing Target#Anchor]], and ![[embed-out.md]].\n"
+	writeCLIFile(t, root, "subject.md", body)
+	writeCLIFile(t, root, "aaa-in.md", "# In\n\nPoints to [[subject.md]].\n")
+	writeCLIFile(t, root, "embed-in.md", "# Embed In\n\nQuotes ![[subject.md]].\n")
+	writeCLIFile(t, root, "outbound.md", "# Outbound\n")
+	writeCLIFile(t, root, "embed-out.md", "# Embed Out\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "subject.md"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read subject.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != body {
+		t.Fatalf("Run(read subject.md) stdout = %q, want source body %q", stdout.String(), body)
+	}
+
+	wantStderr := strings.Join([]string{
+		"binding: ratified",
+		"inlinks: aaa-in.md @1",
+		"outlinks: Missing Target#Anchor, outbound.md @4",
+		"transcludes: embed-out.md @3",
+		"transcluded-by: embed-in.md @2",
+		"",
+	}, "\n")
+	if got := stderr.String(); got != wantStderr {
+		t.Fatalf("Run(read subject.md) stderr = %q, want %q", got, wantStderr)
+	}
+}
+
+func TestReadOmitsEmptyLinkRoles(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "subject.md", "# Subject\n\nOnly [[target.md]].\n")
+	writeCLIFile(t, root, "target.md", "# Target\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "subject.md"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read subject.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if got, want := stderr.String(), "binding: ratified\noutlinks: target.md @2\n"; got != want {
+		t.Fatalf("Run(read subject.md) stderr = %q, want %q", got, want)
+	}
+	for _, forbidden := range []string{"inlinks:", "transcludes:", "transcluded-by:", "none"} {
+		if strings.Contains(stderr.String(), forbidden) {
+			t.Fatalf("Run(read subject.md) stderr = %q, want no %q", stderr.String(), forbidden)
+		}
+	}
+}
+
+func TestReadEmptyLinkDocEmitsOnlyBinding(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "subject.md", "# Subject\n\nNo links.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "subject.md"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read subject.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+		t.Fatalf("Run(read subject.md) stderr = %q, want %q", got, want)
+	}
+}
+
+func TestReadNumericReferenceEmitsResolvedEntryLinkSurface(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "alpha.md", "# Alpha\n\nSee [[beta.md]].\n")
+	writeCLIFile(t, root, "beta.md", "# Beta\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "@1"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read @1) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if got, want := stderr.String(), "binding: ratified\noutlinks: beta.md @2\n"; got != want {
+		t.Fatalf("Run(read @1) stderr = %q, want %q", got, want)
+	}
+}
+
+func TestReadSeparatesWikiLinksAndEmbeds(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "subject.md", "# Subject\n\nPlain [[plain.md]] and embedded ![[embedded.md]].\n")
+	writeCLIFile(t, root, "plain.md", "# Plain\n")
+	writeCLIFile(t, root, "embedded.md", "# Embedded\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "subject.md"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read subject.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if got, want := stderr.String(), "binding: ratified\noutlinks: plain.md @2\ntranscludes: embedded.md @1\n"; got != want {
+		t.Fatalf("Run(read subject.md) stderr = %q, want %q", got, want)
+	}
+}
+
 func TestReadNumericReferenceFailsWithStaleManifestMessageForMissingFile(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
