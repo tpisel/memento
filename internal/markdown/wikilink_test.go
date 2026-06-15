@@ -5,7 +5,7 @@ import "testing"
 func TestExtractWikiLinks(t *testing.T) {
 	source := []byte(`# Note
 
-See [[Alpha]], [[Beta#Decision|friendly label]], and ![[Embeds/Thing]].
+See [[Alpha]], [[Beta#Decision|friendly label]], [[#Local Heading]], and ![[Embeds/Thing]].
 Ignore [markdown](link.md) and incomplete [[Nope.
 `)
 

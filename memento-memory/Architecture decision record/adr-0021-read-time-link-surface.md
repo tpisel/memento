@@ -68,6 +68,7 @@ Role-flattened was chosen. It makes edge type first-class in the surface — an 
 ## Open questions
 
 - **Anchor preservation in manifest outlinks.** Today's manifest may or may not retain the `#anchor` portion of resolved targets. The implementation bead confirms and bumps the schema if needed (additively).
+- **Bare same-doc anchors (`[[#section]]`) are not graph edges.** They are intra-document navigation and are skipped entirely rather than surfaced as unresolved `outlinks: #section`.
 - **Section-inlink fallback policy.** If a v2 implementation cannot do anchor-filtered inlinks on day one, the fallback is whole-file inlinks rendered against the section read. Documented as explicit-not-silent; revisited if it produces noise complaints.
 - **Whether `outlinks:` should ever be suppressed when the body already contains the wikilinks.** Lean no — the resolved targets and `@N` indices are the value-add; symmetry with inlinks is cleanest. Revisit if the surface becomes noisy in practice.
 - **Cap on entries per role.** A doc that points at 50 others would render a long stderr line. No cap shipped; observe in dogfooding before adding one.

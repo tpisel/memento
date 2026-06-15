@@ -574,21 +574,9 @@ Context text.
             "type": "wiki",
             "resolved": true,
             "anchor": "Context"
-          },
-          {
-            "target": "source.md",
-            "type": "wiki",
-            "resolved": true,
-            "anchor": "Local Heading"
           }
         ],
-        "in": [
-          {
-            "source": "source.md",
-            "type": "wiki",
-            "anchor": "Local Heading"
-          }
-        ]
+        "in": []
       }
     }
   ]

@@ -829,6 +829,29 @@ func TestReadEmptyLinkDocEmitsOnlyBinding(t *testing.T) {
 	}
 }
 
+func TestReadSkipsBareSameDocAnchorWikiLinks(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "subject.md", "# Subject\n\nSee [[#local-heading]].\n\n## Local Heading\n\nDetails.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "subject.md"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read subject.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+		t.Fatalf("Run(read subject.md) stderr = %q, want %q", got, want)
+	}
+	if strings.Contains(stderr.String(), "outlinks:") {
+		t.Fatalf("Run(read subject.md) stderr = %q, want no outlinks line", stderr.String())
+	}
+}
+
 func TestReadNumericReferenceEmitsResolvedEntryLinkSurface(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "alpha.md", "# Alpha\n\nSee [[beta.md]].\n")

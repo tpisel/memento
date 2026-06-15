@@ -42,7 +42,7 @@ func ExtractWikiLinks(source []byte) []WikiLink {
 		raw := strings.TrimSpace(string(body[start+2 : end]))
 		target, _, _ := strings.Cut(raw, "|")
 		target, anchor := splitWikiTarget(target)
-		if target != "" || anchor != "" {
+		if target != "" {
 			linkType := WikiLinkTypeWiki
 			if start > 0 && body[start-1] == '!' {
 				linkType = WikiLinkTypeEmbed

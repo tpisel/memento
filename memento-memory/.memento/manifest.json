@@ -525,9 +525,10 @@
       "links": {
         "out": [
           {
-            "target": "adr-0003#Ignore Semantics",
+            "target": "adr-0003",
             "type": "wiki",
-            "resolved": false
+            "resolved": false,
+            "anchor": "Ignore Semantics"
           },
           {
             "target": "spec @ 3",
@@ -1057,8 +1058,8 @@
       "key": "Architecture decision record/adr-0021-read-time-link-surface.md",
       "title": "Read-time link surface — stderr, role-flattened, section-scoped",
       "summary": "`memento read` surfaces in- and out-links of the read content on stderr alongside the existing `binding:` line. Stdout remains the raw body — no annotation, no metadata, no @N substitution. Links are role-flattened (`inlinks:`, `outlinks:`, `transcludes:`, `transcluded-by:`), empty roles omitted, each entry suffixed with `@N`. Section reads (`read key#heading`) derive surfaces from the section excerpt, not the whole file. Typed edges beyond `wikilink`/`embed` come with the work that introduces them; this ADR ships the surface for the two edge types currently in the graph.",
-      "bytes": 8908,
-      "lines": 84,
+      "bytes": 9091,
+      "lines": 85,
       "tags": [
         "links",
         "manifest",
