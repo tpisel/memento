@@ -521,7 +521,7 @@ func TestOrientPrintsBaselineOnlyWhenNoDocsAreTagged(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("Run(orient) stderr = %q, want empty", stderr.String())
 	}
-	if got, want := stdout.String(), string(orient.Baseline()); got != want {
+	if got, want := stdout.String(), renderedBaselineWithoutWritingGuide(); got != want {
 		t.Fatalf("Run(orient) stdout =\n%s\nwant baseline:\n%s", got, want)
 	}
 }
@@ -597,10 +597,14 @@ func TestOrientAppendsSingleTaggedDocAfterBaseline(t *testing.T) {
 		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
 
-	want := strings.TrimRight(string(orient.Baseline()), "\n") + "\n---\n\n" + strings.TrimRight(overlay, "\n") + "\n"
+	want := strings.TrimRight(renderedBaselineWithoutWritingGuide(), "\n") + "\n---\n\n" + strings.TrimRight(overlay, "\n") + "\n"
 	if stdout.String() != want {
 		t.Fatalf("Run(orient) stdout =\n%s\nwant:\n%s", stdout.String(), want)
 	}
+}
+
+func renderedBaselineWithoutWritingGuide() string {
+	return strings.Replace(string(orient.Baseline()), "<!-- memento:triggered-preconditions -->", "None yet.", 1)
 }
 
 func TestOrientSortsMultipleTaggedDocsByManifestKey(t *testing.T) {

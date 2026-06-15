@@ -20,7 +20,7 @@ Memento is a thin retrieval and writing layer over a human-curated markdown memo
 
 ## Triggered Preconditions
 
-None yet.
+<!-- memento:triggered-preconditions -->
 
 ## Entry Index
 

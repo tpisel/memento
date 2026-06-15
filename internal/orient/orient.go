@@ -17,6 +17,7 @@ import (
 var baselineFS embed.FS
 
 const overlaySeparator = "\n---\n\n"
+const triggeredPreconditionsMarker = "<!-- memento:triggered-preconditions -->"
 
 // Baseline returns the binary-shipped orientation baseline verbatim.
 func Baseline() []byte {
@@ -62,13 +63,17 @@ func baselineForVault(v vault.Vault) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !hasWritingGuide {
-		return out, nil
+
+	replacement := "None yet."
+	if hasWritingGuide {
+		replacement = "- `memento write`: before authoring, run `memento read _memento/writing.md`."
 	}
 
-	const placeholder = "## Triggered Preconditions\n\nNone yet."
-	const replacement = "## Triggered Preconditions\n\n- `memento write`: before authoring, run `memento read _memento/writing.md`."
-	return bytes.Replace(out, []byte(placeholder), []byte(replacement), 1), nil
+	marker := []byte(triggeredPreconditionsMarker)
+	if bytes.Count(out, marker) != 1 {
+		return nil, fmt.Errorf("orient baseline must contain exactly one triggered preconditions marker")
+	}
+	return bytes.Replace(out, marker, []byte(replacement), 1), nil
 }
 
 func hasWritingGuide(v vault.Vault) (bool, error) {
