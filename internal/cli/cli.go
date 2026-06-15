@@ -375,16 +375,16 @@ func readLinkSurfaceLinesForEntry(m manifest.Manifest, entry manifest.Entry) []s
 	}
 
 	lines := []string{}
-	if entries := linkSurfaceInEntries(entry.Links.In, numberByKey, "wiki"); len(entries) > 0 {
+	if entries := linkSurfaceInEntries(entry.Links.In, numberByKey, markdown.WikiLinkTypeWiki); len(entries) > 0 {
 		lines = append(lines, "inlinks: "+strings.Join(entries, ", "))
 	}
-	if entries := linkSurfaceOutEntries(entry.Links.Out, numberByKey, "wiki"); len(entries) > 0 {
+	if entries := linkSurfaceOutEntries(entry.Links.Out, numberByKey, markdown.WikiLinkTypeWiki); len(entries) > 0 {
 		lines = append(lines, "outlinks: "+strings.Join(entries, ", "))
 	}
-	if entries := linkSurfaceOutEntries(entry.Links.Out, numberByKey, "embed"); len(entries) > 0 {
+	if entries := linkSurfaceOutEntries(entry.Links.Out, numberByKey, markdown.WikiLinkTypeEmbed); len(entries) > 0 {
 		lines = append(lines, "transcludes: "+strings.Join(entries, ", "))
 	}
-	if entries := linkSurfaceInEntries(entry.Links.In, numberByKey, "embed"); len(entries) > 0 {
+	if entries := linkSurfaceInEntries(entry.Links.In, numberByKey, markdown.WikiLinkTypeEmbed); len(entries) > 0 {
 		lines = append(lines, "transcluded-by: "+strings.Join(entries, ", "))
 	}
 	return lines
@@ -504,10 +504,10 @@ func manifestEntryByKey(m manifest.Manifest, key string) (manifest.Entry, bool) 
 	return manifest.Entry{}, false
 }
 
-func linkSurfaceOutEntries(links []manifest.OutLink, numberByKey map[string]int, linkType string) []string {
+func linkSurfaceOutEntries(links []manifest.OutLink, numberByKey map[string]int, linkType markdown.WikiLinkType) []string {
 	entries := []string{}
 	for _, link := range links {
-		if string(link.Type) != linkType {
+		if link.Type != linkType {
 			continue
 		}
 		target := link.Target
@@ -519,10 +519,10 @@ func linkSurfaceOutEntries(links []manifest.OutLink, numberByKey map[string]int,
 	return entries
 }
 
-func linkSurfaceInEntries(links []manifest.InLink, numberByKey map[string]int, linkType string) []string {
+func linkSurfaceInEntries(links []manifest.InLink, numberByKey map[string]int, linkType markdown.WikiLinkType) []string {
 	entries := []string{}
 	for _, link := range links {
-		if string(link.Type) != linkType {
+		if link.Type != linkType {
 			continue
 		}
 		entries = append(entries, linkSurfaceEntry(link.Source, true, numberByKey))
