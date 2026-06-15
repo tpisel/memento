@@ -1,8 +1,8 @@
 ---
 title: memento — design specification
 status: draft
-version: 0.2
-updated: 2026-06-13
+version: 0.3
+updated: 2026-06-15
 summary: Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.
 ---
 
@@ -135,7 +135,7 @@ Three states, not two:
 - **Whole-file read:** `read <key>` returns the body.
 - **Section read:** `read <key>#<heading>` returns a single section, anchored on the heading tree already in the manifest. This is **decomposition at read-time** — the agent sees a doc's H2 outline in the manifest and pulls only the relevant section — and it is the answer to "how do I keep big specs usable without splitting them into files." Pulled forward to **v1/v2**, not deferred.
 - **Binding state:** `read <key|@N>` writes `binding: ratified` or `binding: unratified` to stderr before stdout content. Stdout remains the note body alone so reads stay pipeable.
-- **Links (v2 consumption):** read surfaces a doc's **outlinks and inlinks** so the agent can navigate to more. Inlinks require the whole-vault graph (you cannot know what points *to* X by reading X), but this is computed at **compile time** and stored in the manifest, so read simply surfaces what is already there — the manifest is a runtime input to read, not just a session-start load.
+- **Links (v2 consumption, per ADR-0021):** after the `binding:` line, `read` emits role-flattened link sections on stderr — `inlinks:`, `outlinks:`, `transcludes:`, `transcluded-by:`. Empty roles are omitted. Each entry is suffixed with the resolved target's `@N` brief index so the agent can follow through with `memento read @N`. Inlinks require the whole-vault graph (you cannot know what points *to* X by reading X), but this is computed at **compile time** and stored in the manifest, so read surfaces what is already there. Section reads (`read key#heading`) derive the surface from the section excerpt, not the whole file. Typed edges beyond `wikilink`/`embed` come with the work that introduces them into the graph.
 - **Transclusions (`![[x]]`) are NOT resolved or inlined.** Auto-inlining means a doc that embeds five others pulls all five on read — the load-everything problem in a costume, directly against the decomposition goal. Transclusions are surfaced as an **`embed`-typed outlink** instead; the agent chooses whether to pull the target.
 - **Typed links** (`depends-on`, `see-also`, `supersedes`, `embeds`) let the agent traverse selectively rather than chase every organic human association (those are great for serendipitous human browsing, noisy as agent traversal edges). The typed-edge overlay is **grown from observed transitive-relevance misses**, not built speculatively — flat tag-filtered retrieval is the spine; edges are added where a real dependency would otherwise be missed.
 
@@ -157,7 +157,7 @@ The tool **validates the operation against the declared mode before writing**. A
 
 ### When the agent should write of its own accord (default triggers)
 
-Trigger-shaped, not discretion-shaped — discretionary "write down useful things" yields noise-or-nothing; specific triggers yield signal. These live in a tool-read writing guide so they are tunable per-project without a recompile, and are **read at write-time**. ADR-0010 pins the concrete `_memento/` filename and precedence rules.
+Trigger-shaped, not discretion-shaped — discretionary "write down useful things" yields noise-or-nothing; specific triggers yield signal. These live in a tool-read writing guide so they are tunable per-project without a recompile, and are **read at write-time**. ADR-0010 pins the file at `_memento/writing.md`: free-form prose, optional, project-curated. When present, `memento orient`'s description of `write` includes the precondition *"before authoring, run `memento read _memento/writing.md`."* The tool does not reinforce the instruction at write-time and does not detect "read this session" (statelessness, see ADR-0010). Greenfield `init` scaffolds a minimal writing.md; adoption never clobbers.
 
 **Write when:**
 - you discovered a constraint not evident from the code and not already in the memento vault;
@@ -173,6 +173,8 @@ Trigger-shaped, not discretion-shaped — discretionary "write down useful thing
 ### Posture
 
 **Autonomous write with *asynchronous* review via git diff.** Do not gate writes behind synchronous human approval — that kills the agent's flow. Rely on the committed-manifest-is-diffable loop: agent writes land as diffs a human sees in PR, which is where rot is caught. The boundary leak to watch: agents will try to encode durable learnings into beads close-notes, where compaction destroys them — the bootloader and writing guide must state that discoveries outliving a task exit beads into the memento vault.
+
+**In-session consistency via auto-compile (ADR-0022).** A successful `memento write` triggers a full vault recompile before returning, so `.memento/manifest.json` and `_memento/brief.md` reflect the write immediately. A subsequent `memento read @N` or `memento brief` resolves against the new state without an explicit recompile step. The cost is bounded — `BenchmarkCompile500Docs` is ~18ms on Apple M2 Max — and idempotent with the pre-commit hook. There is no `--no-compile` opt-out; batch-write workflows that hit friction motivate a follow-up.
 
 ---
 
@@ -206,8 +208,8 @@ memento compile          # walk discovered vault → emit manifest and brief art
 memento brief            # print the agent-facing manifest projection
 memento init             # adopt-or-create: scaffold/adopt the vault, hook, bootloader (§11)
 memento orient           # print tool-usage orientation baseline + opt-in overlay docs
-memento read  <key|@N>   # whole-file; supports read <key>#<heading>; @N reads a brief entry
-memento write <key>      # append/upsert/section-replace, validated against declared mode
+memento read  <key|@N>   # whole-file; supports read <key>#<heading>; @N reads a brief entry; stderr carries binding + links (§7, ADR-0021)
+memento write <key>      # append/overwrite, validated against declared mode + ratification; auto-recompiles on success (ADR-0022)
 ```
 
 `init` flags: `--dir <vault>` selects the vault root to adopt or create. Other verbs discover the vault by walking up from the current directory to find the repository's `.memento/` marker.
@@ -229,6 +231,23 @@ Future compile flag: `--summarize` (v4).
 9. Footer separator `---`.
 10. `Tag frequency: ...`, with tags sorted by name as `tag=count`; currently renders `none` when there are no tags.
 11. `Tool files: ...`, listing detected `_memento/` tool files or `none`.
+
+### Read stderr contract (v2, ADR-0021)
+
+`memento read <key|@N>` writes structured metadata to stderr before/around the body on stdout. The emission order is fixed:
+
+1. `binding: ratified|unratified` (existing; spec §7).
+2. Role-flattened link lines, in this order, with empty roles omitted:
+   - `inlinks: <key> @N, <key> @N, ...` — `wikilink`-typed incoming edges
+   - `outlinks: <key> @N, <key> @N, ...` — `wikilink`-typed outgoing edges
+   - `transcludes: <key> @N, ...` — `embed`-typed outgoing edges (`![[ ]]`)
+   - `transcluded-by: <key> @N, ...` — `embed`-typed incoming edges
+
+Unresolved targets render with the raw wikilink target and no `@N` suffix. Section reads (`read <key>#<heading>`) derive both directions against the section excerpt; if the manifest does not yet preserve outlink anchors, inlinks degrade to file-scoped (whole-file inlinks against the section read) — explicit fallback, not silent.
+
+### Write stderr contract (v2, ADR-0022)
+
+`memento write <key>` triggers a full recompile after a successful body write. The verb's stdout contract is unchanged. On stderr, after the existing success-line content, the recompile result is reported (entry count or the same line `memento compile` emits). A failed recompile after a successful write surfaces as a non-fatal stderr warning; the body is already on disk. A failed write does not trigger compile.
 
 ### Error tokens
 
@@ -310,7 +329,7 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 |---|---|
 | **v0** | CLI `compile`, `init`, `read`, and minimum `write`. Point at or discover one marker-based vault → canonical `.memento/manifest.json` plus generated `_memento/brief.md`. Includes: `<project>-memory/` init default, `.mementoignore` (subdir walking, glob+comment syntax), tag vocabulary (omitted if no tags exist), heading extraction, out/in link graph as data, bare-markdown fallback, summary-staleness **detection** (flag only, no generation), adopt-or-create init, pre-commit hook, sentinel bootloader injection, `.gitignore` stanza, `memento brief`, whole-file and `#heading` reads, and conservative write support limited to create/append. |
 | **v1** | Hardening and polish around the v0 surfaces after dogfooding: better diagnostics, portability fixes, and compatibility adjustments to keep the CLI stable as the durable agent contract. |
-| **v2** | Smarter writes. Tool-read conventions such as `_memento/writing.md` expose agent-facing write rules / triggers / placement conventions once ADR-0010 pins filenames and precedence. Full mode-aware editing across `append-only`, `living`, and `read-only`, including overwrite support and mechanical `read-only` enforcement. `read` surfaces out/inlinks for navigation. Default ADR convention. |
+| **v2** | Smarter writes and link-aware reads. `_memento/writing.md` is pinned by ADR-0010 — free-form prose project guide, optional, surfaced via the orient `write` precondition. Mode-aware editing across `append-only`, `living`, and `read-only` already landed (memento-88t). `read` surfaces in/outlinks on stderr per ADR-0021 (role-flattened, section-scoped). `write` auto-recompiles on success per ADR-0022. Default ADR convention shipped via writing.md examples. |
 | **v3** | Withdrawn by ADR-0019. Former non-transport items were re-homed: link surfaces on `read` to v2; agent-driven summarisation to v4 as a CLI workflow design question. |
 | **v4** | Agent-driven summarisation workflow and standalone CLI auto-summarisation (`--summarize`, configured model). `review` verb for deterministic and agent-assisted maintenance. CLI verb to open Obsidian pointed at the resolved vault. |
 
@@ -340,12 +359,15 @@ Resolved or parked by v1 ADRs:
 - **V1 walk portability** — resolved by ADR-0020: filesystem-returned path spelling is preserved, and symlinks are skipped during vault walks.
 - **Loose v1 nits from [[Feature thoughts]]** — `.memento/config.toml` is a header-only extension point with no `manifest_path` knob; `.gitignore` insertion is sentinel-bounded and vault-relative; `_memento/brief.md` is ignored file-specifically. No further v1 action.
 
+Resolved by v2 ADRs (2026-06-15 design pass):
+
+- **Tool-read writing-guide filename and read mechanism** — resolved by ADR-0010. `_memento/writing.md` is pinned: optional, free-form prose, `mode: read-only`, surfaced via the orient `write` precondition fragment (omitted when file absent). No write-time reinforcement; statelessness preserved. Greenfield init scaffolds a minimal version; adoption never clobbers. Other `_memento/` tool-read filenames (`review.md`, `audit.md`) remain to be pinned with their verbs.
+- **Read-time link navigation surface** — resolved by ADR-0021 for the two edge types currently in the graph (`wikilink`, `embed`). `read` surfaces role-flattened `inlinks:` / `outlinks:` / `transcludes:` / `transcluded-by:` on stderr, empty roles omitted, `@N` indices suffixed, section-scoped. Typed-edge traversal policy (`supersedes`, `see-also`, `depends-on`) remains deferred to the work that introduces those edges.
+- **Post-write manifest/brief refresh** — resolved by ADR-0022. `memento write` auto-recompiles on success; no opt-out flag; pre-commit hook remains idempotent on top.
+
 Open items that block planned later work:
 
-- **Tool-read convention filenames and precedence** — target **v2**. Pin `_memento/writing.md` and any write-trigger guidance before implementing richer write workflows. `_memento/review.md` / `_memento/audit.md` can be pinned with the v4 `review` work unless v2 needs them earlier.
-- **Read-time link navigation surface and typed-link traversal policy** — target **v2**. The manifest already stores out/in link graph data; `read` still does not surface it. V2 must decide what link metadata to show and which edge types an agent should normally follow by default.
-- **Post-write manifest/brief refresh guidance** — target **v2**. `write` currently creates/appends only and does not compile afterward. V2 write guidance should decide whether writes print "run `memento compile`", auto-compile, or rely on the pre-commit hook.
-- **Open-question home** — target **v2** if design-question traffic continues. Today open questions live in ADR sections and proposal notes. A dedicated RFD/open-question convention is useful but should not block v1 close.
+- **Open-question home** — target **post-v2** if design-question traffic continues. Today open questions live in ADR sections and proposal notes. A dedicated RFD/open-question convention is a sub-question of the broader `init --template=` opinionated-template work (deferred below), and inherits its deferral.
 
 Deferred, non-blocking, or post-v4 unless evidence promotes them:
 
