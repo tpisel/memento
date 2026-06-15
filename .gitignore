@@ -49,8 +49,8 @@ logs/*
 
 # memento:gitignore:start
 # Obsidian per-machine UI state
-memento-memory/.obsidian/workspace*
-memento-memory/.obsidian/cache
+**/.obsidian/workspace*
+**/.obsidian/cache
 # Memento generated artifacts
-memento-memory/_memento/brief.md
+**/_memento/brief.md
 # memento:gitignore:end

@@ -323,7 +323,16 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0021-read-time-link-surface.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0022-auto-compile-after-write.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -368,6 +377,100 @@
       "summary_stale": true,
       "links": {
         "out": [],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+      "title": "Tool-read writing guide — _memento/writing.md, prose schema, orient-driven read",
+      "summary": "Pin `_memento/writing.md` as the project-curated, prose-shaped writing guide for agents. It is optional; when present, `memento orient`'s description of `memento write` includes the precondition 'read _memento/writing.md before authoring'. The tool does not validate prose content, does not reinforce the instruction at write-time, and does not detect 'read this session' (stateless across invocations). Greenfield init scaffolds a minimal writing.md; adoption never clobbers.",
+      "bytes": 11275,
+      "lines": 103,
+      "tags": [
+        "convention",
+        "memento",
+        "orient",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 3,
+          "text": "Why _memento/writing.md, not .memento/writing.md",
+          "slug": "why-_mementowritingmd-not-mementowritingmd"
+        },
+        {
+          "level": 3,
+          "text": "Why no in-tool reinforcement",
+          "slug": "why-no-in-tool-reinforcement"
+        },
+        {
+          "level": 3,
+          "text": "Why writing.md doesn't get an orient: true overlay",
+          "slug": "why-writingmd-doesnt-get-an-orient-true-overlay"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        },
+        {
+          "level": 2,
+          "text": "Supersedes (partial)",
+          "slug": "supersedes-partial"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0009-memento-subfolder-namespace.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0013-orient-verb-and-minimal-bootloader.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0015-write-mode-taxonomy.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
       }
     },
@@ -533,7 +636,12 @@
       "summary_stale": true,
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -642,7 +750,12 @@
       "summary_stale": true,
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -685,7 +798,12 @@
       "summary_stale": true,
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0021-read-time-link-surface.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -749,7 +867,16 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0022-auto-compile-after-write.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -923,6 +1050,139 @@
       "summary_stale": true,
       "links": {
         "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0021-read-time-link-surface.md",
+      "title": "Read-time link surface — stderr, role-flattened, section-scoped",
+      "summary": "`memento read` surfaces in- and out-links of the read content on stderr alongside the existing `binding:` line. Stdout remains the raw body — no annotation, no metadata, no @N substitution. Links are role-flattened (`inlinks:`, `outlinks:`, `transcludes:`, `transcluded-by:`), empty roles omitted, each entry suffixed with `@N`. Section reads (`read key#heading`) derive surfaces from the section excerpt, not the whole file. Typed edges beyond `wikilink`/`embed` come with the work that introduces them; this ADR ships the surface for the two edge types currently in the graph.",
+      "bytes": 8908,
+      "lines": 84,
+      "tags": [
+        "links",
+        "manifest",
+        "memento",
+        "read"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        },
+        {
+          "level": 2,
+          "text": "Supersedes (partial)",
+          "slug": "supersedes-partial"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0008-memento-brief-projection.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0016-at-prefixed-numeric-brief-references.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "target",
+            "type": "embed",
+            "resolved": false
+          }
+        ],
+        "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0022-auto-compile-after-write.md",
+      "title": "Auto-compile after successful write",
+      "summary": "`memento write` runs `compile` after a successful body write. The recompile keeps the manifest and brief consistent with the in-session view of the vault, so a subsequent `memento read @N` or `memento brief` reflects the write without an explicit recompile step. The cost is bounded — `BenchmarkCompile500Docs` measures ~18ms on Apple M2 Max — and idempotent with the pre-commit hook. No `--no-compile` opt-out shipped; revisit if real batch-write friction appears.",
+      "bytes": 7598,
+      "lines": 71,
+      "tags": [
+        "compile",
+        "manifest",
+        "memento",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        },
+        {
+          "level": 2,
+          "text": "Supersedes (partial)",
+          "slug": "supersedes-partial"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0008-memento-brief-projection.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
       }
     },
@@ -1197,6 +1457,197 @@
       }
     },
     {
+      "key": "_memento/writing.md",
+      "title": "Memento writing guide",
+      "summary": "Project-local guidance for deciding when agents should add or update durable memento memory in this repository.",
+      "bytes": 1694,
+      "lines": 27,
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Write when",
+          "slug": "write-when"
+        },
+        {
+          "level": 2,
+          "text": "Do not write",
+          "slug": "do-not-write"
+        },
+        {
+          "level": 2,
+          "text": "Shape",
+          "slug": "shape"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "adr-as-spec-evolution-artifact.md",
+      "title": "ADRs as spec-evolution artifacts",
+      "summary": "ADRs are worth keeping in AI-assisted development, but not because the inherited convention is sacred. They work because they are close to a useful agent-memory primitive: scoped, textual, decision-shaped, historically indexed, human-readable, diffable, and cheap to retrieve.",
+      "bytes": 12608,
+      "lines": 392,
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The regime change",
+          "slug": "the-regime-change"
+        },
+        {
+          "level": 2,
+          "text": "What to keep from classical ADRs",
+          "slug": "what-to-keep-from-classical-adrs"
+        },
+        {
+          "level": 2,
+          "text": "What to discard or weaken",
+          "slug": "what-to-discard-or-weaken"
+        },
+        {
+          "level": 2,
+          "text": "ADRs as constraint packets",
+          "slug": "adrs-as-constraint-packets"
+        },
+        {
+          "level": 2,
+          "text": "Suggested ADR template",
+          "slug": "suggested-adr-template"
+        },
+        {
+          "level": 2,
+          "text": "Field guidance",
+          "slug": "field-guidance"
+        },
+        {
+          "level": 3,
+          "text": "Status",
+          "slug": "status"
+        },
+        {
+          "level": 3,
+          "text": "Scope",
+          "slug": "scope"
+        },
+        {
+          "level": 3,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 3,
+          "text": "Invariant",
+          "slug": "invariant"
+        },
+        {
+          "level": 3,
+          "text": "Why",
+          "slug": "why"
+        },
+        {
+          "level": 3,
+          "text": "Rejected options",
+          "slug": "rejected-options"
+        },
+        {
+          "level": 3,
+          "text": "Operational consequences",
+          "slug": "operational-consequences"
+        },
+        {
+          "level": 3,
+          "text": "Failure mode guarded against",
+          "slug": "failure-mode-guarded-against"
+        },
+        {
+          "level": 3,
+          "text": "Obsolescence condition",
+          "slug": "obsolescence-condition"
+        },
+        {
+          "level": 2,
+          "text": "Relationship to other artifacts",
+          "slug": "relationship-to-other-artifacts"
+        },
+        {
+          "level": 2,
+          "text": "Promotion rule",
+          "slug": "promotion-rule"
+        },
+        {
+          "level": 2,
+          "text": "Retrieval guidance",
+          "slug": "retrieval-guidance"
+        },
+        {
+          "level": 2,
+          "text": "Naming and structure",
+          "slug": "naming-and-structure"
+        },
+        {
+          "level": 2,
+          "text": "Frontmatter option",
+          "slug": "frontmatter-option"
+        },
+        {
+          "level": 2,
+          "text": "Anti-patterns",
+          "slug": "anti-patterns"
+        },
+        {
+          "level": 3,
+          "text": "The ceremonial ADR",
+          "slug": "the-ceremonial-adr"
+        },
+        {
+          "level": 3,
+          "text": "The fossil ADR",
+          "slug": "the-fossil-adr"
+        },
+        {
+          "level": 3,
+          "text": "The work-log ADR",
+          "slug": "the-work-log-adr"
+        },
+        {
+          "level": 3,
+          "text": "The aesthetic ADR",
+          "slug": "the-aesthetic-adr"
+        },
+        {
+          "level": 3,
+          "text": "The everything ADR",
+          "slug": "the-everything-adr"
+        },
+        {
+          "level": 2,
+          "text": "Suggested agent instruction",
+          "slug": "suggested-agent-instruction"
+        },
+        {
+          "level": 2,
+          "text": "Summary",
+          "slug": "summary"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
       "key": "agent-human coordination failure modes.md",
       "title": "Agent–human coordination failure modes",
       "summary": "Backlog/taxonomy of failure states that show up when humans and long-running agents share a queue, a worktree, and a spec. Sort later — collecting raw examples first.",
@@ -1310,8 +1761,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 37365,
-      "lines": 380,
+      "bytes": 40540,
+      "lines": 402,
       "tags": [],
       "headings": [
         {
@@ -1401,6 +1852,16 @@
         },
         {
           "level": 3,
+          "text": "Read stderr contract (v2, ADR-0021)",
+          "slug": "read-stderr-contract-v2-adr-0021"
+        },
+        {
+          "level": 3,
+          "text": "Write stderr contract (v2, ADR-0022)",
+          "slug": "write-stderr-contract-v2-adr-0022"
+        },
+        {
+          "level": 3,
           "text": "Error tokens",
           "slug": "error-tokens"
         },
@@ -1442,7 +1903,7 @@
       ],
       "mode": "append-only",
       "orient": false,
-      "updated": "2026-06-13T00:00:00Z",
+      "updated": "2026-06-15T00:00:00Z",
       "summary_stale": true,
       "links": {
         "out": [
@@ -1558,9 +2019,10 @@
     "bootloader": 1,
     "brief": 3,
     "cli": 1,
-    "compile": 3,
+    "compile": 4,
     "config": 1,
     "configuration": 1,
+    "convention": 1,
     "distribution": 1,
     "draft": 1,
     "format": 1,
@@ -1570,21 +2032,22 @@
     "init": 4,
     "interop": 2,
     "lifecycle": 2,
+    "links": 1,
     "maintenance": 1,
-    "manifest": 3,
+    "manifest": 5,
     "markdown": 1,
     "mcp": 1,
-    "memento": 23,
+    "memento": 26,
     "mode": 2,
     "namespace": 2,
     "obsidian": 3,
     "okf": 3,
     "open-question": 3,
-    "orient": 1,
+    "orient": 2,
     "philosophy": 1,
     "portability": 1,
     "proposal": 3,
-    "read": 3,
+    "read": 4,
     "retrieval": 1,
     "review": 3,
     "roadmap": 1,
@@ -1594,7 +2057,7 @@
     "symlink": 1,
     "unicode": 1,
     "vault": 3,
-    "write": 4,
+    "write": 6,
     "writing": 1
   }
 }

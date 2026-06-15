@@ -399,6 +399,32 @@ func TestInitCreatesUsingMementoGuideForGreenfieldVault(t *testing.T) {
 	}
 }
 
+func TestInitCreatesWritingGuideForGreenfieldVault(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, "memory/_memento/writing.md")
+	for _, want := range []string{
+		"title:",
+		"mode: read-only",
+		"summary:",
+		"hard-won learnings",
+		"paths we decided not to take",
+		"constraints that aren't visible in code",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("_memento/writing.md = %q, want it to contain %q", got, want)
+		}
+	}
+	_, body, ok := strings.Cut(got, "---\n\n")
+	if !ok || strings.TrimSpace(body) == "" {
+		t.Fatalf("_memento/writing.md = %q, want non-empty body", got)
+	}
+}
+
 func TestInitCreatesUsingMementoGuideWhenAdoptingExistingVault(t *testing.T) {
 	repo := t.TempDir()
 	writeSetupFile(t, repo, "memory/note.md", "# Existing note\n\nKeep this.\n")
@@ -411,6 +437,35 @@ func TestInitCreatesUsingMementoGuideWhenAdoptingExistingVault(t *testing.T) {
 	assertUsingMementoGuide(t, got)
 	if _, err := os.Stat(filepath.Join(repo, "memory", "example.md")); !os.IsNotExist(err) {
 		t.Fatalf("example.md stat err = %v, want file not to exist", err)
+	}
+}
+
+func TestInitDoesNotModifyExistingWritingGuideWhenAdopting(t *testing.T) {
+	repo := t.TempDir()
+	existing := "---\nmode: read-only\n---\n# My writing guide\n\nKeep this exactly.\n"
+	writeSetupFile(t, repo, "memory/note.md", "# Existing note\n\nKeep this.\n")
+	writeSetupFile(t, repo, "memory/_memento/writing.md", existing)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, "memory/_memento/writing.md")
+	if got != existing {
+		t.Fatalf("_memento/writing.md changed to %q, want %q", got, existing)
+	}
+}
+
+func TestInitDoesNotCreateWritingGuideWhenAdoptingWithoutOne(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, "memory/note.md", "# Existing note\n\nKeep this.\n")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repo, "memory", "_memento", "writing.md")); !os.IsNotExist(err) {
+		t.Fatalf("_memento/writing.md stat err = %v, want file not to exist", err)
 	}
 }
 
@@ -697,7 +752,7 @@ func assertUsingMementoGuide(t *testing.T, got string) {
 		"# Using Memento",
 		"`_memento/` is the human-readable tool namespace for this vault.",
 		"`brief.md` is auto-regenerated from `.memento/manifest.json`",
-		"Future tool-read files such as `writing.md`, `review.md`, and `audit.md`",
+		"Tool-read files such as `writing.md`, `review.md`, and `audit.md`",
 		"If you don't want this file, deleting it is fine",
 	} {
 		if !strings.Contains(got, want) {

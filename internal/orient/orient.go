@@ -30,7 +30,10 @@ func Baseline() []byte {
 // Render composes the baseline with manifest-selected orient overlay docs.
 func Render(v vault.Vault, m manifest.Manifest) ([]byte, error) {
 	entries := orientEntries(m)
-	out := append([]byte(nil), Baseline()...)
+	out, err := baselineForVault(v)
+	if err != nil {
+		return nil, err
+	}
 	if len(entries) == 0 {
 		return out, nil
 	}
@@ -51,6 +54,33 @@ func Render(v vault.Vault, m manifest.Manifest) ([]byte, error) {
 	}
 	out = append(out, '\n')
 	return out, nil
+}
+
+func baselineForVault(v vault.Vault) ([]byte, error) {
+	out := append([]byte(nil), Baseline()...)
+	hasWritingGuide, err := hasWritingGuide(v)
+	if err != nil {
+		return nil, err
+	}
+	if !hasWritingGuide {
+		return out, nil
+	}
+
+	const placeholder = "## Triggered Preconditions\n\nNone yet."
+	const replacement = "## Triggered Preconditions\n\n- `memento write`: before authoring, run `memento read _memento/writing.md`."
+	return bytes.Replace(out, []byte(placeholder), []byte(replacement), 1), nil
+}
+
+func hasWritingGuide(v vault.Vault) (bool, error) {
+	path := filepath.Join(v.Root, vault.ToolDirName, "writing.md")
+	info, err := os.Stat(path)
+	if err == nil {
+		return !info.IsDir(), nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("stat writing guide: %w", err)
 }
 
 func orientEntries(m manifest.Manifest) []manifest.Entry {

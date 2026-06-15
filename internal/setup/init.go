@@ -64,7 +64,7 @@ var defaultUsingMementoGuide = strings.Join([]string{
 	"",
 	"`brief.md` is auto-regenerated from `.memento/manifest.json`. It is the short agent-facing view of your memory vault: titles, summaries, tags, headings, and modes. Because it is regenerated, edits to `brief.md` will be replaced the next time memento compiles the vault.",
 	"",
-	"Future tool-read files such as `writing.md`, `review.md`, and `audit.md` will arrive with their corresponding verbs. Those files will let you describe local conventions in normal markdown when the tool grows those workflows.",
+	"Tool-read files such as `writing.md`, `review.md`, and `audit.md` let you describe local conventions in normal markdown. Memento reads them only when their corresponding workflows need them.",
 	"",
 	"This guide is only a gentle starter. You can edit it, move ideas from it into your own notes, or remove it once it stops being useful.",
 	"",
@@ -116,6 +116,9 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if greenfield {
 		if err := ensureFile(filepath.Join(vaultRoot, "example.md"), []byte(defaultExampleNote), 0o644); err != nil {
 			return vault.Vault{}, fmt.Errorf("create example note: %w", err)
+		}
+		if err := ensureWritingGuide(v); err != nil {
+			return vault.Vault{}, err
 		}
 	}
 	if err := ensureUsingMementoGuide(v); err != nil {
@@ -243,6 +246,29 @@ func ensureUsingMementoGuide(v vault.Vault) error {
 
 	if err := writeNewFile(path, []byte(defaultUsingMementoGuide), 0o644); err != nil {
 		return fmt.Errorf("create _memento Using Memento guide: %w", err)
+	}
+	return nil
+}
+
+var defaultWritingGuide = strings.Join([]string{
+	"---",
+	"title: Writing guide",
+	"mode: read-only",
+	"summary: Project-local guidance for deciding when durable memento notes are worth authoring.",
+	"---",
+	"",
+	"# Writing guide",
+	"",
+	"Retain durable project knowledge that should survive a task: hard-won learnings, paths we decided not to take, and constraints that aren't visible in code.",
+	"",
+	"Do not record transient task progress, guesses, or details already made clear by the code.",
+	"",
+}, "\n")
+
+func ensureWritingGuide(v vault.Vault) error {
+	path := filepath.Join(v.Root, vault.ToolDirName, "writing.md")
+	if err := writeNewFile(path, []byte(defaultWritingGuide), 0o644); err != nil {
+		return fmt.Errorf("create _memento writing guide: %w", err)
 	}
 	return nil
 }

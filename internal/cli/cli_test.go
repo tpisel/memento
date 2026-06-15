@@ -519,6 +519,59 @@ func TestOrientPrintsBaselineOnlyWhenNoDocsAreTagged(t *testing.T) {
 	}
 }
 
+func TestOrientIncludesWritingGuidePreconditionWhenWritingGuideExists(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+	writeCLIFile(t, root, "_memento/writing.md", "---\nmode: read-only\n---\n# Writing\n\nUse judgement.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"orient"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(orient) stderr = %q, want empty", stderr.String())
+	}
+
+	want := "before authoring, run `memento read _memento/writing.md`."
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("Run(orient) stdout =\n%s\nwant writing guide precondition %q", stdout.String(), want)
+	}
+}
+
+func TestOrientOmitsWritingGuidePreconditionWhenWritingGuideIsAbsent(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"orient"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+
+	out := stdout.String()
+	for _, unwanted := range []string{
+		"before authoring, run `memento read _memento/writing.md`.",
+		"consider writing one",
+	} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("Run(orient) stdout =\n%s\nwant no writing guide text containing %q", out, unwanted)
+		}
+	}
+}
+
 func TestOrientAppendsSingleTaggedDocAfterBaseline(t *testing.T) {
 	root := makeCLIVault(t)
 	overlay := "---\norient: true\n---\n# Project Orientation\n\nUse the project guide.\n"
@@ -971,6 +1024,25 @@ func TestWriteCreatesMarkdownFromStdin(t *testing.T) {
 	brief := readCLIFile(t, root, "_memento/brief.md")
 	if !strings.Contains(brief, "key: `notes/new.md` | mode: `append-only`") {
 		t.Fatalf("brief after write = %q, want new note entry", brief)
+	}
+}
+
+func TestWriteDoesNotPrintWritingGuideReminder(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "_memento/writing.md", "---\nmode: read-only\n---\n# Writing\n\nUse judgement.\n")
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "notes/new.md"},
+		strings.NewReader("# New\n\nDurable note.\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write create) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "writing.md") {
+		t.Fatalf("Run(write create) stderr = %q, want no writing guide reminder", stderr.String())
 	}
 }
 
