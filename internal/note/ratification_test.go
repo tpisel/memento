@@ -27,6 +27,10 @@ func TestBindingForReadTargetTreatsTrackedPathspecMetacharactersLiterally(t *tes
 }
 
 func TestBindingForReadTargetDoesNotRatifyUntrackedPathspecMetacharacterMatch(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows reserves '*' as a filename metacharacter")
+	}
+
 	root := makeVault(t)
 	initGit(t, root)
 	writeFile(t, root, "foobar.md", "# Note\n\nTracked.\n")
