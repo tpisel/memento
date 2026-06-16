@@ -31,9 +31,9 @@ const helpText = `memento
 Usage:
   memento help
   memento version
-  memento brief
-  memento compile
   memento init [--dir <vault>]
+  memento compile
+  memento brief
   memento orient
   memento read <key|@N>
   memento write [--overwrite] <key>
@@ -41,9 +41,9 @@ Usage:
 Commands:
   help      Show this help text.
   version   Print the memento version.
-  brief     Print the agent-facing manifest projection.
-  compile   Compile a memory vault manifest.
   init      Adopt or create a memory vault.
+  compile   Compile a memory vault manifest.
+  brief     Print the agent-facing manifest projection.
   orient    Print tool-usage orientation and project overlays.
   read      Read a memory note by key or @N entry reference.
   write     Create, append to, or overwrite a memory note from stdin, then compile.

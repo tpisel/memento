@@ -1906,7 +1906,7 @@ func readmeCurrentVerbUsages(readme string) []string {
 	inList := false
 	for _, line := range strings.Split(readme, "\n") {
 		line = strings.TrimRight(line, "\r")
-		if line == "Current verbs:" {
+		if line == "## CLI reference" {
 			inList = true
 			continue
 		}
