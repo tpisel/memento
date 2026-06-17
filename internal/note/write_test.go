@@ -348,7 +348,7 @@ func TestWriteRejectsOverwriteForRatifiedMissingModeLikeAppendOnly(t *testing.T)
 	}
 }
 
-func TestWriteOverwriteToleratesLegacySummaryHash(t *testing.T) {
+func TestWriteOverwriteToleratesLegacySummaryDigestField(t *testing.T) {
 	root := makeVault(t)
 	initGit(t, root)
 	originalBody := "# Note\n\nOriginal.\n"
@@ -364,8 +364,8 @@ func TestWriteOverwriteToleratesLegacySummaryHash(t *testing.T) {
 	}
 
 	got := metadataFor(t, "note.md", []byte(readFile(t, root, "note.md")))
-	if got.SummaryHash == "" {
-		t.Fatal("SummaryHash is empty, want hash of committed summary despite legacy summary_hash")
+	if got.SummaryTextHash == "" {
+		t.Fatal("SummaryTextHash is empty, want hash of committed summary despite legacy summary_hash")
 	}
 	if got.SummaryState != markdown.SummaryCurrent {
 		t.Fatalf("SummaryState = %q, want %q", got.SummaryState, markdown.SummaryCurrent)

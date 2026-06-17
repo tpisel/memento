@@ -164,6 +164,7 @@ func priorLedgerEntries(manifestPath string) (map[string]Entry, error) {
 		return nil, fmt.Errorf("read prior manifest: %w", err)
 	}
 
+	// per ADR-0023 §Migration: incompatible prior ledgers reseed cleanly.
 	var prior Manifest
 	if err := json.Unmarshal(data, &prior); err != nil {
 		return map[string]Entry{}, nil
@@ -180,11 +181,11 @@ func priorLedgerEntries(manifestPath string) (map[string]Entry, error) {
 }
 
 func deriveSummaryLedger(meta markdown.Metadata, prior Entry) (bodySHA, summarySHA string, state markdown.SummaryState) {
-	if meta.SummaryHash == "" {
+	if meta.SummaryTextHash == "" {
 		return "", "", markdown.SummaryMissing
 	}
-	if prior.SummarySHA == "" || meta.SummaryHash != prior.SummarySHA {
-		return meta.BodyHash, meta.SummaryHash, markdown.SummaryCurrent
+	if prior.SummarySHA == "" || meta.SummaryTextHash != prior.SummarySHA {
+		return meta.BodyHash, meta.SummaryTextHash, markdown.SummaryCurrent
 	}
 	if meta.BodyHash != prior.BodySHA {
 		return prior.BodySHA, prior.SummarySHA, markdown.SummaryStale

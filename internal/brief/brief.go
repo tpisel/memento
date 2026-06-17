@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/tpisel/memento/internal/manifest"
+	"github.com/tpisel/memento/internal/markdown"
 	"github.com/tpisel/memento/internal/vault"
 )
 
@@ -115,9 +116,9 @@ func RenderWithToolFiles(m manifest.Manifest, toolFiles []string) []byte {
 	for _, numbered := range numberedEntries {
 		entry := numbered.Entry
 		switch entry.SummaryState {
-		case "stale":
+		case markdown.SummaryStale:
 			staleCount++
-		case "missing":
+		case markdown.SummaryMissing:
 			missingCount++
 		}
 		if numbered.Folder != currentFolder {
@@ -159,9 +160,9 @@ func entryMetadata(entry manifest.Entry) string {
 	}
 	parts = append(parts, "size: "+sizeMarker(entry))
 	switch entry.SummaryState {
-	case "stale":
+	case markdown.SummaryStale:
 		parts = append(parts, "[stale-summary]")
-	case "missing":
+	case markdown.SummaryMissing:
 		parts = append(parts, "[unsummarised]")
 	}
 	return strings.Join(parts, " | ")

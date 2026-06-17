@@ -37,16 +37,16 @@ const (
 )
 
 type Metadata struct {
-	Title        string
-	Summary      string
-	Tags         []string
-	Headings     []Heading
-	Mode         WriteMode
-	Orient       bool
-	Updated      time.Time
-	SummaryHash  string
-	BodyHash     string
-	SummaryState SummaryState
+	Title           string
+	Summary         string
+	Tags            []string
+	Headings        []Heading
+	Mode            WriteMode
+	Orient          bool
+	Updated         time.Time
+	SummaryTextHash string
+	BodyHash        string
+	SummaryState    SummaryState
 }
 
 type Heading struct {
@@ -64,14 +64,14 @@ const (
 )
 
 type frontmatter struct {
-	title       string
-	summary     string
-	description string
-	tags        []string
-	mode        WriteMode
-	orient      bool
-	updated     time.Time
-	summaryHash string
+	title               string
+	summary             string
+	description         string
+	tags                []string
+	mode                WriteMode
+	orient              bool
+	updated             time.Time
+	legacySummaryDigest string
 }
 
 const frontmatterFenceLookaheadLines = 64
@@ -114,10 +114,10 @@ func metadataFromParts(relPath string, fm frontmatter, body []byte) Metadata {
 	if summary == "" {
 		summary = firstParagraphText(doc, body)
 	}
-	summaryHash := ""
+	summaryTextHash := ""
 	summaryState := SummaryMissing
 	if committedSummary != "" {
-		summaryHash = hashSummary(committedSummary)
+		summaryTextHash = hashSummary(committedSummary)
 		summaryState = SummaryCurrent
 	}
 
@@ -127,16 +127,16 @@ func metadataFromParts(relPath string, fm frontmatter, body []byte) Metadata {
 	}
 
 	return Metadata{
-		Title:        title,
-		Summary:      summary,
-		Tags:         fm.tags,
-		Headings:     extractHeadings(doc, body),
-		Mode:         mode,
-		Orient:       fm.orient,
-		Updated:      fm.updated,
-		SummaryHash:  summaryHash,
-		BodyHash:     bodyHash,
-		SummaryState: summaryState,
+		Title:           title,
+		Summary:         summary,
+		Tags:            fm.tags,
+		Headings:        extractHeadings(doc, body),
+		Mode:            mode,
+		Orient:          fm.orient,
+		Updated:         fm.updated,
+		SummaryTextHash: summaryTextHash,
+		BodyHash:        bodyHash,
+		SummaryState:    summaryState,
 	}
 }
 
@@ -309,7 +309,7 @@ func applyFrontmatterField(fm *frontmatter, key, value string) error {
 		}
 		fm.updated = updated
 	case "summary_hash":
-		fm.summaryHash = cleanScalar(value)
+		fm.legacySummaryDigest = cleanScalar(value)
 	case "type", "resource", "timestamp", "okf_version":
 		// OKF convention fields are accepted and ignored by design.
 	default:

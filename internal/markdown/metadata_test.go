@@ -47,8 +47,8 @@ Body paragraph that should not replace frontmatter summary.
 	if !got.Updated.Equal(wantUpdated) {
 		t.Fatalf("Updated = %v, want %v", got.Updated, wantUpdated)
 	}
-	if got.SummaryHash != hashSummary("A concise summary from frontmatter.") {
-		t.Fatalf("SummaryHash = %q, want hash of committed summary", got.SummaryHash)
+	if got.SummaryTextHash != hashSummary("A concise summary from frontmatter.") {
+		t.Fatalf("SummaryTextHash = %q, want hash of committed summary", got.SummaryTextHash)
 	}
 	if got.BodyHash == "" {
 		t.Fatal("BodyHash is empty, want deterministic body hash")
@@ -87,8 +87,8 @@ Second paragraph.
 	if !got.Updated.IsZero() {
 		t.Fatalf("Updated = %v, want zero time", got.Updated)
 	}
-	if got.SummaryHash != "" {
-		t.Fatalf("SummaryHash = %q, want empty without summary or description", got.SummaryHash)
+	if got.SummaryTextHash != "" {
+		t.Fatalf("SummaryTextHash = %q, want empty without summary or description", got.SummaryTextHash)
 	}
 	if got.SummaryState != SummaryMissing {
 		t.Fatalf("SummaryState = %q, want %q", got.SummaryState, SummaryMissing)
@@ -430,7 +430,7 @@ func TestBodyHashUsesEntireSourceWhenFrontmatterAbsent(t *testing.T) {
 	}
 }
 
-func TestSummaryHashUsesCommittedSummaryNotLegacySummaryHash(t *testing.T) {
+func TestSummaryTextHashUsesCommittedSummaryNotLegacyField(t *testing.T) {
 	got, err := ExtractMetadata("hash.md", []byte(`---
 summary: Summary
 summary_hash: legacy-body-hash
@@ -443,8 +443,8 @@ Changed body.
 		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
 	}
 
-	if got.SummaryHash != hashSummary("Summary") {
-		t.Fatalf("SummaryHash = %q, want hash of summary text", got.SummaryHash)
+	if got.SummaryTextHash != hashSummary("Summary") {
+		t.Fatalf("SummaryTextHash = %q, want hash of summary text", got.SummaryTextHash)
 	}
 	if got.SummaryState != SummaryCurrent {
 		t.Fatalf("SummaryState = %q, want %q", got.SummaryState, SummaryCurrent)

@@ -187,6 +187,16 @@ func TestCompileDerivesSummaryStateFromPriorLedger(t *testing.T) {
 		t.Fatalf("stale ledger hashes = body %q summary %q, want carried body %q summary %q", bodyOnlyEntry.BodySHA, bodyOnlyEntry.SummarySHA, firstEntry.BodySHA, firstEntry.SummarySHA)
 	}
 
+	writeFile(t, root, "note.md", "---\nsummary: Summary.\n---\n# Note\n\nChanged body again.\n")
+	staleAgain := compileAndStoreManifest(t, v)
+	staleAgainEntry := onlyEntry(t, staleAgain)
+	if staleAgainEntry.SummaryState != markdown.SummaryStale {
+		t.Fatalf("stale-again SummaryState = %q, want %q", staleAgainEntry.SummaryState, markdown.SummaryStale)
+	}
+	if staleAgainEntry.BodySHA != firstEntry.BodySHA || staleAgainEntry.SummarySHA != firstEntry.SummarySHA {
+		t.Fatalf("stale-again ledger hashes = body %q summary %q, want carried body %q summary %q", staleAgainEntry.BodySHA, staleAgainEntry.SummarySHA, firstEntry.BodySHA, firstEntry.SummarySHA)
+	}
+
 	writeFile(t, root, "note.md", "---\nsummary: Updated summary.\n---\n# Note\n\nChanged body.\n")
 	summaryEdit := compileAndStoreManifest(t, v)
 	summaryEditEntry := onlyEntry(t, summaryEdit)
@@ -220,6 +230,16 @@ func TestCompileDerivesSummaryStateFromPriorLedger(t *testing.T) {
 	}
 	if missingEntry.SummaryState != markdown.SummaryMissing || missingEntry.BodySHA != "" || missingEntry.SummarySHA != "" {
 		t.Fatalf("missing ledger = state %q body %q summary %q, want missing with empty hashes", missingEntry.SummaryState, missingEntry.BodySHA, missingEntry.SummarySHA)
+	}
+
+	writeFile(t, root, "note.md", "---\nsummary: Added summary.\n---\n# Note\n\nFirst paragraph fallback.\n")
+	addedSummary := compileAndStoreManifest(t, v)
+	addedSummaryEntry := onlyEntry(t, addedSummary)
+	if addedSummaryEntry.SummaryState != markdown.SummaryCurrent {
+		t.Fatalf("added-summary SummaryState = %q, want %q", addedSummaryEntry.SummaryState, markdown.SummaryCurrent)
+	}
+	if addedSummaryEntry.BodySHA == "" || addedSummaryEntry.SummarySHA == "" {
+		t.Fatalf("added-summary ledger hashes = body %q summary %q, want both populated", addedSummaryEntry.BodySHA, addedSummaryEntry.SummarySHA)
 	}
 }
 
@@ -314,6 +334,47 @@ func TestLoadRejectsUnsupportedSchemaVersion(t *testing.T) {
 	_, err := Load(v)
 	if !errors.Is(err, ErrSchemaUnsupported) {
 		t.Fatalf("Load() error = %v, want ErrSchemaUnsupported", err)
+	}
+}
+
+func TestPriorLedgerEntriesFallsBackAndWriteReseedsFromV1Manifest(t *testing.T) {
+	root := makeVault(t)
+	v := vaultFromRoot(root)
+	writeFile(t, root, "note.md", "---\nsummary: Fresh summary.\n---\n# Note\n\nBody.\n")
+	writeFile(t, root, ".memento/manifest.json", `{
+  "schema_version": 1,
+  "entries": [
+    {
+      "key": "note.md",
+      "title": "Note",
+      "summary": "Old summary.",
+      "summary_stale": true
+    }
+  ]
+}
+`)
+
+	prior, err := priorLedgerEntries(v.ManifestPath)
+	if err != nil {
+		t.Fatalf("priorLedgerEntries() error = %v, want nil", err)
+	}
+	if len(prior) != 0 {
+		t.Fatalf("priorLedgerEntries() entries = %d, want empty fallback", len(prior))
+	}
+
+	if err := Write(v); err != nil {
+		t.Fatalf("Write() with v1 prior manifest error = %v, want nil", err)
+	}
+	reseeded, err := Load(v)
+	if err != nil {
+		t.Fatalf("Load(reseeded) error = %v, want nil", err)
+	}
+	entry := onlyEntry(t, reseeded)
+	if entry.SummaryState != markdown.SummaryCurrent {
+		t.Fatalf("reseeded SummaryState = %q, want %q", entry.SummaryState, markdown.SummaryCurrent)
+	}
+	if entry.BodySHA == "" || entry.SummarySHA == "" {
+		t.Fatalf("reseeded ledger hashes = body %q summary %q, want both populated", entry.BodySHA, entry.SummarySHA)
 	}
 }
 
