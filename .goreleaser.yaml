@@ -1,0 +1,44 @@
+version: 2
+
+project_name: memento
+
+builds:
+  - id: memento
+    main: ./cmd/memento
+    binary: memento
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/tpisel/memento/internal/cli.version={{ .Version }}
+
+archives:
+  - id: memento
+    ids:
+      - memento
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+brews:
+  - name: memento
+    repository:
+      owner: tpisel
+      name: homebrew-memento
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/tpisel/memento
+    description: A markdown-based, in-repo memory substrate for AI coding agents.
+    license: MIT
+    install: |
+      bin.install "memento"
