@@ -101,3 +101,29 @@ Writing.md *could* be tagged `orient: true` so it appears in orient output. This
 - [[adr-0013-orient-verb-and-minimal-bootloader]] — orient as the always-loaded baseline + overlay surface; this ADR adds the writing.md precondition fragment to orient's `write` description.
 - [[adr-0015-write-mode-taxonomy]] — writing.md's mode is `read-only`; its content describes how to use the modes from ADR-0015.
 - [[adr-0017-pre-commit-edit-window]] — edit-window still applies to writing.md drafting like any other note.
+
+## Addendum 2026-06-17 — Tool-read file pattern (verb-paired prose conventions)
+
+`writing.md` was the first tool-read file in `_memento/`. As `review.md`, `audit.md`, and subsequent verbs land, each will sit beside it under the same pattern. This addendum lifts the shape from precedent to contract, so each new verb's filename does not redesign the surface from scratch.
+
+A **tool-read file** is a `_memento/<verb>.md` prose convention paired with a memento verb. It is the *pull* surface for per-action conventions, distinct from the orient overlay (the *push* surface for project-wide orientation). The two stay separate; conflating them re-introduces the always-load failure mode that orient itself was carved out to avoid.
+
+The contract every tool-read file obeys:
+
+1. **Location.** `<vault>/_memento/<verb>.md`. One filename per verb. The visible operational namespace (ADR-0009); Obsidian-browsable, file-versioned by default.
+2. **Audience.** Human-curated, agent-read. The human tunes the prose when the agent does the wrong thing; the agent reads it in context immediately before action.
+3. **Schema.** Standard memento frontmatter only (Tier 1, ADR-0014). The body is free-form prose. Per-verb soft conventions (recommended headings, ADR header shapes, etc.) may be suggested but never enforced — the file is consumed by an LLM, not a parser.
+4. **Mode.** `read-only`. Tool-read files are curated conventions, not appended to. The pre-commit edit window (ADR-0017) still applies during initial drafting.
+5. **Discovery.** Existence check at orient render time. No parse, no validation beyond standard frontmatter.
+6. **Surfacing.** Orient's description of the paired verb includes a precondition fragment ("before `memento <verb>`, run `memento read _memento/<verb>.md`") iff the file exists. Absent → the fragment is omitted entirely; no broken pointer. The triggered-preconditions block in the orient baseline is the assembly point.
+7. **Reinforcement.** None at action time. The paired verb does not check, warn, or gate on the file. Statelessness across CLI invocations is preserved (the same reason as ADR-0017's edit-window mechanism and ADR-0010's writing.md mechanism — the rejection generalises).
+8. **Init posture.** Greenfield init scaffolds a minimal file alongside the verb's other init artifacts. Adoption never clobbers — if the file exists, init leaves it; if it does not, init does not create one during adoption.
+9. **Filename reservation.** A tool-read filename is reserved by the ADR that lands the paired verb. `writing.md` is reserved by this ADR. `review.md` and `audit.md` are *placeholders* under ADR-0009 — they become tool-read files only when their verbs' ADRs reserve them under this pattern.
+
+What this pattern explicitly does not cover:
+
+- **Opinionated starter content.** This pattern says how a tool-read file is *read*; it says nothing about what it should *say*. Opinionated default content lives with `init --template=` work (ADR-0009 deferred), not here.
+- **Cross-verb files.** A tool-read file consulted by two verbs (e.g., a shared style guide) is out of scope until the third verb makes a real case. One file per verb until practice argues otherwise.
+- **Precedence.** Moot today (only `writing.md` is live). If two tool-read files later concern overlapping action, precedence will be added to this addendum or to a sibling ADR.
+
+The pattern collapses ADR-0010's "writing.md mechanism" to a class with one current member. Future verb ADRs reference this section rather than re-pinning each axis.

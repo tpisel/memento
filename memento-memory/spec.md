@@ -1,8 +1,9 @@
 ---
 title: memento — design specification
 status: draft
-version: 0.3
-updated: 2026-06-15
+mode: living
+version: 0.4
+updated: 2026-06-17
 summary: Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.
 ---
 
@@ -90,14 +91,16 @@ Canonical machine form is **JSON** (deterministic to parse), emitted at `<vault>
 - **headings** — the H2/H3 tree (depth-capped to stay scannable). This is most of the value of reading the doc at a fraction of the tokens, and is what enables section-level reads (§7).
 - **mode** — write-mode (§9).
 - **updated** — timestamp.
-- **summary_stale** — detection flag (§8).
-- **links** — out + in (computed at compile time; consumed at v3, §7).
+- **body_sha** — sha256 of the post-frontmatter body, recomputed every compile (ADR-0023).
+- **summary_sha** — sha256 of the resolved summary text, recomputed every compile (ADR-0023).
+- **summary_state** — `current` / `stale` / `missing`, derived per ADR-0023 from `body_sha` × `summary_sha` against the prior ledger entry (§9). Replaces the prior boolean `summary_stale` flag.
+- **links** — out + in (computed at compile time; consumed at v2 per ADR-0021, §7).
   - outlinks are objects with `target`, `type`, and `resolved`; resolved targets use the manifest key, unresolved targets keep the raw wikilink target.
   - inlinks are inverted resolved edges with `source` and `type`.
 
 ### Global
 
-- **schema_version** — integer manifest schema version. v1 manifests emit `schema_version: 1` as the first top-level JSON key. In-tree readers refuse missing or non-`1` values with `manifest-schema-unsupported`; migration support for pre-v1 manifests is deliberately out of scope.
+- **schema_version** — integer manifest schema version. v2 manifests (ADR-0023) emit `schema_version: 2` as the first top-level JSON key. In-tree readers refuse missing or non-current values with `manifest-schema-unsupported`; migration support for pre-current manifests is deliberately out of scope.
 - **tag vocabulary with counts** — lets the task-start scan filter by domain rather than read everything; also a rot signal (count-1 tags are usually typos; a sprawling vocabulary means tagging discipline slipped).
 
 Compile is a **full stateless rebuild** each run. Entries are emitted from what exists; deletions and renames simply produce a manifest without the old entry — no diffing or patching state to maintain.
@@ -188,9 +191,15 @@ Trigger-shaped, not discretion-shaped — discretionary "write down useful thing
 
 `summary:` remains the memento-native source of truth. `description:` only contributes when `summary:` is absent, so OKF-authored notes get useful manifest summaries without changing existing memento-authored notes.
 
-**Compile is pure.** Deterministic, no network, hook-safe — it must never make an LLM call, because it runs on a pre-commit hook and a hook that hangs on a flaky/slow/costly network call is unacceptable. Compile therefore does **detection only**: it flags which files are new, summary-less, or body-changed-since-summary.
+**Compile is pure.** Deterministic, no network, hook-safe — it must never make an LLM call, because it runs on a pre-commit hook and a hook that hangs on a flaky/slow/costly network call is unacceptable. Compile therefore does **detection only**: it derives each entry's `summary_state` ∈ {`current`, `stale`, `missing`} from the just-walked vault and the prior ledger.
 
-**Trigger = body-content hash, not mtime.** mtime is destroyed by `git checkout`/`clone` and would misfire constantly in any multi-machine or CI setting. The tool stores `summary_hash` (sha256 of the body, **excluding frontmatter**) in frontmatter; a file is stale when its current body hash ≠ stored hash. This also kills the regeneration loop for free: writing a summary mutates frontmatter but not body, so the body hash is unchanged and no re-trigger fires.
+**Trigger = body-content hash, not mtime.** mtime is destroyed by `git checkout`/`clone` and would misfire constantly in any multi-machine or CI setting. Two sha256 hashes drive detection (ADR-0023): `body_sha` over the post-frontmatter body, and `summary_sha` over the resolved summary text. Both are stored per-entry in the canonical machine ledger (`.memento/manifest.json`), not in frontmatter — tool-owned derived state belongs on the machine surface, not the human-curated one. The three-state derivation:
+
+- **`current`** — summary present, `summary_sha` matches the ledger, `body_sha` matches the ledger.
+- **`stale`** — summary present, `summary_sha` matches the ledger, `body_sha` differs from the ledger.
+- **`missing`** — no `summary:` or `description:` in frontmatter.
+
+The two-hash rule kills the regeneration loop for free: writing a summary mutates `summary_sha`, refreshing both ledger hashes and returning the entry to `current`; editing the body mutates `body_sha` only, dropping it to `stale`. A summary refresh-edit is therefore the universal remedy for `stale` (no explicit ack verb is shipped; the rare "stale but summary still accurate" case folds into a trivial summary edit).
 
 **Generation is a separate, explicitly-invoked step**, and *who* generates depends on who is driving:
 
@@ -218,26 +227,29 @@ Future compile flag: `--summarize` (v4).
 
 ### Brief render contract
 
-`memento brief` emits the agent-facing markdown projection of `.memento/manifest.json`. For v1 the brief layout is fixed in this order:
+`memento brief` emits the agent-facing markdown projection of `.memento/manifest.json`. The brief layout is fixed in this order:
 
 1. YAML frontmatter at the top of the file, beginning on line 1. It includes `mode: read-only` and `manifest: sha256:<hash>`, where the hash is computed from the canonical manifest JSON. Additional frontmatter fields may be added only with a schema-versioned manifest change.
 2. Obsidian caution callout banner warning that the file is generated by `memento compile` and manual edits will be overwritten.
 3. `# Memento Brief`.
 4. Entry sections grouped by folder under H2 headings. Root-level notes render under `## (root)`. Folder headings are ordered with root first, then folder path order.
-5. Per-entry H3 headings with the render-time numeric prefix: `### N. <title>`.
-6. Per-entry inline metadata line: `key: <key> | mode: <mode> | tags: <tags|none> | size: <bytes/lines>`.
-7. The entry summary, or `Summary: none` when no summary is available. Resolved, unanchored wikilinks in summaries keep their Obsidian target and add the target entry reference to display text, e.g. `[[target|target @N]]` or `[[target|display @N]]`. Anchored and unresolved wikilinks remain unchanged. The v1 brief does not render a separate inlink/outlink section; the full link graph remains in the manifest.
-8. `Headings: ...`, listing heading text separated by semicolons, or `none`.
+5. Per-entry H3 headings with the render-time numeric prefix in the same `@N` form accepted by `memento read`: `### @N. <title>`.
+6. Per-entry inline metadata line: `key: <key> | mode: <mode> | tags: <tags> | size: <bytes/lines>`. The `tags:` segment is omitted when an entry has no tags. Entries with `summary_state` of `stale` or `missing` carry an inline staleness marker on this line (ADR-0023; exact glyph is a render detail).
+7. The entry summary, or `Summary: none` when no summary is available. The `none` marker is explicit because a missing summary is a review-worthy content defect and silence would hide it. Resolved, unanchored wikilinks in summaries keep their Obsidian target and add the target entry reference to display text, e.g. `[[target|target @N]]` or `[[target|display @N]]`. Anchored and unresolved wikilinks remain unchanged. The brief does not render a separate inlink/outlink section; the full link graph remains in the manifest and surfaces on `read` stderr per ADR-0021.
+8. `Headings: ...`, listing heading text separated by semicolons. The line is omitted entirely when an entry has no headings.
 9. Footer separator `---`.
-10. `Tag frequency: ...`, with tags sorted by name as `tag=count`; currently renders `none` when there are no tags.
+10. `Tag frequency: ...`, with tags sorted by name as `tag=count`; renders `none` when there are no tags.
 11. `Tool files: ...`, listing detected `_memento/` tool files or `none`.
+12. `Staleness: N stale, M unsummarised` aggregate counter (ADR-0023), so a scanner reads the staleness aggregate without inspecting every entry.
+13. `Section read: memento read <key|@N>#<heading>` hint, after `Tool files:`, so heading lists visibly connect to section extraction.
 
-### Read stderr contract (v2, ADR-0021)
+### Read stderr contract (v2, ADR-0021 + ADR-0023)
 
 `memento read <key|@N>` writes structured metadata to stderr before/around the body on stdout. The emission order is fixed:
 
 1. `binding: ratified|unratified` (existing; spec §7).
-2. Role-flattened link lines, in this order, with empty roles omitted:
+2. `summary: current|stale|missing` (ADR-0023). Emits alongside `binding:` so an agent reading a single note gets the staleness flag in context without round-tripping through brief.
+3. Role-flattened link lines, in this order, with empty roles omitted:
    - `inlinks: <key> @N, <key> @N, ...` — `wikilink`-typed incoming edges
    - `outlinks: <key> @N, <key> @N, ...` — `wikilink`-typed outgoing edges
    - `transcludes: <key> @N, ...` — `embed`-typed outgoing edges (`![[ ]]`)
@@ -247,7 +259,7 @@ Unresolved targets render with the raw wikilink target and no `@N` suffix. Secti
 
 ### Write stderr contract (v2, ADR-0022)
 
-`memento write <key>` triggers a full recompile after a successful body write. The verb's stdout contract is unchanged. On stderr, after the existing success-line content, the recompile result is reported (entry count or the same line `memento compile` emits). A failed recompile after a successful write surfaces as a non-fatal stderr warning; the body is already on disk. A failed write does not trigger compile.
+`memento write <key>` triggers a full recompile after a successful body write. The verb's stdout contract is unchanged. On stderr, the verb emits `wrote: <abs path> (<byte count>, <append|overwrite>)` immediately after a successful body write and before the auto-compile result; this line emits even if the subsequent auto-compile fails, because the body mutation has already succeeded. The recompile result (entry count, or the same line `memento compile` emits) follows. A failed recompile after a successful write surfaces as a non-fatal stderr warning; the body is already on disk. A failed write does not trigger compile. Write keys remain vault-relative; a key whose first segment equals the vault directory basename is rejected with the `invalid-key` token as likely repo-relative input.
 
 ### Error tokens
 
@@ -294,19 +306,23 @@ Root dispatch errors use `memento: <token>: ...` because no verb has been select
 
 **Compile must work on bare, frontmatter-less markdown** (filename → title, first line → summary, flag the gap). Frontmatter is **progressive enhancement** the human adds incrementally, never a precondition — a hard frontmatter requirement would turn adoption into a retrofit wall and kill it on contact with any existing repo.
 
-**Bootloader injection** is a **sentinel-bounded block** in `AGENTS.md`/`CLAUDE.md`:
+**Bootloader injection** is a **sentinel-bounded block** in `AGENTS.md`/`CLAUDE.md`. The *mechanism* is pinned by ADR-0013 (sentinel-bounded, init-managed, inert after init, signpost-not-carrier). The *contents* are pinned by ADR-0024 as four convey-points the block must carry — substrate identity, entry sequence (orient before brief), read primitive (read for keys/sections, not grep/cat), and the discoveries-outlive-task-into-memento boundary warning. The init realisation of these four points lives in `internal/setup/init.go`; tuning the wording is legal, removing a convey-point requires an ADR.
+
+Idempotent and removable (re-running replaces the block; never blind-appends). The block is **parametrised by the resolved dir** and points agents at `memento orient` then `memento brief`; the canonical manifest remains at `<vault>/.memento/manifest.json`. Critical, catastrophic-if-wrong items are promoted *out* of the vault and into `AGENTS.md` directly — the head of the distribution is unconditional, the long tail is conditional.
+
+The init flow also installs a **`.gitignore` stanza** as a sentinel-bounded block with recursive patterns that survive a vault rename:
 
 ```
-<!-- memento:start -->
-Durable project knowledge lives in `<vault>`.
-Run `memento brief` to load the agent-facing manifest projection (titles, summaries, tags, headings, modes).
-Identify relevant entries from the brief; read only the bodies or sections that plausibly apply with `memento read <key>`.
-<!-- memento:end -->
+# memento:gitignore:start
+# Obsidian per-machine UI state
+**/.obsidian/workspace*
+**/.obsidian/cache
+# Memento generated artifacts
+**/_memento/brief.md
+# memento:gitignore:end
 ```
 
-Idempotent and removable (re-running replaces the block; never blind-appends). The block is **parametrised by the resolved dir** and points agents at `memento brief`; the canonical manifest remains at `<vault>/.memento/manifest.json`. Critical, catastrophic-if-wrong items are promoted *out* of the vault and into `AGENTS.md` directly — the head of the distribution is unconditional, the long tail is conditional.
-
-**Renaming the vault directory requires re-running bare `memento init`.** Because discovery is marker-based, `memento init` with no `--dir` flag finds the moved `.memento/` marker and refreshes the path-bearing managed surfaces: the `AGENTS.md`/`CLAUDE.md` bootloader and the pre-commit hook. Until re-init, the pre-commit hook is the broken surface: it still runs `memento compile --dir <old-vault>` and stages `<old-vault>/.memento/manifest.json`, so commits fail loudly instead of silently updating the wrong vault. The current `.gitignore` block uses recursive patterns and should survive a vault rename, but re-running `init` also replaces any older path-pinned managed block.
+**Renaming the vault directory requires re-running bare `memento init`.** Because discovery is marker-based, `memento init` with no `--dir` flag finds the moved `.memento/` marker and refreshes the path-bearing managed surfaces: the `AGENTS.md`/`CLAUDE.md` bootloader and the pre-commit hook. The pre-commit hook runs `memento compile` (no `--dir` flag — discovery walks up from the working directory) and stages `<vault>/.memento/manifest.json` via the resolved path the hook carries. Until re-init after a rename, the hook is the broken surface: it still stages the old manifest path, so commits fail loudly instead of silently updating the wrong vault. The `.gitignore` block above uses recursive patterns and survives the rename without re-init; only the bootloader path and the hook's `git add` argument require an `init` refresh.
 
 **Obsidian config is not owned.** `init` does not create or manage `.obsidian/` — a vault is just a folder and Obsidian creates its own config on first open. The only Obsidian-aware action is a `.gitignore` stanza for the per-machine UI noise (`.obsidian/workspace*`, `.obsidian/cache`), which is git hygiene, not config ownership.
 
@@ -329,7 +345,7 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 |---|---|
 | **v0** | CLI `compile`, `init`, `read`, and minimum `write`. Point at or discover one marker-based vault → canonical `.memento/manifest.json` plus generated `_memento/brief.md`. Includes: `<project>-memory/` init default, `.mementoignore` (subdir walking, glob+comment syntax), tag vocabulary (omitted if no tags exist), heading extraction, out/in link graph as data, bare-markdown fallback, summary-staleness **detection** (flag only, no generation), adopt-or-create init, pre-commit hook, sentinel bootloader injection, `.gitignore` stanza, `memento brief`, whole-file and `#heading` reads, and conservative write support limited to create/append. |
 | **v1** | Hardening and polish around the v0 surfaces after dogfooding: better diagnostics, portability fixes, and compatibility adjustments to keep the CLI stable as the durable agent contract. |
-| **v2** | Smarter writes and link-aware reads. `_memento/writing.md` is pinned by ADR-0010 — free-form prose project guide, optional, surfaced via the orient `write` precondition. Mode-aware editing across `append-only`, `living`, and `read-only` already landed (memento-88t). `read` surfaces in/outlinks on stderr per ADR-0021 (role-flattened, section-scoped). `write` auto-recompiles on success per ADR-0022. Default ADR convention shipped via writing.md examples. |
+| **v2** | Smarter writes and link-aware reads. `_memento/writing.md` is pinned by ADR-0010 — free-form prose project guide, optional, surfaced via the orient `write` precondition. ADR-0010's Addendum 2026-06-17 lifts the writing.md shape to a general tool-read file pattern for future `_memento/<verb>.md` files. Mode-aware editing across `append-only`, `living`, and `read-only` landed (ADR-0015). Pre-commit edit-window ratification (ADR-0017). `read` surfaces in/outlinks on stderr per ADR-0021 (role-flattened, section-scoped). `write` auto-recompiles on success per ADR-0022. Summary staleness moved out of frontmatter into the ledger with a three-state model per ADR-0023; manifest `schema_version` bumps to 2. Bootloader contents pinned by ADR-0024 (mechanism remains ADR-0013). Default ADR convention shipped via writing.md examples. |
 | **v3** | Withdrawn by ADR-0019. Former non-transport items were re-homed: link surfaces on `read` to v2; agent-driven summarisation to v4 as a CLI workflow design question. |
 | **v4** | Agent-driven summarisation workflow and standalone CLI auto-summarisation (`--summarize`, configured model). `review` verb for deterministic and agent-assisted maintenance. CLI verb to open Obsidian pointed at the resolved vault. |
 
@@ -347,7 +363,7 @@ Idempotent and removable (re-running replaces the block; never blind-appends). T
 
 ## 15. Deferred / out of scope / open questions
 
-V1 close triage, 2026-06-14: this list has been checked against the shipped v0/v1 CLI (`compile`, `brief`, `init`, `orient`, `read`, `write`) and the open-thread notes in [[Feature thoughts]], [[Configurability exploration]], and [[OKF interop and external compatibility]]. [[Open questions]] is not present in the vault as of this triage.
+V1 close triage, 2026-06-14, refreshed 2026-06-17: this list has been checked against the shipped v0/v1/v2 CLI (`compile`, `brief`, `init`, `orient`, `read`, `write`) and the open-thread notes in [[Feature thoughts]], [[Configurability exploration]], and [[OKF interop and external compatibility]]. [[Open questions]] is not present in the vault as of this triage.
 
 Resolved or parked by v1 ADRs:
 
@@ -359,11 +375,14 @@ Resolved or parked by v1 ADRs:
 - **V1 walk portability** — resolved by ADR-0020: filesystem-returned path spelling is preserved, and symlinks are skipped during vault walks.
 - **Loose v1 nits from [[Feature thoughts]]** — `.memento/config.toml` is a header-only extension point with no `manifest_path` knob; `.gitignore` insertion is sentinel-bounded and vault-relative; `_memento/brief.md` is ignored file-specifically. No further v1 action.
 
-Resolved by v2 ADRs (2026-06-15 design pass):
+Resolved by v2 ADRs (2026-06-15 / 2026-06-17 design passes):
 
-- **Tool-read writing-guide filename and read mechanism** — resolved by ADR-0010. `_memento/writing.md` is pinned: optional, free-form prose, `mode: read-only`, surfaced via the orient `write` precondition fragment (omitted when file absent). No write-time reinforcement; statelessness preserved. Greenfield init scaffolds a minimal version; adoption never clobbers. Other `_memento/` tool-read filenames (`review.md`, `audit.md`) remain to be pinned with their verbs.
+- **Tool-read writing-guide filename and read mechanism** — resolved by ADR-0010. `_memento/writing.md` is pinned: optional, free-form prose, `mode: read-only`, surfaced via the orient `write` precondition fragment (omitted when file absent). No write-time reinforcement; statelessness preserved. Greenfield init scaffolds a minimal version; adoption never clobbers.
+- **Tool-read file pattern (generalisation).** ADR-0010 Addendum 2026-06-17 lifts the writing.md shape to a class. Each `_memento/<verb>.md` pairs with a verb under the same nine-axis contract — location, audience, schema, mode, discovery, surfacing, reinforcement, init posture, filename reservation. `review.md` and `audit.md` remain placeholders to be reserved by their verbs' ADRs.
 - **Read-time link navigation surface** — resolved by ADR-0021 for the two edge types currently in the graph (`wikilink`, `embed`). `read` surfaces role-flattened `inlinks:` / `outlinks:` / `transcludes:` / `transcluded-by:` on stderr, empty roles omitted, `@N` indices suffixed, section-scoped. Typed-edge traversal policy (`supersedes`, `see-also`, `depends-on`) remains deferred to the work that introduces those edges.
 - **Post-write manifest/brief refresh** — resolved by ADR-0022. `memento write` auto-recompiles on success; no opt-out flag; pre-commit hook remains idempotent on top.
+- **Summary staleness state model and storage** — resolved by ADR-0023. Per-doc `summary_hash` removed from frontmatter; `body_sha` + `summary_sha` carried per-entry in `.memento/manifest.json` (manifest `schema_version` bumps to 2); compile derives a three-state `summary_state` ∈ {`current`, `stale`, `missing`}; brief shows inline markers + footer aggregate; read stderr emits `summary:` alongside `binding:`. No explicit-ack action; the two-hash refresh rule covers every path.
+- **Bootloader contents** — resolved by ADR-0024. ADR-0013 pinned the *mechanism* (sentinel-bounded, init-managed, signpost-not-carrier); ADR-0024 pins the *contents* as four convey-points: substrate identity, entry sequence (orient before brief), read primitive, and the discoveries-outlive-task-into-memento boundary warning. Wording is implementation; the convey-points are the contract.
 
 Open items that block planned later work:
 
@@ -391,24 +410,4 @@ memento dir is `memento-memory/`
 ADRs in `memento-memory/Architecture decision record/`
 If a non-blocking open question poses itself in development, append to [[Open questions]], similarly for [[Feature ideas]]
 
-## Addendum 2026-06-14: vault-rename-safe gitignore block
-
-The v1 `.gitignore` sentinel block is still sentinel-bounded and file-specific for generated artifacts, but its managed entries are recursive rather than vault-relative:
-
-- `**/.obsidian/workspace*`
-- `**/.obsidian/cache`
-- `**/_memento/brief.md`
-
-This supersedes the earlier V1 triage wording that called the gitignore insertion vault-relative. The bootloader and pre-commit hook still carry resolved vault paths where they need to point at a specific vault, but the gitignore block should survive a vault directory rename without re-running `memento init`.
-
-### Addendum 2026-06-17: write success path echo
-
-`note.Write` returns the resolved absolute filesystem path it wrote. `memento write` emits `wrote: <abs path> (<byte count>, <append|overwrite>)` to stderr immediately after a successful body write and before the auto-compile result. This line is emitted even if the subsequent auto-compile fails, because the body mutation has already succeeded. Write keys remain vault-relative; a key whose first segment equals the vault directory basename is rejected with the `invalid-key` token as likely repo-relative input.
-
-### Addendum 2026-06-17: pre-commit hook compile command
-
-The pre-commit hook runs `memento compile` with no `--dir` flag. `--dir` belongs only to `memento init`; all other verbs discover the vault from the repository marker. The hook still carries the resolved manifest path for `git add -- <vault>/.memento/manifest.json`, so re-running `init` remains the way to refresh path-bearing managed surfaces after a vault rename.
-
-### Addendum 2026-06-17: brief render polish
-
-Brief entry headings render the numeric read reference in the same `@N` form accepted by `memento read`: `### @N. <title>`. Per-entry metadata omits the `tags:` segment when an entry has no tags, and entries with no headings omit the `Headings:` line entirely. The missing-summary marker remains explicit as `Summary: none`, because a missing summary is a review-worthy content defect and silence would hide it. The footer includes `Section read: memento read <key|@N>#<heading>` after `Tool files:` so heading lists visibly connect to section extraction.
+The four prior `2026-06-14` / `2026-06-17` addenda (vault-rename-safe gitignore, write success path echo, pre-commit hook compile command, brief render polish) are folded into §8, §10, and §11 by the 2026-06-17 spec pass and no longer appear separately at the foot of this document.
