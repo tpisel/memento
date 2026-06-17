@@ -1522,7 +1522,7 @@ func TestWriteCreatesMarkdownFromStdin(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write create) stdout = %q, want empty", stdout.String())
 	}
-	if got, want := stderr.String(), writeSuccessStderr(t, root, "notes/new.md", len(body), note.OperationAppend, 1); got != want {
+	if got, want := stderr.String(), writeStatusLine(t, root, "notes/new.md", len(body), note.OperationAppend)+writeNewTopLevelDirWarning("notes")+compiledStatusLine(1); got != want {
 		t.Fatalf("Run(write create) stderr = %q, want %q", got, want)
 	}
 
@@ -1556,6 +1556,81 @@ func TestWriteDoesNotPrintWritingGuideReminder(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "writing.md") {
 		t.Fatalf("Run(write create) stderr = %q, want no writing guide reminder", stderr.String())
+	}
+}
+
+func TestWriteWarnsWhenCreatingNewTopLevelVaultDirectory(t *testing.T) {
+	root := makeCLIVault(t)
+	body := "# New\n\nDurable note.\n"
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "learnings/new.md"},
+		strings.NewReader(body),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write new top-level) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write new top-level) stdout = %q, want empty", stdout.String())
+	}
+	want := writeStatusLine(t, root, "learnings/new.md", len(body), note.OperationAppend) +
+		writeNewTopLevelDirWarning("learnings") +
+		compiledStatusLine(1)
+	if got := stderr.String(); got != want {
+		t.Fatalf("Run(write new top-level) stderr = %q, want %q", got, want)
+	}
+}
+
+func TestWriteDoesNotWarnWhenWritingIntoExistingTopLevelVaultDirectory(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "learnings/existing.md", "# Existing\n\nAlready indexed.\n")
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	body := "# New\n\nDurable note.\n"
+	var stdout, stderr bytes.Buffer
+	code = RunWithInput(
+		[]string{"write", "learnings/new.md"},
+		strings.NewReader(body),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write existing top-level) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write existing top-level) stdout = %q, want empty", stdout.String())
+	}
+	if got, want := stderr.String(), writeSuccessStderr(t, root, "learnings/new.md", len(body), note.OperationAppend, 2); got != want {
+		t.Fatalf("Run(write existing top-level) stderr = %q, want %q", got, want)
+	}
+}
+
+func TestWriteDoesNotWarnForRootLevelFile(t *testing.T) {
+	root := makeCLIVault(t)
+	body := "# Root\n\nDurable note.\n"
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "root.md"},
+		strings.NewReader(body),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write root-level) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write root-level) stdout = %q, want empty", stdout.String())
+	}
+	if got, want := stderr.String(), writeSuccessStderr(t, root, "root.md", len(body), note.OperationAppend, 1); got != want {
+		t.Fatalf("Run(write root-level) stderr = %q, want %q", got, want)
 	}
 }
 
@@ -2045,6 +2120,10 @@ func writeSuccessStderr(t *testing.T, root, key string, byteCount int, operation
 	t.Helper()
 
 	return writeStatusLine(t, root, key, byteCount, operation) + compiledStatusLine(compiledCount)
+}
+
+func writeNewTopLevelDirWarning(segment string) string {
+	return fmt.Sprintf("warn: created new top-level vault directory '%s' — confirm this is intentional\n", segment)
 }
 
 func resolvedCLIPath(t *testing.T, root, key string) string {
