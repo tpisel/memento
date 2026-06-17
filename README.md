@@ -14,13 +14,25 @@ Pre-1.0 means the **manifest schema may break** before 1.0 (a schema bump bumps 
 
 ## Install
 
+### Homebrew (macOS, recommended)
+
+```sh
+brew install tpisel/memento/memento
+```
+
+### `go install` (any Go-capable system)
+
 ```sh
 go install github.com/tpisel/memento/cmd/memento@latest
 ```
 
 Requires Go 1.22+. The binary lands in `$(go env GOBIN)` (or `$(go env GOPATH)/bin`); make sure that directory is on your `$PATH`.
 
-Verify:
+### Pre-built binaries
+
+Download a tarball for your OS/arch from the [latest release](https://github.com/tpisel/memento/releases/latest) and extract `memento` onto your `$PATH`.
+
+Verify any of the above:
 
 ```sh
 memento version
