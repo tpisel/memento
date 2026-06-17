@@ -400,3 +400,7 @@ The v1 `.gitignore` sentinel block is still sentinel-bounded and file-specific f
 - `**/_memento/brief.md`
 
 This supersedes the earlier V1 triage wording that called the gitignore insertion vault-relative. The bootloader and pre-commit hook still carry resolved vault paths where they need to point at a specific vault, but the gitignore block should survive a vault directory rename without re-running `memento init`.
+
+### Addendum 2026-06-17: write success path echo
+
+`note.Write` returns the resolved absolute filesystem path it wrote. `memento write` emits `wrote: <abs path> (<byte count>, <append|overwrite>)` to stderr immediately after a successful body write and before the auto-compile result. This line is emitted even if the subsequent auto-compile fails, because the body mutation has already succeeded. Write keys remain vault-relative; a key whose first segment equals the vault directory basename is rejected with the `invalid-key` token as likely repo-relative input.

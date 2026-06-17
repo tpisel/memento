@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/tpisel/memento/internal/markdown"
@@ -15,8 +16,12 @@ func TestWriteCreatesNewMarkdownFile(t *testing.T) {
 	root := makeVault(t)
 	content := []byte("# New\n\nDurable note.\n")
 
-	if err := Write(vaultFromRoot(root), "notes/new.md", content, WriteOptions{}); err != nil {
+	path, err := Write(vaultFromRoot(root), "notes/new.md", content, WriteOptions{})
+	if err != nil {
 		t.Fatalf("Write(create) error = %v, want nil", err)
+	}
+	if want := resolvedPath(t, root, "notes/new.md"); path != want {
+		t.Fatalf("Write(create) path = %q, want %q", path, want)
 	}
 
 	got := readFile(t, root, "notes/new.md")
@@ -29,7 +34,7 @@ func TestWriteAppendsExistingMarkdownFile(t *testing.T) {
 	root := makeVault(t)
 	writeFile(t, root, "note.md", "# Note\n\nExisting.\n")
 
-	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
 	if err != nil {
 		t.Fatalf("Write(append) error = %v, want nil", err)
 	}
@@ -46,7 +51,7 @@ func TestWriteAppendsUnratifiedReadOnlyMode(t *testing.T) {
 	original := "---\nmode: read-only\n---\n# Note\n\nOriginal.\n"
 	writeFile(t, root, "note.md", original)
 
-	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
 	if err != nil {
 		t.Fatalf("Write(unratified read-only) error = %v, want nil", err)
 	}
@@ -63,7 +68,7 @@ func TestWriteSkipsMetadataParsingForUnratifiedExistingFile(t *testing.T) {
 	original := "---\ntitle\n---\n# Note\n\nOriginal.\n"
 	writeFile(t, root, "note.md", original)
 
-	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
 	if err != nil {
 		t.Fatalf("Write(unratified malformed frontmatter) error = %v, want nil", err)
 	}
@@ -81,7 +86,7 @@ func TestWriteRejectsRatifiedReadOnlyModeWithoutChangingFile(t *testing.T) {
 	writeFile(t, root, "note.md", original)
 	commitAll(t, root)
 
-	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
 	if !errors.Is(err, ErrReadOnly) {
 		t.Fatalf("Write(ratified read-only) error = %v, want ErrReadOnly", err)
 	}
@@ -96,7 +101,7 @@ func TestWriteRejectsNonGitReadOnlyModeWithoutChangingFile(t *testing.T) {
 	original := "---\nmode: read-only\n---\n# Note\n\nOriginal.\n"
 	writeFile(t, root, "note.md", original)
 
-	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
 	if !errors.Is(err, ErrReadOnly) {
 		t.Fatalf("Write(read-only) error = %v, want ErrReadOnly", err)
 	}
@@ -127,7 +132,7 @@ func TestWriteAppendsUnratifiedNonReadOnlyModes(t *testing.T) {
 			initGit(t, root)
 			writeFile(t, root, "note.md", tt.original)
 
-			err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+			_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
 			if err != nil {
 				t.Fatalf("Write(%s) error = %v, want nil", tt.name, err)
 			}
@@ -149,7 +154,7 @@ func TestWriteAppendsExistingFilesWithNonReadOnlyModes(t *testing.T) {
 			root := makeVault(t)
 			writeFile(t, root, "note.md", "---\nmode: "+string(mode)+"\n---\n# Note\n\nOriginal.\n")
 
-			err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+			_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
 			if err != nil {
 				t.Fatalf("Write(%s) error = %v, want nil", mode, err)
 			}
@@ -166,7 +171,7 @@ func TestWriteAppendsExistingFileWithMissingMode(t *testing.T) {
 	root := makeVault(t)
 	writeFile(t, root, "note.md", "---\ntitle: Note\n---\n# Note\n\nOriginal.\n")
 
-	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
 	if err != nil {
 		t.Fatalf("Write(missing mode) error = %v, want nil", err)
 	}
@@ -182,7 +187,7 @@ func TestWriteRejectsUnreadableFrontmatterWithoutChangingFile(t *testing.T) {
 	original := "---\ntitle\n---\n# Note\n\nOriginal.\n"
 	writeFile(t, root, "note.md", original)
 
-	err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
+	_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{})
 	if !errors.Is(err, markdown.ErrMalformedFrontmatter) {
 		t.Fatalf("Write(malformed frontmatter) error = %v, want ErrMalformedFrontmatter", err)
 	}
@@ -298,7 +303,7 @@ func TestWriteModeMatrixForRatificationAndOperations(t *testing.T) {
 			if tt.operation == OperationOverwrite {
 				content = []byte("# Replacement\n\nChanged.\n")
 			}
-			err := Write(vaultFromRoot(root), "note.md", content, WriteOptions{Operation: tt.operation})
+			_, err := Write(vaultFromRoot(root), "note.md", content, WriteOptions{Operation: tt.operation})
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Write(%s) error = %v, want %v", tt.operation, err, tt.wantErr)
 			}
@@ -331,7 +336,7 @@ func TestWriteRejectsOverwriteForRatifiedMissingModeLikeAppendOnly(t *testing.T)
 			writeFile(t, root, "note.md", tt.original)
 			commitAll(t, root)
 
-			err := Write(vaultFromRoot(root), "note.md", []byte("replacement\n"), WriteOptions{Operation: OperationOverwrite})
+			_, err := Write(vaultFromRoot(root), "note.md", []byte("replacement\n"), WriteOptions{Operation: OperationOverwrite})
 			if !errors.Is(err, ErrReadOnly) {
 				t.Fatalf("Write(overwrite) error = %v, want ErrReadOnly", err)
 			}
@@ -353,7 +358,7 @@ func TestWriteOverwriteChangingBodyInvalidatesStoredSummaryHash(t *testing.T) {
 	commitAll(t, root)
 
 	replacement := []byte("---\nmode: living\nsummary: Original.\nsummary_hash: " + originalMeta.BodyHash + "\n---\n# Note\n\nChanged.\n")
-	err := Write(vaultFromRoot(root), "note.md", replacement, WriteOptions{Operation: OperationOverwrite})
+	_, err := Write(vaultFromRoot(root), "note.md", replacement, WriteOptions{Operation: OperationOverwrite})
 	if err != nil {
 		t.Fatalf("Write(overwrite living with stale summary hash) error = %v, want nil", err)
 	}
@@ -383,7 +388,7 @@ func TestWriteRejectsUnsupportedMutationOperations(t *testing.T) {
 			root := makeVault(t)
 			writeFile(t, root, "note.md", "# Note\n\nOriginal.\n")
 
-			err := Write(vaultFromRoot(root), "note.md", []byte("replacement\n"), WriteOptions{Operation: op})
+			_, err := Write(vaultFromRoot(root), "note.md", []byte("replacement\n"), WriteOptions{Operation: op})
 			if !errors.Is(err, ErrUnsupportedWriteOperation) {
 				t.Fatalf("Write(operation %q) error = %v, want ErrUnsupportedWriteOperation", op, err)
 			}
@@ -405,7 +410,7 @@ func TestWriteRejectsPathTraversal(t *testing.T) {
 		"notes\\outside.md",
 	} {
 		t.Run(key, func(t *testing.T) {
-			err := Write(vaultFromRoot(root), key, []byte("# Outside\n"), WriteOptions{})
+			_, err := Write(vaultFromRoot(root), key, []byte("# Outside\n"), WriteOptions{})
 			if !errors.Is(err, ErrInvalidKey) {
 				t.Fatalf("Write(%q) error = %v, want ErrInvalidKey", key, err)
 			}
@@ -420,12 +425,31 @@ func TestWriteRejectsSymlinkTraversal(t *testing.T) {
 		t.Skipf("symlink not supported: %v", err)
 	}
 
-	err := Write(vaultFromRoot(root), "link/outside.md", []byte("# Outside\n"), WriteOptions{})
+	_, err := Write(vaultFromRoot(root), "link/outside.md", []byte("# Outside\n"), WriteOptions{})
 	if !errors.Is(err, ErrInvalidKey) {
 		t.Fatalf("Write(symlink traversal) error = %v, want ErrInvalidKey", err)
 	}
 	if _, err := os.Stat(filepath.Join(outside, "outside.md")); !os.IsNotExist(err) {
 		t.Fatalf("outside file was created through symlink; stat err = %v", err)
+	}
+}
+
+func TestWriteRejectsVaultPrefixedKey(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "agents-memory")
+	if err := os.MkdirAll(filepath.Join(root, vault.MarkerDirName), 0o755); err != nil {
+		t.Fatalf("mkdir vault marker: %v", err)
+	}
+
+	_, err := Write(vaultFromRoot(root), "agents-memory/learnings/x.md", []byte("# Learning\n"), WriteOptions{})
+	if !errors.Is(err, ErrVaultPrefixedKey) {
+		t.Fatalf("Write(vault-prefixed key) error = %v, want ErrVaultPrefixedKey", err)
+	}
+	if got := err.Error(); !strings.Contains(got, "key is vault-relative, not repo-relative") || !strings.Contains(got, `did you mean "learnings/x.md"?`) {
+		t.Fatalf("Write(vault-prefixed key) error = %q, want suggestion", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "agents-memory", "learnings", "x.md")); !os.IsNotExist(err) {
+		t.Fatalf("vault-prefixed nested file was created; stat err = %v", err)
 	}
 }
 
@@ -439,7 +463,7 @@ func TestWriteRejectsNonMarkdownAndOperationalPaths(t *testing.T) {
 		vault.MarkerDirName + "/manifest.md",
 	} {
 		t.Run(key, func(t *testing.T) {
-			err := Write(vaultFromRoot(root), key, []byte("content\n"), WriteOptions{})
+			_, err := Write(vaultFromRoot(root), key, []byte("content\n"), WriteOptions{})
 			if !errors.Is(err, ErrInvalidKey) {
 				t.Fatalf("Write(%q) error = %v, want ErrInvalidKey", key, err)
 			}
@@ -453,7 +477,7 @@ func TestWriteRejectsIgnoredContentPaths(t *testing.T) {
 
 	for _, key := range []string{"ignored.md", "private/note.md"} {
 		t.Run(key, func(t *testing.T) {
-			err := Write(vaultFromRoot(root), key, []byte("# Ignored\n"), WriteOptions{})
+			_, err := Write(vaultFromRoot(root), key, []byte("# Ignored\n"), WriteOptions{})
 			if !errors.Is(err, ErrInvalidKey) {
 				t.Fatalf("Write(%q) error = %v, want ErrInvalidKey", key, err)
 			}
@@ -476,6 +500,20 @@ func commitAll(t *testing.T, root string) {
 		"-c", "user.email=memento-test@example.invalid",
 		"commit", "--no-gpg-sign", "-m", "initial",
 	)
+}
+
+func resolvedPath(t *testing.T, root, key string) string {
+	t.Helper()
+
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("resolve root %q: %v", root, err)
+	}
+	realRoot, err = filepath.Abs(realRoot)
+	if err != nil {
+		t.Fatalf("abs root %q: %v", realRoot, err)
+	}
+	return filepath.Join(realRoot, filepath.FromSlash(key))
 }
 
 func runGit(t *testing.T, root string, args ...string) {

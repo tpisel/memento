@@ -14,6 +14,7 @@ import (
 var (
 	ErrUnsupportedWriteOperation = errors.New("unsupported write operation")
 	ErrReadOnly                  = errors.New("mode rejects write")
+	ErrVaultPrefixedKey          = errors.New("key is vault-relative, not repo-relative")
 )
 
 type WriteOperation string
@@ -29,50 +30,55 @@ type WriteOptions struct {
 	Operation WriteOperation
 }
 
-func Write(v vault.Vault, key string, content []byte, opts WriteOptions) error {
+func Write(v vault.Vault, key string, content []byte, opts WriteOptions) (string, error) {
 	if opts.Operation == "" {
 		opts.Operation = OperationAppend
 	}
 	if opts.Operation != OperationAppend && opts.Operation != OperationOverwrite {
-		return fmt.Errorf("%w: %s", ErrUnsupportedWriteOperation, opts.Operation)
+		return "", fmt.Errorf("%w: %s", ErrUnsupportedWriteOperation, opts.Operation)
 	}
 
 	key, err := normalizeWritableKey(v, key)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	path, err := writablePath(v, key)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if err := validateWriteMode(v, key, path, opts.Operation); err != nil {
-		return err
+		return "", err
 	}
 
 	if opts.Operation == OperationOverwrite {
 		if err := os.WriteFile(path, content, 0o644); err != nil {
-			return fmt.Errorf("overwrite %s: %w", key, err)
+			return "", fmt.Errorf("overwrite %s: %w", key, err)
 		}
-		return nil
+		return path, nil
 	}
 
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
-		return fmt.Errorf("open %s for append: %w", key, err)
+		return "", fmt.Errorf("open %s for append: %w", key, err)
 	}
 	defer file.Close()
 	if _, err := file.Write(content); err != nil {
-		return fmt.Errorf("write %s: %w", key, err)
+		return "", fmt.Errorf("write %s: %w", key, err)
 	}
-	return nil
+	return path, nil
 }
 
 func normalizeWritableKey(v vault.Vault, key string) (string, error) {
 	key, err := normalizeKey(key)
 	if err != nil {
 		return "", err
+	}
+	parts := strings.Split(key, "/")
+	if parts[0] == filepath.Base(v.Root) {
+		suggestion := strings.Join(parts[1:], "/")
+		return "", fmt.Errorf("%w; did you mean %q?", ErrVaultPrefixedKey, suggestion)
 	}
 	if filepath.Ext(key) != ".md" {
 		return "", fmt.Errorf("%w: write keys must name markdown files: %s", ErrInvalidKey, key)
@@ -81,7 +87,6 @@ func normalizeWritableKey(v vault.Vault, key string) (string, error) {
 		return "", fmt.Errorf("%w: operational path is not writable through v0 write: %s", ErrInvalidKey, key)
 	}
 
-	parts := strings.Split(key, "/")
 	if parts[0] == vault.MarkerDirName {
 		return "", fmt.Errorf("%w: operational path is not writable through v0 write: %s", ErrInvalidKey, key)
 	}
@@ -143,9 +148,13 @@ func writablePath(v vault.Vault, key string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve vault root: %w", err)
 	}
+	root, err = filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve vault root: %w", err)
+	}
 	root = filepath.Clean(root)
 
-	path := filepath.Join(v.Root, filepath.FromSlash(key))
+	path := filepath.Join(root, filepath.FromSlash(key))
 	if info, err := os.Lstat(path); err == nil {
 		if info.IsDir() {
 			return "", fmt.Errorf("%w: key names a directory: %s", ErrInvalidKey, key)

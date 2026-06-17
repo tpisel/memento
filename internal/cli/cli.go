@@ -639,14 +639,16 @@ func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	opts := note.WriteOptions{}
+	operation := note.OperationAppend
 	if *overwrite {
-		opts.Operation = note.OperationOverwrite
+		operation = note.OperationOverwrite
 	}
-	if err := note.Write(v, flags.Arg(0), data, opts); err != nil {
+	writtenPath, err := note.Write(v, flags.Arg(0), data, note.WriteOptions{Operation: operation})
+	if err != nil {
 		printCLIError(stderr, "write", err)
 		return 1
 	}
+	fmt.Fprintf(stderr, "wrote: %s (%d, %s)\n", writtenPath, len(data), operation)
 	warnings, count, err := writeCompileArtifactsAfterWrite(v)
 	if err != nil {
 		fmt.Fprintf(stderr, "memento write: warning: write succeeded but recompile failed; run 'memento compile' to refresh the manifest: %v\n", err)

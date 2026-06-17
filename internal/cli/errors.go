@@ -58,6 +58,8 @@ func errorToken(err error) string {
 		return "manifest-schema-unsupported"
 	case errors.Is(err, manifest.ErrStale):
 		return "manifest-stale"
+	case errors.Is(err, note.ErrVaultPrefixedKey):
+		return "invalid-key"
 	case errors.Is(err, note.ErrInvalidKey):
 		return "invalid-key"
 	case errors.Is(err, note.ErrSectionNotFound):

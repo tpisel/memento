@@ -1319,11 +1319,12 @@ func TestReadRejectsTraversalKey(t *testing.T) {
 
 func TestWriteCreatesMarkdownFromStdin(t *testing.T) {
 	root := makeCLIVault(t)
+	body := "# New\n\nDurable note.\n"
 
 	var stdout, stderr bytes.Buffer
 	code := RunWithInput(
 		[]string{"write", "notes/new.md"},
-		strings.NewReader("# New\n\nDurable note.\n"),
+		strings.NewReader(body),
 		&stdout,
 		&stderr,
 	)
@@ -1333,13 +1334,12 @@ func TestWriteCreatesMarkdownFromStdin(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write create) stdout = %q, want empty", stdout.String())
 	}
-	if got, want := stderr.String(), compiledStatusLine(1); got != want {
+	if got, want := stderr.String(), writeSuccessStderr(t, root, "notes/new.md", len(body), note.OperationAppend, 1); got != want {
 		t.Fatalf("Run(write create) stderr = %q, want %q", got, want)
 	}
 
-	want := "# New\n\nDurable note.\n"
-	if got := readCLIFile(t, root, "notes/new.md"); got != want {
-		t.Fatalf("written note = %q, want %q", got, want)
+	if got := readCLIFile(t, root, "notes/new.md"); got != body {
+		t.Fatalf("written note = %q, want %q", got, body)
 	}
 	manifest := readCLIFile(t, root, ".memento/manifest.json")
 	if !strings.Contains(manifest, `"key": "notes/new.md"`) {
@@ -1354,11 +1354,12 @@ func TestWriteCreatesMarkdownFromStdin(t *testing.T) {
 func TestWriteDoesNotPrintWritingGuideReminder(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "_memento/writing.md", "---\nmode: read-only\n---\n# Writing\n\nUse judgement.\n")
+	body := "# New\n\nDurable note.\n"
 
 	var stdout, stderr bytes.Buffer
 	code := RunWithInput(
 		[]string{"write", "notes/new.md"},
-		strings.NewReader("# New\n\nDurable note.\n"),
+		strings.NewReader(body),
 		&stdout,
 		&stderr,
 	)
@@ -1373,11 +1374,12 @@ func TestWriteDoesNotPrintWritingGuideReminder(t *testing.T) {
 func TestWriteAppendsMarkdownFromStdin(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "note.md", "# Note\n\nExisting.\n")
+	body := "\nAppended.\n"
 
 	var stdout, stderr bytes.Buffer
 	code := RunWithInput(
 		[]string{"write", "note.md"},
-		strings.NewReader("\nAppended.\n"),
+		strings.NewReader(body),
 		&stdout,
 		&stderr,
 	)
@@ -1387,7 +1389,7 @@ func TestWriteAppendsMarkdownFromStdin(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write append) stdout = %q, want empty", stdout.String())
 	}
-	if got, want := stderr.String(), compiledStatusLine(1); got != want {
+	if got, want := stderr.String(), writeSuccessStderr(t, root, "note.md", len(body), note.OperationAppend, 1); got != want {
 		t.Fatalf("Run(write append) stderr = %q, want %q", got, want)
 	}
 
@@ -1406,11 +1408,12 @@ func TestWriteOverwritesMarkdownFromStdinWithExplicitFlag(t *testing.T) {
 	initCLIGit(t, root)
 	writeCLIFile(t, root, "note.md", "---\nmode: living\n---\n# Note\n\nExisting.\n")
 	commitCLIGit(t, root)
+	body := "---\nmode: living\n---\n# Note\n\nReplacement.\n"
 
 	var stdout, stderr bytes.Buffer
 	code := RunWithInput(
 		[]string{"write", "--overwrite", "note.md"},
-		strings.NewReader("---\nmode: living\n---\n# Note\n\nReplacement.\n"),
+		strings.NewReader(body),
 		&stdout,
 		&stderr,
 	)
@@ -1420,13 +1423,12 @@ func TestWriteOverwritesMarkdownFromStdinWithExplicitFlag(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(write --overwrite) stdout = %q, want empty", stdout.String())
 	}
-	if got, want := stderr.String(), compiledStatusLine(1); got != want {
+	if got, want := stderr.String(), writeSuccessStderr(t, root, "note.md", len(body), note.OperationOverwrite, 1); got != want {
 		t.Fatalf("Run(write --overwrite) stderr = %q, want %q", got, want)
 	}
 
-	want := "---\nmode: living\n---\n# Note\n\nReplacement.\n"
-	if got := readCLIFile(t, root, "note.md"); got != want {
-		t.Fatalf("overwritten note = %q, want %q", got, want)
+	if got := readCLIFile(t, root, "note.md"); got != body {
+		t.Fatalf("overwritten note = %q, want %q", got, body)
 	}
 }
 
@@ -1458,8 +1460,12 @@ func TestCompileAndWriteReportSameCompiledLineFormat(t *testing.T) {
 		t.Fatalf("Run(write) stdout = %q, want empty", writeStdout.String())
 	}
 
-	if got, want := compileStderr.String(), writeStderr.String(); got != want {
-		t.Fatalf("compile stderr = %q, want write stderr %q", got, want)
+	writeLines := strings.SplitAfter(writeStderr.String(), "\n")
+	if len(writeLines) != 3 || writeLines[2] != "" {
+		t.Fatalf("write stderr = %q, want wrote line plus compiled line", writeStderr.String())
+	}
+	if got, want := writeLines[1], compileStderr.String(); got != want {
+		t.Fatalf("write compiled line = %q, want compile stderr %q", got, want)
 	}
 	if got, want := compileStderr.String(), compiledStatusLine(1); got != want {
 		t.Fatalf("compiled line = %q, want %q", got, want)
@@ -1506,10 +1512,11 @@ func TestWritePersistsBodyButReturnsPartialSuccessWhenRecompileFails(t *testing.
 		writeCompileArtifactsAfterWrite = previous
 	})
 
+	body := "# Persisted\n\nBody.\n"
 	var stdout, stderr bytes.Buffer
 	code := RunWithInput(
 		[]string{"write", "persisted.md"},
-		strings.NewReader("# Persisted\n\nBody.\n"),
+		strings.NewReader(body),
 		&stdout,
 		&stderr,
 	)
@@ -1520,6 +1527,7 @@ func TestWritePersistsBodyButReturnsPartialSuccessWhenRecompileFails(t *testing.
 		t.Fatalf("Run(write compile failure) stdout = %q, want empty", stdout.String())
 	}
 	for _, want := range []string{
+		writeStatusLine(t, root, "persisted.md", len(body), note.OperationAppend),
 		"memento write: warning: write succeeded but recompile failed; run 'memento compile' to refresh the manifest:",
 		"injected compile failure",
 	} {
@@ -1600,6 +1608,38 @@ func TestWriteRejectsTraversalKey(t *testing.T) {
 	assertCLIErrorToken(t, stderr.String(), "write", "invalid-key")
 	if !strings.Contains(stderr.String(), "invalid key") {
 		t.Fatalf("Run(write traversal) stderr = %q, want invalid key message", stderr.String())
+	}
+}
+
+func TestWriteRejectsVaultPrefixedKeyWithInvalidKeyToken(t *testing.T) {
+	repo := t.TempDir()
+	root := filepath.Join(repo, "agents-memory")
+	if err := os.MkdirAll(filepath.Join(root, vault.MarkerDirName), 0o755); err != nil {
+		t.Fatalf("mkdir vault marker: %v", err)
+	}
+	chdirCLI(t, repo)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "agents-memory/learnings/x.md"},
+		strings.NewReader("# Learning\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write vault-prefixed) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write vault-prefixed) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write", "invalid-key")
+	for _, want := range []string{"key is vault-relative, not repo-relative", `did you mean "learnings/x.md"?`} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("Run(write vault-prefixed) stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "agents-memory", "learnings", "x.md")); !os.IsNotExist(err) {
+		t.Fatalf("vault-prefixed nested file was created; stat err = %v", err)
 	}
 }
 
@@ -1805,6 +1845,32 @@ func assertRootErrorToken(t *testing.T, stderr, token string) {
 
 func compiledStatusLine(count int) string {
 	return fmt.Sprintf("compiled: %d entries\n", count)
+}
+
+func writeStatusLine(t *testing.T, root, key string, byteCount int, operation note.WriteOperation) string {
+	t.Helper()
+
+	return fmt.Sprintf("wrote: %s (%d, %s)\n", resolvedCLIPath(t, root, key), byteCount, operation)
+}
+
+func writeSuccessStderr(t *testing.T, root, key string, byteCount int, operation note.WriteOperation, compiledCount int) string {
+	t.Helper()
+
+	return writeStatusLine(t, root, key, byteCount, operation) + compiledStatusLine(compiledCount)
+}
+
+func resolvedCLIPath(t *testing.T, root, key string) string {
+	t.Helper()
+
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("resolve root %q: %v", root, err)
+	}
+	realRoot, err = filepath.Abs(realRoot)
+	if err != nil {
+		t.Fatalf("abs root %q: %v", realRoot, err)
+	}
+	return filepath.Join(realRoot, filepath.FromSlash(key))
 }
 
 func isCompiledStatusLine(line string) bool {
