@@ -5,7 +5,7 @@ Memento is a thin retrieval and writing layer over a human-curated markdown memo
 ## Verbs
 
 - `brief` prints the agent-facing manifest projection: titles, summaries, tags, headings, modes, and numeric read references.
-- `read <key|@N>` reads one note, numeric brief entry, or `key#heading` section. When a manifest is available, it prints `binding: ratified|unratified`, `summary: current|stale|missing`, and non-empty role-flattened link lines (`inlinks:`, `outlinks:`, `transcludes:`, `transcluded-by:`) to stderr before stdout content.
+- `read <key|@N>` reads one note or numeric brief entry; `read <key|@N>#<heading>` reads a section. When a manifest is available, it prints `binding: ratified|unratified`, `summary: current|stale|missing`, and non-empty role-flattened link lines (`inlinks:`, `outlinks:`, `transcludes:`, `transcluded-by:`) to stderr before stdout content.
   Section read: `memento read <key|@N>#<heading>` (heading text or slug from `brief`).
 - `write [--overwrite] <key>` creates, appends to, or overwrites a note from stdin, subject to the note's declared mode, then recompiles the vault.
 - `compile` rebuilds the manifest and derived brief artifacts from the vault.

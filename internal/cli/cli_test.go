@@ -777,6 +777,40 @@ func TestReadNumericReferenceResolvesAgainstManifestOrdering(t *testing.T) {
 	}
 }
 
+func TestReadNumericReferenceSupportsSectionRead(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "alpha.md", "# Alpha\n\n## Target Heading\n\nTarget content.\n\n## Next\n\nOther content.\n")
+	writeCLIFile(t, root, "beta.md", "# Beta\n\nOther note.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var numericStdout, numericStderr bytes.Buffer
+	code = Run([]string{"read", "@1#target-heading"}, &numericStdout, &numericStderr)
+	if code != 0 {
+		t.Fatalf("Run(read @1#target-heading) exit code = %d, want 0; stderr = %q", code, numericStderr.String())
+	}
+
+	var keyStdout, keyStderr bytes.Buffer
+	code = Run([]string{"read", "alpha.md#target-heading"}, &keyStdout, &keyStderr)
+	if code != 0 {
+		t.Fatalf("Run(read alpha.md#target-heading) exit code = %d, want 0; stderr = %q", code, keyStderr.String())
+	}
+
+	if got, want := numericStdout.String(), keyStdout.String(); got != want {
+		t.Fatalf("Run(read @1#target-heading) stdout = %q, want key section stdout %q", got, want)
+	}
+	if got, want := numericStdout.String(), "## Target Heading\n\nTarget content.\n\n"; got != want {
+		t.Fatalf("Run(read @1#target-heading) stdout = %q, want %q", got, want)
+	}
+	if got, want := numericStderr.String(), keyStderr.String(); got != want {
+		t.Fatalf("Run(read @1#target-heading) stderr = %q, want key section stderr %q", got, want)
+	}
+}
+
 func TestReadEmitsSummaryStateFromManifest(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "note.md", "---\nsummary: Committed summary.\n---\n# Note\n\nBody.\n")
@@ -1269,7 +1303,7 @@ func TestReadBareDigitPathReadsVaultFile(t *testing.T) {
 func TestReadInvalidNumericReferenceFailsCleanly(t *testing.T) {
 	makeCLIVault(t)
 
-	for _, target := range []string{"@", "@abc"} {
+	for _, target := range []string{"@", "@abc", "@abc#target-heading"} {
 		t.Run(target, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			code := Run([]string{"read", target}, &stdout, &stderr)

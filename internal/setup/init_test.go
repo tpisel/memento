@@ -57,7 +57,7 @@ func TestInitCreatesAgentInstructionsWhenAbsent(t *testing.T) {
 		"Durable project knowledge lives in `sample-app-memory`: curated design decisions, specs, constraints, and discoveries, not task state.",
 		"Before anything else, run `memento orient` then `memento brief`.",
 		"`brief` is intentionally compact; no need to pipe it through `head`.",
-		"Use `memento read <key|@N|key#heading>` instead of grep/cat: it emits link-graph metadata on stderr and supports `key#heading` section extraction.",
+		"Use `memento read <key|@N>#<heading>` or `memento read <key|@N>` instead of grep/cat: it emits link-graph metadata on stderr and supports section extraction.",
 		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
 		"<!-- memento:end -->",
 	} {
@@ -180,7 +180,7 @@ func TestInitBootloaderUsesCustomMemoryDirectoryPath(t *testing.T) {
 		"Durable project knowledge lives in `docs/project-memory`: curated design decisions, specs, constraints, and discoveries, not task state.",
 		"Before anything else, run `memento orient` then `memento brief`.",
 		"`brief` is intentionally compact; no need to pipe it through `head`.",
-		"Use `memento read <key|@N|key#heading>` instead of grep/cat: it emits link-graph metadata on stderr and supports `key#heading` section extraction.",
+		"Use `memento read <key|@N>#<heading>` or `memento read <key|@N>` instead of grep/cat: it emits link-graph metadata on stderr and supports section extraction.",
 		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
 	} {
 		if !strings.Contains(got, want) {
@@ -868,7 +868,7 @@ func assertPointerBootloader(t *testing.T, relPath, got, memoryPath string) {
 		"Durable project knowledge lives in `" + memoryPath + "`: curated design decisions, specs, constraints, and discoveries, not task state.",
 		"Before anything else, run `memento orient` then `memento brief`.",
 		"`brief` is intentionally compact; no need to pipe it through `head`.",
-		"Use `memento read <key|@N|key#heading>` instead of grep/cat: it emits link-graph metadata on stderr and supports `key#heading` section extraction.",
+		"Use `memento read <key|@N>#<heading>` or `memento read <key|@N>` instead of grep/cat: it emits link-graph metadata on stderr and supports section extraction.",
 		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
 	} {
 		if !strings.Contains(got, want) {

@@ -596,7 +596,8 @@ func linkSurfaceEntry(key string, resolved bool, numberByKey map[string]int) str
 }
 
 func readNumberedEntry(v vault.Vault, target string) ([]byte, string, manifest.Manifest, error) {
-	number, err := strconv.Atoi(target)
+	numberTarget, section, hasSection := strings.Cut(target, "#")
+	number, err := strconv.Atoi(numberTarget)
 	if err != nil {
 		return nil, "", manifest.Manifest{}, fmt.Errorf("%w: entry reference must be @ followed by a number: @%s", ErrInvalidEntryReference, target)
 	}
@@ -615,7 +616,11 @@ func readNumberedEntry(v vault.Vault, target string) ([]byte, string, manifest.M
 	}
 
 	key := numbered[number-1].Entry.Key
-	data, err := note.Read(v, key)
+	readTarget := key
+	if hasSection {
+		readTarget += "#" + section
+	}
+	data, err := note.Read(v, readTarget)
 	if err != nil {
 		if errors.Is(err, note.ErrNotFound) {
 			return nil, "", manifest.Manifest{}, fmt.Errorf("%w: entry %d's file `%s` no longer exists", manifest.ErrStale, number, key)
@@ -623,7 +628,7 @@ func readNumberedEntry(v vault.Vault, target string) ([]byte, string, manifest.M
 		return nil, "", manifest.Manifest{}, err
 	}
 
-	return data, key, m, nil
+	return data, readTarget, m, nil
 }
 
 func readManifest(v vault.Vault) (manifest.Manifest, error) {
