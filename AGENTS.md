@@ -21,10 +21,11 @@ Keep that boundary clear. Task progress belongs in beads. Durable semantic knowl
 When memento CLI support exists, replace the manual memory scan with the manifest/read workflow below.
 
 <!-- memento:start -->
-Durable project knowledge lives in `memento-memory`.
-Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.
-Read entries by key or `@N` index with `memento read <key|@N>`.
-`memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.
+Durable project knowledge lives in `memento-memory`: curated design decisions, specs, constraints, and discoveries, not task state.
+Before anything else, run `memento orient` then `memento brief`.
+`brief` is intentionally compact; no need to pipe it through `head`.
+Use `memento read <key|@N|key#heading>` instead of grep/cat: it emits link-graph metadata on stderr and supports `key#heading` section extraction.
+`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.
 <!-- memento:end -->
 
 Working state lives in beads (`bd ready`); discoveries that outlive a task go to `memento-memory/`, not beads notes.

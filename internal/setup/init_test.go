@@ -52,10 +52,11 @@ func TestInitCreatesAgentInstructionsWhenAbsent(t *testing.T) {
 	got := readSetupFile(t, repo, "AGENTS.md")
 	for _, want := range []string{
 		"<!-- memento:start -->",
-		"Durable project knowledge lives in `sample-app-memory`.",
-		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
-		"Read entries by key or `@N` index with `memento read <key|@N>`.",
-		"`memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
+		"Durable project knowledge lives in `sample-app-memory`: curated design decisions, specs, constraints, and discoveries, not task state.",
+		"Before anything else, run `memento orient` then `memento brief`.",
+		"`brief` is intentionally compact; no need to pipe it through `head`.",
+		"Use `memento read <key|@N|key#heading>` instead of grep/cat: it emits link-graph metadata on stderr and supports `key#heading` section extraction.",
+		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
 		"<!-- memento:end -->",
 	} {
 		if !strings.Contains(got, want) {
@@ -174,10 +175,11 @@ func TestInitBootloaderUsesCustomMemoryDirectoryPath(t *testing.T) {
 
 	got := readSetupFile(t, repo, "AGENTS.md")
 	for _, want := range []string{
-		"Durable project knowledge lives in `docs/project-memory`.",
-		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
-		"Read entries by key or `@N` index with `memento read <key|@N>`.",
-		"`memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
+		"Durable project knowledge lives in `docs/project-memory`: curated design decisions, specs, constraints, and discoveries, not task state.",
+		"Before anything else, run `memento orient` then `memento brief`.",
+		"`brief` is intentionally compact; no need to pipe it through `head`.",
+		"Use `memento read <key|@N|key#heading>` instead of grep/cat: it emits link-graph metadata on stderr and supports `key#heading` section extraction.",
+		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("AGENTS.md = %q, want it to contain %q", got, want)
@@ -711,10 +713,11 @@ func assertPointerBootloader(t *testing.T, relPath, got, memoryPath string) {
 	t.Helper()
 
 	for _, want := range []string{
-		"Durable project knowledge lives in `" + memoryPath + "`.",
-		"Run `memento orient` to load the tool's operating instructions, then `memento brief` to scan entries by title, summary, tags, and headings.",
-		"Read entries by key or `@N` index with `memento read <key|@N>`.",
-		"`memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
+		"Durable project knowledge lives in `" + memoryPath + "`: curated design decisions, specs, constraints, and discoveries, not task state.",
+		"Before anything else, run `memento orient` then `memento brief`.",
+		"`brief` is intentionally compact; no need to pipe it through `head`.",
+		"Use `memento read <key|@N|key#heading>` instead of grep/cat: it emits link-graph metadata on stderr and supports `key#heading` section extraction.",
+		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("%s = %q, want it to contain %q", relPath, got, want)
