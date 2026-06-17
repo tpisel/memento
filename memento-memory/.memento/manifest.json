@@ -2019,8 +2019,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 41532,
-      "lines": 410,
+      "bytes": 42135,
+      "lines": 414,
       "tags": [],
       "headings": [
         {
@@ -2167,6 +2167,11 @@
           "level": 3,
           "text": "Addendum 2026-06-17: pre-commit hook compile command",
           "slug": "addendum-2026-06-17-pre-commit-hook-compile-command"
+        },
+        {
+          "level": 3,
+          "text": "Addendum 2026-06-17: brief render polish",
+          "slug": "addendum-2026-06-17-brief-render-polish"
         }
       ],
       "mode": "append-only",

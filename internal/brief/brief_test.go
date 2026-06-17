@@ -101,15 +101,13 @@ manifest: sha256:aa1fe1a82ab37a7cafc6dcf5fe52d22b25c7122d1031e04436b2b592b5cf3b0
 
 ## (root)
 
-### 1. Zeta
+### @1. Zeta
 
-key: ` + "`empty.md`" + ` | mode: ` + "`append-only`" + ` | tags: none | size: 0B / 0 lines
+key: ` + "`empty.md`" + ` | mode: ` + "`append-only`" + ` | size: 0B / 0 lines
 
 Summary: none
 
-Headings: none
-
-### 2. Alpha <Beta>
+### @2. Alpha <Beta>
 
 key: ` + "`zeta.md`" + ` | mode: ` + "`read-only`" + ` | tags: ` + "`brief`" + `, ` + "`memento`" + ` | size: 342B / 32 lines
 
@@ -119,44 +117,37 @@ Headings: Context; Decision & Tradeoffs
 
 ## Architecture decision record
 
-### 3. ADR 0001
+### @3. ADR 0001
 
 key: ` + "`Architecture decision record/adr-0001.md`" + ` | mode: ` + "`append-only`" + ` | tags: ` + "`memento`" + ` | size: 111B / 11 lines
 
 First ADR.
 
-Headings: none
-
-### 4. ADR 0002
+### @4. ADR 0002
 
 key: ` + "`Architecture decision record/adr-0002.md`" + ` | mode: ` + "`append-only`" + ` | tags: ` + "`brief`" + ` | size: 222B / 12 lines
 
 Second ADR.
 
-Headings: none
-
 ## notes
 
-### 5. Beta
+### @5. Beta
 
 key: ` + "`notes/beta.md`" + ` | mode: ` + "`append-only`" + ` | tags: ` + "`brief`" + ` | size: 1.2k / 7 lines
 
 A compact note.
 
-Headings: none
-
-### 6. Gamma
+### @6. Gamma
 
 key: ` + "`notes/gamma.md`" + ` | mode: ` + "`append-only`" + ` | tags: ` + "`memento`" + ` | size: 12k / 250 lines
 
 A larger note.
 
-Headings: none
-
 ---
 
 Tag frequency: brief=2, memento=2
 Tool files: none
+Section read: memento read <key|@N>#<heading>
 `
 	if string(first) != want {
 		t.Fatalf("Render() =\n%s\nwant:\n%s", first, want)
@@ -217,16 +208,16 @@ func TestRenderContractSectionsAppearOnceInDocumentedOrder(t *testing.T) {
 		Banner,
 		"# Memento Brief",
 		"## (root)",
-		"### 1. Root",
+		"### @1. Root",
 		"key: `root.md` | mode: `append-only` | tags: `alpha` | size: 10B / 1 lines",
 		"Links out to [[folder/target|folder/target @2]].",
-		"Headings: none",
 		"## folder",
-		"### 2. Target",
+		"### @2. Target",
 		"key: `folder/target.md` | mode: `read-only` | tags: `beta` | size: 20B / 2 lines",
 		"Headings: Context",
 		"---\n\nTag frequency: alpha=1, beta=1\n",
 		"Tool files: none\n",
+		"Section read: memento read <key|@N>#<heading>\n",
 	}
 
 	last := -1

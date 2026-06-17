@@ -408,3 +408,7 @@ This supersedes the earlier V1 triage wording that called the gitignore insertio
 ### Addendum 2026-06-17: pre-commit hook compile command
 
 The pre-commit hook runs `memento compile` with no `--dir` flag. `--dir` belongs only to `memento init`; all other verbs discover the vault from the repository marker. The hook still carries the resolved manifest path for `git add -- <vault>/.memento/manifest.json`, so re-running `init` remains the way to refresh path-bearing managed surfaces after a vault rename.
+
+### Addendum 2026-06-17: brief render polish
+
+Brief entry headings render the numeric read reference in the same `@N` form accepted by `memento read`: `### @N. <title>`. Per-entry metadata omits the `tags:` segment when an entry has no tags, and entries with no headings omit the `Headings:` line entirely. The missing-summary marker remains explicit as `Summary: none`, because a missing summary is a review-worthy content defect and silence would hide it. The footer includes `Section read: memento read <key|@N>#<heading>` after `Tool files:` so heading lists visibly connect to section extraction.

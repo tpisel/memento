@@ -116,21 +116,37 @@ func RenderWithToolFiles(m manifest.Manifest, toolFiles []string) []byte {
 			currentFolder = numbered.Folder
 			fmt.Fprintf(&b, "\n## %s\n", currentFolder)
 		}
-		fmt.Fprintf(&b, "\n### %d. %s\n\n", numbered.Number, entry.Title)
-		fmt.Fprintf(&b, "key: `%s` | mode: `%s` | tags: %s | size: %s\n\n", entry.Key, entry.Mode, inlineTags(entry.Tags), sizeMarker(entry))
+		fmt.Fprintf(&b, "\n### @%d. %s\n\n", numbered.Number, entry.Title)
+		fmt.Fprintf(&b, "%s\n\n", entryMetadata(entry))
 		if entry.Summary == "" {
-			b.WriteString("Summary: none\n\n")
+			b.WriteString("Summary: none\n")
 		} else {
 			b.WriteString(suffixSummaryWikiLinks(entry.Summary, entry.Key, linkResolver, numberByKey))
-			b.WriteString("\n\n")
+			b.WriteString("\n")
 		}
-		fmt.Fprintf(&b, "Headings: %s\n", inlineHeadings(entry.Headings))
+		if len(entry.Headings) > 0 {
+			b.WriteString("\n")
+			fmt.Fprintf(&b, "Headings: %s\n", inlineHeadings(entry.Headings))
+		}
 	}
 
 	b.WriteString("\n---\n\n")
 	fmt.Fprintf(&b, "Tag frequency: %s\n", tagFrequency(m.Tags))
 	fmt.Fprintf(&b, "Tool files: %s\n", inlineToolFiles(toolFiles))
+	b.WriteString("Section read: memento read <key|@N>#<heading>\n")
 	return b.Bytes()
+}
+
+func entryMetadata(entry manifest.Entry) string {
+	parts := []string{
+		fmt.Sprintf("key: `%s`", entry.Key),
+		fmt.Sprintf("mode: `%s`", entry.Mode),
+	}
+	if len(entry.Tags) > 0 {
+		parts = append(parts, "tags: "+inlineTags(entry.Tags))
+	}
+	parts = append(parts, "size: "+sizeMarker(entry))
+	return strings.Join(parts, " | ")
 }
 
 func suffixSummaryWikiLinks(summary, currentKey string, resolver *manifest.WikiLinkResolver, numberByKey map[string]int) string {
