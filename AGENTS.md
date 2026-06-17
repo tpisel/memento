@@ -7,6 +7,8 @@ This project is being developed with two separate memory substrates:
 
 Keep that boundary clear. Task progress belongs in beads. Durable semantic knowledge belongs in `memento-memory/`. Do not use `bd remember`.
 
+**Context-injection discipline.** Every line memento injects into an agent's context — bootloader blocks, orient text, brief footers, error messages, and stderr metadata — must earn its place. Default to fewer words with sharper force; when adding to these surfaces, be explicit about what the line buys, and leave it out if that answer is weak.
+
 ## Start of Task
 
 1. Run `bd ready` and choose the next ready task unless the user has already named a task.
