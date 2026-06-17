@@ -93,7 +93,7 @@ func briefDisclosure(m manifest.Manifest) string {
 
 	lines := bytes.Count(brief.Render(m), []byte("\n"))
 	return fmt.Sprintf(
-		"Running `memento brief` will print summaries of %d %s (~%d lines); by design it is compact and the highest-density way to learn what's in this vault.",
+		"Running `memento brief` will print summaries of %d %s (~%d lines); by design it is dense and the highest-density way to learn what's in this vault.",
 		count,
 		plural(count, "note", "notes"),
 		lines,

@@ -626,7 +626,7 @@ func renderedBaselineWithoutWritingGuide(t *testing.T, root string) string {
 		if len(m.Entries) == 1 {
 			noun = "note"
 		}
-		disclosure = fmt.Sprintf("Running `memento brief` will print summaries of %d %s (~%d lines); by design it is compact and the highest-density way to learn what's in this vault.", len(m.Entries), noun, lines)
+		disclosure = fmt.Sprintf("Running `memento brief` will print summaries of %d %s (~%d lines); by design it is dense and the highest-density way to learn what's in this vault.", len(m.Entries), noun, lines)
 	}
 	return strings.Replace(out, "<!-- memento:brief-disclosure -->", disclosure, 1)
 }

@@ -25,7 +25,7 @@ When memento CLI support exists, replace the manual memory scan with the manifes
 <!-- memento:start -->
 Durable project knowledge lives in `memento-memory`: curated design decisions, specs, constraints, and discoveries, not task state.
 Before anything else, run `memento orient` then `memento brief`.
-`brief` is intentionally compact; no need to pipe it through `head`.
+`brief` is intentionally dense; no need to pipe it through `head`.
 Use `memento read <key|@N>#<heading>` or `memento read <key|@N>` instead of grep/cat: it emits link-graph metadata on stderr and supports section extraction.
 `@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.
 <!-- memento:end -->

@@ -53,7 +53,7 @@ func TestRenderSubstitutesBriefDisclosure(t *testing.T) {
 	}
 
 	lineEstimate := bytes.Count(brief.Render(m), []byte("\n"))
-	want := fmt.Sprintf("Running `memento brief` will print summaries of 2 notes (~%d lines); by design it is compact", lineEstimate)
+	want := fmt.Sprintf("Running `memento brief` will print summaries of 2 notes (~%d lines); by design it is dense", lineEstimate)
 	if !strings.Contains(string(out), want) {
 		t.Fatalf("Render() output =\n%s\nwant brief disclosure containing %q", out, want)
 	}
