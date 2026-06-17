@@ -318,14 +318,17 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		printCLIError(stderr, "read", err)
 		return 1
 	}
-	fmt.Fprintf(stderr, "binding: %s\n", binding)
 
 	linkManifest, ok, err := manifestForReadLinks(v, target, numberedManifest)
 	if err != nil {
 		printCLIError(stderr, "read", err)
 		return 1
 	}
+	fmt.Fprintf(stderr, "binding: %s\n", binding)
 	if ok {
+		if entry, entryOK := manifestEntryByKey(linkManifest, readKey); entryOK {
+			fmt.Fprintf(stderr, "summary: %s\n", entry.SummaryState)
+		}
 		var lines []string
 		if _, section, hasSection := strings.Cut(target, "#"); hasSection {
 			lines = readSectionLinkSurfaceLines(linkManifest, readKey, section, data, sectionInlinksAnchorFiltered)

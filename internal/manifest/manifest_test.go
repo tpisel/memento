@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tpisel/memento/internal/markdown"
 	"github.com/tpisel/memento/internal/vault"
 )
 
@@ -61,7 +62,7 @@ Alpha summary.
 	}
 
 	want := `{
-  "schema_version": 1,
+  "schema_version": 2,
   "entries": [
     {
       "key": "alpha.md",
@@ -80,7 +81,9 @@ Alpha summary.
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [],
         "in": []
@@ -106,7 +109,9 @@ Alpha summary.
       "mode": "read-only",
       "orient": false,
       "updated": "2026-06-10T00:00:00Z",
-      "summary_stale": true,
+      "body_sha": "86c102dd358139b3fc87586d46859b8429855ce9854d018f4a89c25a0f2dd542",
+      "summary_sha": "ca706f22337802a72e42656c3eaf84ec2601710b6b744c758ecd5f492d8e5082",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -149,6 +154,75 @@ func TestWriteCreatesManifestFile(t *testing.T) {
 	}
 }
 
+func TestCompileDerivesSummaryStateFromPriorLedger(t *testing.T) {
+	root := makeVault(t)
+	v := vaultFromRoot(root)
+
+	writeFile(t, root, "note.md", "---\nsummary: Summary.\n---\n# Note\n\nOriginal body.\n")
+	first := compileAndStoreManifest(t, v)
+	firstEntry := onlyEntry(t, first)
+	if firstEntry.SummaryState != markdown.SummaryCurrent {
+		t.Fatalf("first SummaryState = %q, want %q", firstEntry.SummaryState, markdown.SummaryCurrent)
+	}
+	if firstEntry.BodySHA == "" || firstEntry.SummarySHA == "" {
+		t.Fatalf("first ledger hashes = body %q summary %q, want both populated", firstEntry.BodySHA, firstEntry.SummarySHA)
+	}
+
+	unchanged := compileAndStoreManifest(t, v)
+	unchangedEntry := onlyEntry(t, unchanged)
+	if unchangedEntry.SummaryState != markdown.SummaryCurrent {
+		t.Fatalf("unchanged SummaryState = %q, want %q", unchangedEntry.SummaryState, markdown.SummaryCurrent)
+	}
+	if unchangedEntry.BodySHA != firstEntry.BodySHA || unchangedEntry.SummarySHA != firstEntry.SummarySHA {
+		t.Fatalf("unchanged ledger hashes changed: got body %q summary %q, want body %q summary %q", unchangedEntry.BodySHA, unchangedEntry.SummarySHA, firstEntry.BodySHA, firstEntry.SummarySHA)
+	}
+
+	writeFile(t, root, "note.md", "---\nsummary: Summary.\n---\n# Note\n\nChanged body.\n")
+	bodyOnly := compileAndStoreManifest(t, v)
+	bodyOnlyEntry := onlyEntry(t, bodyOnly)
+	if bodyOnlyEntry.SummaryState != markdown.SummaryStale {
+		t.Fatalf("body-only SummaryState = %q, want %q", bodyOnlyEntry.SummaryState, markdown.SummaryStale)
+	}
+	if bodyOnlyEntry.BodySHA != firstEntry.BodySHA || bodyOnlyEntry.SummarySHA != firstEntry.SummarySHA {
+		t.Fatalf("stale ledger hashes = body %q summary %q, want carried body %q summary %q", bodyOnlyEntry.BodySHA, bodyOnlyEntry.SummarySHA, firstEntry.BodySHA, firstEntry.SummarySHA)
+	}
+
+	writeFile(t, root, "note.md", "---\nsummary: Updated summary.\n---\n# Note\n\nChanged body.\n")
+	summaryEdit := compileAndStoreManifest(t, v)
+	summaryEditEntry := onlyEntry(t, summaryEdit)
+	if summaryEditEntry.SummaryState != markdown.SummaryCurrent {
+		t.Fatalf("summary-edit SummaryState = %q, want %q", summaryEditEntry.SummaryState, markdown.SummaryCurrent)
+	}
+	if summaryEditEntry.BodySHA == firstEntry.BodySHA || summaryEditEntry.SummarySHA == firstEntry.SummarySHA {
+		t.Fatalf("summary-edit ledger hashes = body %q summary %q, want refreshed from first body %q summary %q", summaryEditEntry.BodySHA, summaryEditEntry.SummarySHA, firstEntry.BodySHA, firstEntry.SummarySHA)
+	}
+
+	storeManifest(t, v, first)
+	writeFile(t, root, "note.md", "---\nsummary: Both changed.\n---\n# Note\n\nBoth changed body.\n")
+	bothEdit := compileAndStoreManifest(t, v)
+	bothEditEntry := onlyEntry(t, bothEdit)
+	if bothEditEntry.SummaryState != markdown.SummaryCurrent {
+		t.Fatalf("both-edit SummaryState = %q, want %q", bothEditEntry.SummaryState, markdown.SummaryCurrent)
+	}
+
+	writeFile(t, root, "note.md", "---\ndescription: Description fallback.\n---\n# Note\n\nBody.\n")
+	description := compileAndStoreManifest(t, v)
+	descriptionEntry := onlyEntry(t, description)
+	if descriptionEntry.Summary != "Description fallback." || descriptionEntry.SummaryState != markdown.SummaryCurrent {
+		t.Fatalf("description entry summary/state = %q/%q, want description current", descriptionEntry.Summary, descriptionEntry.SummaryState)
+	}
+
+	writeFile(t, root, "note.md", "# Note\n\nFirst paragraph fallback.\n")
+	missing := compileAndStoreManifest(t, v)
+	missingEntry := onlyEntry(t, missing)
+	if missingEntry.Summary != "First paragraph fallback." {
+		t.Fatalf("missing Summary = %q, want first paragraph fallback", missingEntry.Summary)
+	}
+	if missingEntry.SummaryState != markdown.SummaryMissing || missingEntry.BodySHA != "" || missingEntry.SummarySHA != "" {
+		t.Fatalf("missing ledger = state %q body %q summary %q, want missing with empty hashes", missingEntry.SummaryState, missingEntry.BodySHA, missingEntry.SummarySHA)
+	}
+}
+
 func TestCompileEmptyVaultSerializesEntriesArray(t *testing.T) {
 	root := makeVault(t)
 
@@ -161,7 +235,7 @@ func TestCompileEmptyVaultSerializesEntriesArray(t *testing.T) {
 		t.Fatalf("Marshal() error = %v, want nil", err)
 	}
 
-	want := "{\n  \"schema_version\": 1,\n  \"entries\": []\n}\n"
+	want := "{\n  \"schema_version\": 2,\n  \"entries\": []\n}\n"
 	if string(data) != want {
 		t.Fatalf("empty manifest JSON = %q, want %q", string(data), want)
 	}
@@ -195,7 +269,7 @@ Zeta body.
 		t.Fatalf("Marshal(compiled) error = %v, want nil", err)
 	}
 
-	fixture, err := os.ReadFile(filepath.Join("testdata", "manifest_v1.json"))
+	fixture, err := os.ReadFile(filepath.Join("testdata", "manifest_v2.json"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -216,7 +290,7 @@ Zeta body.
 func TestDecodeRejectsUnsupportedSchemaVersion(t *testing.T) {
 	tests := map[string]string{
 		"missing": `{"entries":[]}`,
-		"future":  `{"schema_version":2,"entries":[]}`,
+		"future":  `{"schema_version":3,"entries":[]}`,
 	}
 
 	for name, input := range tests {
@@ -369,7 +443,7 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
 	}
 
 	want := `{
-  "schema_version": 1,
+  "schema_version": 2,
   "entries": [
     {
       "key": "Embeds/Thing.md",
@@ -382,7 +456,9 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [],
         "in": [
@@ -404,7 +480,9 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [],
         "in": [
@@ -426,7 +504,9 @@ Links to [[Target|the target]], [[Missing]], ![[Embeds/Thing]], [[Target]], and 
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [
           {
@@ -496,7 +576,7 @@ Context text.
 	}
 
 	want := `{
-  "schema_version": 1,
+  "schema_version": 2,
   "entries": [
     {
       "key": "Target.md",
@@ -520,7 +600,9 @@ Context text.
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [],
         "in": [
@@ -554,7 +636,9 @@ Context text.
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [
           {
@@ -670,6 +754,38 @@ func vaultFromRoot(root string) vault.Vault {
 		MarkerDir:    marker,
 		ManifestPath: filepath.Join(marker, vault.ManifestFileName),
 	}
+}
+
+func compileAndStoreManifest(t *testing.T, v vault.Vault) Manifest {
+	t.Helper()
+
+	m, err := Compile(v)
+	if err != nil {
+		t.Fatalf("Compile() error = %v, want nil", err)
+	}
+	storeManifest(t, v, m)
+	return m
+}
+
+func storeManifest(t *testing.T, v vault.Vault, m Manifest) {
+	t.Helper()
+
+	data, err := Marshal(m)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v, want nil", err)
+	}
+	if err := os.WriteFile(v.ManifestPath, data, 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+}
+
+func onlyEntry(t *testing.T, m Manifest) Entry {
+	t.Helper()
+
+	if len(m.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(m.Entries))
+	}
+	return m.Entries[0]
 }
 
 func writeFile(t *testing.T, root, relPath, content string) {

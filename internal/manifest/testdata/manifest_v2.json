@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "entries": [
     {
       "key": "alpha.md",
@@ -18,7 +18,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [],
         "in": []
@@ -44,7 +46,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "2026-06-10T00:00:00Z",
-      "summary_stale": true,
+      "body_sha": "86c102dd358139b3fc87586d46859b8429855ce9854d018f4a89c25a0f2dd542",
+      "summary_sha": "ca706f22337802a72e42656c3eaf84ec2601710b6b744c758ecd5f492d8e5082",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []

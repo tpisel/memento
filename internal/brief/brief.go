@@ -110,17 +110,26 @@ func RenderWithToolFiles(m manifest.Manifest, toolFiles []string) []byte {
 	linkResolver := manifest.NewWikiLinkResolver(m.Entries)
 
 	currentFolder := ""
+	staleCount := 0
+	missingCount := 0
 	for _, numbered := range numberedEntries {
 		entry := numbered.Entry
+		switch entry.SummaryState {
+		case "stale":
+			staleCount++
+		case "missing":
+			missingCount++
+		}
 		if numbered.Folder != currentFolder {
 			currentFolder = numbered.Folder
 			fmt.Fprintf(&b, "\n## %s\n", currentFolder)
 		}
 		fmt.Fprintf(&b, "\n### @%d. %s\n\n", numbered.Number, entry.Title)
-		fmt.Fprintf(&b, "%s\n\n", entryMetadata(entry))
-		if entry.Summary == "" {
-			b.WriteString("Summary: none\n")
-		} else {
+		fmt.Fprintf(&b, "%s\n", entryMetadata(entry))
+		if entry.Summary != "" || len(entry.Headings) > 0 {
+			b.WriteString("\n")
+		}
+		if entry.Summary != "" {
 			b.WriteString(suffixSummaryWikiLinks(entry.Summary, entry.Key, linkResolver, numberByKey))
 			b.WriteString("\n")
 		}
@@ -131,6 +140,9 @@ func RenderWithToolFiles(m manifest.Manifest, toolFiles []string) []byte {
 	}
 
 	b.WriteString("\n---\n\n")
+	if staleCount > 0 || missingCount > 0 {
+		fmt.Fprintf(&b, "Staleness: %d stale, %d unsummarised\n", staleCount, missingCount)
+	}
 	fmt.Fprintf(&b, "Tag frequency: %s\n", tagFrequency(m.Tags))
 	fmt.Fprintf(&b, "Tool files: %s\n", inlineToolFiles(toolFiles))
 	b.WriteString("Section read: memento read <key|@N>#<heading>\n")
@@ -146,6 +158,12 @@ func entryMetadata(entry manifest.Entry) string {
 		parts = append(parts, "tags: "+inlineTags(entry.Tags))
 	}
 	parts = append(parts, "size: "+sizeMarker(entry))
+	switch entry.SummaryState {
+	case "stale":
+		parts = append(parts, "[stale-summary]")
+	case "missing":
+		parts = append(parts, "[unsummarised]")
+	}
 	return strings.Join(parts, " | ")
 }
 

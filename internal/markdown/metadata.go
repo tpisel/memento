@@ -46,7 +46,7 @@ type Metadata struct {
 	Updated      time.Time
 	SummaryHash  string
 	BodyHash     string
-	SummaryStale bool
+	SummaryState SummaryState
 }
 
 type Heading struct {
@@ -54,6 +54,14 @@ type Heading struct {
 	Text  string
 	Slug  string
 }
+
+type SummaryState string
+
+const (
+	SummaryCurrent SummaryState = "current"
+	SummaryStale   SummaryState = "stale"
+	SummaryMissing SummaryState = "missing"
+)
 
 type frontmatter struct {
 	title       string
@@ -98,12 +106,19 @@ func metadataFromParts(relPath string, fm frontmatter, body []byte) Metadata {
 		title = filenameTitle(relPath)
 	}
 
-	summary := fm.summary
-	if summary == "" {
-		summary = fm.description
+	committedSummary := fm.summary
+	if committedSummary == "" {
+		committedSummary = fm.description
 	}
+	summary := committedSummary
 	if summary == "" {
 		summary = firstParagraphText(doc, body)
+	}
+	summaryHash := ""
+	summaryState := SummaryMissing
+	if committedSummary != "" {
+		summaryHash = hashSummary(committedSummary)
+		summaryState = SummaryCurrent
 	}
 
 	mode := fm.mode
@@ -119,10 +134,15 @@ func metadataFromParts(relPath string, fm frontmatter, body []byte) Metadata {
 		Mode:         mode,
 		Orient:       fm.orient,
 		Updated:      fm.updated,
-		SummaryHash:  fm.summaryHash,
+		SummaryHash:  summaryHash,
 		BodyHash:     bodyHash,
-		SummaryStale: summary == "" || fm.summaryHash == "" || fm.summaryHash != bodyHash,
+		SummaryState: summaryState,
 	}
+}
+
+func hashSummary(summary string) string {
+	sum := sha256.Sum256([]byte(summary))
+	return hex.EncodeToString(sum[:])
 }
 
 func splitAndParseFrontmatter(source []byte) (frontmatter, []byte, error) {

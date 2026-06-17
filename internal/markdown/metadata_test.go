@@ -47,14 +47,14 @@ Body paragraph that should not replace frontmatter summary.
 	if !got.Updated.Equal(wantUpdated) {
 		t.Fatalf("Updated = %v, want %v", got.Updated, wantUpdated)
 	}
-	if got.SummaryHash != "abc123" {
-		t.Fatalf("SummaryHash = %q, want abc123", got.SummaryHash)
+	if got.SummaryHash != hashSummary("A concise summary from frontmatter.") {
+		t.Fatalf("SummaryHash = %q, want hash of committed summary", got.SummaryHash)
 	}
 	if got.BodyHash == "" {
 		t.Fatal("BodyHash is empty, want deterministic body hash")
 	}
-	if !got.SummaryStale {
-		t.Fatal("SummaryStale = false, want true when stored summary hash differs from body hash")
+	if got.SummaryState != SummaryCurrent {
+		t.Fatalf("SummaryState = %q, want %q", got.SummaryState, SummaryCurrent)
 	}
 }
 
@@ -87,8 +87,11 @@ Second paragraph.
 	if !got.Updated.IsZero() {
 		t.Fatalf("Updated = %v, want zero time", got.Updated)
 	}
-	if !got.SummaryStale {
-		t.Fatal("SummaryStale = false, want true for missing summary hash")
+	if got.SummaryHash != "" {
+		t.Fatalf("SummaryHash = %q, want empty without summary or description", got.SummaryHash)
+	}
+	if got.SummaryState != SummaryMissing {
+		t.Fatalf("SummaryState = %q, want %q", got.SummaryState, SummaryMissing)
 	}
 }
 
@@ -382,7 +385,7 @@ tags:
 	}
 }
 
-func TestSummaryHashUsesBodyExcludingFrontmatter(t *testing.T) {
+func TestBodyHashUsesBodyExcludingFrontmatter(t *testing.T) {
 	body := []byte("# Title\n\nBody text.\n")
 	bodyHash := hashBody(body)
 
@@ -409,8 +412,8 @@ summary_hash: `+bodyHash+`
 	if first.BodyHash != second.BodyHash {
 		t.Fatalf("BodyHash changed with frontmatter: first %q, second %q", first.BodyHash, second.BodyHash)
 	}
-	if first.SummaryStale || second.SummaryStale {
-		t.Fatalf("SummaryStale = %v/%v, want both false for matching body hash", first.SummaryStale, second.SummaryStale)
+	if first.BodyHash != bodyHash || second.BodyHash != bodyHash {
+		t.Fatalf("BodyHash = %q/%q, want %q", first.BodyHash, second.BodyHash, bodyHash)
 	}
 }
 
@@ -427,13 +430,10 @@ func TestBodyHashUsesEntireSourceWhenFrontmatterAbsent(t *testing.T) {
 	}
 }
 
-func TestSummaryStaleChangesWhenBodyNoLongerMatchesStoredHash(t *testing.T) {
-	originalBody := []byte("# Title\n\nOriginal body.\n")
-	storedHash := hashBody(originalBody)
-
+func TestSummaryHashUsesCommittedSummaryNotLegacySummaryHash(t *testing.T) {
 	got, err := ExtractMetadata("hash.md", []byte(`---
 summary: Summary
-summary_hash: `+storedHash+`
+summary_hash: legacy-body-hash
 ---
 # Title
 
@@ -443,11 +443,11 @@ Changed body.
 		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
 	}
 
-	if got.BodyHash == storedHash {
-		t.Fatalf("BodyHash = stored hash %q, want changed body to hash differently", storedHash)
+	if got.SummaryHash != hashSummary("Summary") {
+		t.Fatalf("SummaryHash = %q, want hash of summary text", got.SummaryHash)
 	}
-	if !got.SummaryStale {
-		t.Fatal("SummaryStale = false, want true when body hash differs from stored summary_hash")
+	if got.SummaryState != SummaryCurrent {
+		t.Fatalf("SummaryState = %q, want %q", got.SummaryState, SummaryCurrent)
 	}
 }
 

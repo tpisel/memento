@@ -22,7 +22,7 @@ type Manifest struct {
 	Tags          map[string]int `json:"tags,omitempty"`
 }
 
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 type Warning struct {
 	Path string
@@ -34,18 +34,20 @@ func (w Warning) Error() string {
 }
 
 type Entry struct {
-	Key          string             `json:"key"`
-	Title        string             `json:"title"`
-	Summary      string             `json:"summary"`
-	Bytes        int64              `json:"bytes"`
-	Lines        int                `json:"lines"`
-	Tags         []string           `json:"tags"`
-	Headings     []Heading          `json:"headings"`
-	Mode         markdown.WriteMode `json:"mode"`
-	Orient       bool               `json:"orient"`
-	Updated      string             `json:"updated"`
-	SummaryStale bool               `json:"summary_stale"`
-	Links        Links              `json:"links"`
+	Key          string                `json:"key"`
+	Title        string                `json:"title"`
+	Summary      string                `json:"summary"`
+	Bytes        int64                 `json:"bytes"`
+	Lines        int                   `json:"lines"`
+	Tags         []string              `json:"tags"`
+	Headings     []Heading             `json:"headings"`
+	Mode         markdown.WriteMode    `json:"mode"`
+	Orient       bool                  `json:"orient"`
+	Updated      string                `json:"updated"`
+	BodySHA      string                `json:"body_sha"`
+	SummarySHA   string                `json:"summary_sha"`
+	SummaryState markdown.SummaryState `json:"summary_state"`
+	Links        Links                 `json:"links"`
 }
 
 type Heading struct {
@@ -87,8 +89,12 @@ func compile(v vault.Vault) (Manifest, []Warning, error) {
 	warnings := []Warning{}
 	tagCounts := map[string]int{}
 	sources := map[string][]byte{}
+	priorEntries, err := priorLedgerEntries(v.ManifestPath)
+	if err != nil {
+		return Manifest{}, nil, err
+	}
 
-	err := vault.WalkMarkdown(v, func(relPath, absPath string) error {
+	err = vault.WalkMarkdown(v, func(relPath, absPath string) error {
 		source, err := os.ReadFile(absPath)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", relPath, err)
@@ -108,6 +114,7 @@ func compile(v vault.Vault) (Manifest, []Warning, error) {
 		}
 
 		sources[relPath] = source
+		bodySHA, summarySHA, summaryState := deriveSummaryLedger(meta, priorEntries[relPath])
 		entries = append(entries, Entry{
 			Key:          relPath,
 			Title:        meta.Title,
@@ -119,7 +126,9 @@ func compile(v vault.Vault) (Manifest, []Warning, error) {
 			Mode:         meta.Mode,
 			Orient:       meta.Orient,
 			Updated:      formatUpdated(meta.Updated),
-			SummaryStale: meta.SummaryStale,
+			BodySHA:      bodySHA,
+			SummarySHA:   summarySHA,
+			SummaryState: summaryState,
 			Links: Links{
 				Out: []OutLink{},
 				In:  []InLink{},
@@ -144,6 +153,43 @@ func compile(v vault.Vault) (Manifest, []Warning, error) {
 		manifest.Tags = tagCounts
 	}
 	return manifest, warnings, nil
+}
+
+func priorLedgerEntries(manifestPath string) (map[string]Entry, error) {
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return map[string]Entry{}, nil
+		}
+		return nil, fmt.Errorf("read prior manifest: %w", err)
+	}
+
+	var prior Manifest
+	if err := json.Unmarshal(data, &prior); err != nil {
+		return map[string]Entry{}, nil
+	}
+	if prior.SchemaVersion != CurrentSchemaVersion {
+		return map[string]Entry{}, nil
+	}
+
+	entries := make(map[string]Entry, len(prior.Entries))
+	for _, entry := range prior.Entries {
+		entries[entry.Key] = entry
+	}
+	return entries, nil
+}
+
+func deriveSummaryLedger(meta markdown.Metadata, prior Entry) (bodySHA, summarySHA string, state markdown.SummaryState) {
+	if meta.SummaryHash == "" {
+		return "", "", markdown.SummaryMissing
+	}
+	if prior.SummarySHA == "" || meta.SummaryHash != prior.SummarySHA {
+		return meta.BodyHash, meta.SummaryHash, markdown.SummaryCurrent
+	}
+	if meta.BodyHash != prior.BodySHA {
+		return prior.BodySHA, prior.SummarySHA, markdown.SummaryStale
+	}
+	return prior.BodySHA, prior.SummarySHA, markdown.SummaryCurrent
 }
 
 func Decode(data []byte) (Manifest, error) {

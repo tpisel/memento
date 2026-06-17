@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "entries": [
     {
       "key": "Architecture decision record/adr-0001-vault-naming.md",
@@ -27,7 +27,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [],
         "in": []
@@ -66,7 +68,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "1666558fb4527eab68fcb847ae16bf84b03aa7328a0423e395687b83e01f1fa7",
+      "summary_sha": "a6d93468410bed27132621d4e676e85a2d057a82f978f82e0ee63c25b44769e8",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -110,7 +114,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "bd7eeac489535711137b4fa0d12a3255cf3fe70a13dc96a6486597d25cf328bd",
+      "summary_sha": "840037f57fd8e27f087581a125c0200f3504d65138398757cf9babc28a4e85f3",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -146,7 +152,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "83af0fa3ddde06de23dec1679b77569837bf4ac3c5d1a0b152274e8fee5802b3",
+      "summary_sha": "12879619e3ed775751b240571f383effda2572fbe4eb99a0ff3b71842ea2c4b9",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -184,7 +192,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "d1ec0b5a404c81eac1b995079031f31d5e42161257df29718cd895329478f327",
+      "summary_sha": "e061842d68723f6fc32e298bbb09b96c8d2b407485e6264e358167f957b1c755",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -222,7 +232,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "0601e355ad34ff5ba45b57c54ad36820a7bfb0765380a42ee8812d57727b111b",
+      "summary_sha": "336adaf7ce44e8afb91b4d611b145882eda1201c9db7722e9ffeb50c72b3f499",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -260,7 +272,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "dbac98b3650a06a282c37f7decbb18b800eb9871df5204b8d6216d0953ba5ae3",
+      "summary_sha": "637dc4bffeb3bfb5c78b82c5fd5c9ebc0dca15ef728e2ae1c995856f6b1b1148",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": [
@@ -314,7 +328,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "6ba0eabc0a8f6709b174b9eab77802c5f39aaf2127443230818b43d8ae4a6d90",
+      "summary_sha": "02051f69f15ab75291b7ddd418eefde5623716449cc48b4a2933ceb81a62e9b1",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -374,7 +390,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "587682559c6d9cc96d1c01387bd400bd2a866fdc1a678060e422f14671612560",
+      "summary_sha": "2e3f300d7c47a7208e334fb1185d9e4639bebf7a8c1ee02f6d1497e6fd56711c",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": [
@@ -447,7 +465,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "ab0f21078190c5e7f22b34058bff2934f5b58c78dbca11c9f25a2bd115becf18",
+      "summary_sha": "aca5c90be7d63501287c0d81956fcdac27852a548032a375e7f5fa09cfb2f4fa",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -521,7 +541,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "414876b8a4fea7315f9107062636f079f2651b6ba6a97a96f80b481f45327e30",
+      "summary_sha": "434b0998ab9afa176633093127b4c7abbb096ba354ab00380db369ef67ae7731",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -581,7 +603,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "4eec44b8436ebc7f1b3179ec87ccfbb2f95dd9808bb24c80aa68c79c19d18a67",
+      "summary_sha": "1308b5bbab84701cc783fe4dcbef624c43ec1440884058c7747151f629ab7096",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": [
@@ -634,7 +658,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "40248556d4ea030bd3a8284aa488ef54e1b8dcf3480050ff3b897d03e31bb711",
+      "summary_sha": "2f6568037f037857e23f430e5e788a6e6b1821a51a712a1d833d2d6f1275c15a",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": [
@@ -701,7 +727,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "8f5df8abbc76a298f5aa43d689a693c4080a3d35cf4ee775e668e702e35d87d7",
+      "summary_sha": "4e1098e1a894ddb4e77735f70e34f9477132da1cc0d4f0bbb56e5b9d47dc846b",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -748,7 +776,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "aca5099080fa7a8ab33c2a0998a1075c140dc4794d9bc43eec6cab527d0dea78",
+      "summary_sha": "91d8f223a684ed5b70a1b858246b93ec9ee75056e67efdd83e27a0c3d86c99f6",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": [
@@ -796,7 +826,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "19abe89fc4c17ccdc07b5d702db6db22ad4b6cb78d686a6111500d422547870b",
+      "summary_sha": "79e496dfaebf2f3fc29aa3891d7254c295fb796ceca2a7843696544c2ce11873",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": [
@@ -859,7 +891,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "d9193007081ea0d369eb5ff9f3046d3132e18723da11fa9d0f23c9f11bc58ceb",
+      "summary_sha": "8edf1953fa261d162e170e2284568b007f78c5a0d8d0588f6b1ae4e38ee19827",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -942,7 +976,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "10d012a88ffe617e71a77f737f707298d7b5db2ad2c61542b2a94f702d7d64bf",
+      "summary_sha": "8ecfc251bf1a6cf92b0b1c3f6b8749eac13945a2841c2ed3c72a7b2f35a20714",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -1006,7 +1042,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "f6e6b306f056ab8b24dd5950fecf0e9e3eab5d0c97bf4bea92ed5cb280e8afd5",
+      "summary_sha": "2919ac280994ef5d16741cc3451e7870c6f73fb0656f1b1dae79d83b76506348",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -1057,7 +1095,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "2ca93bc93c2fd380026f887fd4e8e7e673ff8869d1b4c385be3bfaea7b9435b7",
+      "summary_sha": "bb48064075fb2c1894f49a3f9e2ccec8efe5a71379b9170a492ef3e53addd8a9",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -1110,7 +1150,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "a52f110c616885f5338418afbd14052a4eac381bb2f33af3e5f79834dc2a4e63",
+      "summary_sha": "757d98267da0fd467fd1e4ed6f17e0464c4b6bcf99ef04354dbcdec7dc52621b",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -1184,7 +1226,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "18f48dbef3413559329f0d3696e515d15a8d3377be52e8ef3b79466eed67583d",
+      "summary_sha": "ab3c295ecd3b31fe340f877fd9c0f5b289d374f3651f32d4e44f1b3ffbf7f7b7",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -1295,7 +1339,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "7a979b81acb2b42b5ef04d86a245d7b49e72e961e9474c99806c9b5282cd0273",
+      "summary_sha": "420d2ae4d2650ab4a485a3214680e943b5249dce61db08e4850afdd60b11db9b",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -1361,7 +1407,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "8528e9c287d6f8ddba0a78c146c2aa552111cc83cc80bb7d8aed35fe7c7d2034",
+      "summary_sha": "2899be75cf094b67f11f600e59e12bf53dc75c7456527d005bda9929139f8f31",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -1413,7 +1461,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [],
         "in": [
@@ -1439,7 +1489,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [
           {
@@ -1562,7 +1614,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "ab00fe10efe821426a99726b1121badb252c97a3b63f1d6cc9a38dc5e422b1da",
+      "summary_sha": "2ca9b3410ccd5e86f04c0fa082df02bca672b33baa6388e8baacaf4f15a5a889",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -1619,7 +1673,9 @@
       "mode": "read-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "eaa5a1943a216fe5e6eaea8722dd72f19915b4498e9cb51c5773b12f962c939e",
+      "summary_sha": "f2e0bb8c12ba3da331d2a161999dd8e01476dc07fb49942aacc58ecff10255ab",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -1777,7 +1833,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [],
         "in": []
@@ -1815,7 +1873,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
       "links": {
         "out": [
           {
@@ -1912,7 +1972,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "01dee9577a6855589650ba047bdb65c3b04a780d725c89a811f7f0f54c6fcec3",
+      "summary_sha": "a07bcb76027df7c0b8dfd70f3f33a25068bf595e3d33eefcf5fab036b2f71a66",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -2009,7 +2071,9 @@
       "mode": "living",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "ed56fdc36929bdd8c3a3464508f42c68941e28a4391cfaae8eb9e81352a18ae9",
+      "summary_sha": "eb17cf1b6438b344f6da41a31acf7ddec82720be45269d0fc4b82b35bedb950f",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": []
@@ -2177,7 +2241,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "2026-06-15T00:00:00Z",
-      "summary_stale": true,
+      "body_sha": "e457cd21c291bff480f5c757014c21c5d22d29dd65b7f97074f5829152a03e88",
+      "summary_sha": "7030caf3d5a3a521bf2f019c01c7974ab29addce19188ac80f263b44476bac60",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -2270,7 +2336,9 @@
       "mode": "append-only",
       "orient": false,
       "updated": "",
-      "summary_stale": true,
+      "body_sha": "3c29b35f8ecf750e8095d285e77fb71659db295377fc97faa8cc5b4a557c5379",
+      "summary_sha": "d8d5db3902629b4bf6c2410484e4db789e2360a7848d1cf7f025d21a2f526fc3",
+      "summary_state": "current",
       "links": {
         "out": [],
         "in": [

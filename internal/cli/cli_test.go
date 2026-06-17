@@ -769,11 +769,34 @@ func TestReadNumericReferenceResolvesAgainstManifestOrdering(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read @2) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\n"; got != want {
 		t.Fatalf("Run(read @2) stderr = %q, want %q", got, want)
 	}
 	if want := "# Beta\n\nNested note.\n"; stdout.String() != want {
 		t.Fatalf("Run(read @2) stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestReadEmitsSummaryStateFromManifest(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "---\nsummary: Committed summary.\n---\n# Note\n\nBody.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "note.md"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(read note.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if got, want := stderr.String(), "binding: ratified\nsummary: current\n"; got != want {
+		t.Fatalf("Run(read note.md) stderr = %q, want %q", got, want)
+	}
+	if want := "---\nsummary: Committed summary.\n---\n# Note\n\nBody.\n"; stdout.String() != want {
+		t.Fatalf("Run(read note.md) stdout = %q, want %q", stdout.String(), want)
 	}
 }
 
@@ -803,6 +826,7 @@ func TestReadEmitsLinkSurfaceOnStderrWithoutChangingStdout(t *testing.T) {
 
 	wantStderr := strings.Join([]string{
 		"binding: ratified",
+		"summary: missing",
 		"inlinks: aaa-in.md @1",
 		"outlinks: Missing Target#Anchor, outbound.md @4",
 		"transcludes: embed-out.md @3",
@@ -830,7 +854,7 @@ func TestReadOmitsEmptyLinkRoles(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read subject.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\noutlinks: target.md @2\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\noutlinks: target.md @2\n"; got != want {
 		t.Fatalf("Run(read subject.md) stderr = %q, want %q", got, want)
 	}
 	for _, forbidden := range []string{"inlinks:", "transcludes:", "transcluded-by:", "none"} {
@@ -855,7 +879,7 @@ func TestReadEmptyLinkDocEmitsOnlyBinding(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read subject.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\n"; got != want {
 		t.Fatalf("Run(read subject.md) stderr = %q, want %q", got, want)
 	}
 }
@@ -875,7 +899,7 @@ func TestReadSkipsBareSameDocAnchorWikiLinks(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read subject.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\n"; got != want {
 		t.Fatalf("Run(read subject.md) stderr = %q, want %q", got, want)
 	}
 	if strings.Contains(stderr.String(), "outlinks:") {
@@ -899,7 +923,7 @@ func TestReadNumericReferenceEmitsResolvedEntryLinkSurface(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read @1) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\noutlinks: beta.md @2\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\noutlinks: beta.md @2\n"; got != want {
 		t.Fatalf("Run(read @1) stderr = %q, want %q", got, want)
 	}
 }
@@ -921,7 +945,7 @@ func TestReadSeparatesWikiLinksAndEmbeds(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read subject.md) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\noutlinks: plain.md @2\ntranscludes: embedded.md @1\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\noutlinks: plain.md @2\ntranscludes: embedded.md @1\n"; got != want {
 		t.Fatalf("Run(read subject.md) stderr = %q, want %q", got, want)
 	}
 }
@@ -946,7 +970,7 @@ func TestReadSectionScopesOutlinksToExcerpt(t *testing.T) {
 	if got, want := stdout.String(), "## A\n\nA links to [[a-target.md]].\n\n"; got != want {
 		t.Fatalf("Run(read section) stdout = %q, want %q", got, want)
 	}
-	if got, want := stderr.String(), "binding: ratified\noutlinks: a-target.md @1\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\noutlinks: a-target.md @1\n"; got != want {
 		t.Fatalf("Run(read section) stderr = %q, want %q", got, want)
 	}
 	if strings.Contains(stderr.String(), "b-target.md") {
@@ -974,7 +998,7 @@ func TestReadSectionScopesTranscludesToExcerpt(t *testing.T) {
 	if got, want := stdout.String(), "## A\n\nA embeds ![[a-embed.md]].\n\n"; got != want {
 		t.Fatalf("Run(read section) stdout = %q, want %q", got, want)
 	}
-	if got, want := stderr.String(), "binding: ratified\ntranscludes: a-embed.md @1\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\ntranscludes: a-embed.md @1\n"; got != want {
 		t.Fatalf("Run(read section) stderr = %q, want %q", got, want)
 	}
 	if strings.Contains(stderr.String(), "b-embed.md") {
@@ -1002,7 +1026,7 @@ func TestReadSectionFiltersInlinksByAnchor(t *testing.T) {
 	if got, want := stdout.String(), "## Foo\n\nFoo body.\n\n"; got != want {
 		t.Fatalf("Run(read section) stdout = %q, want %q", got, want)
 	}
-	if got, want := stderr.String(), "binding: ratified\ninlinks: y.md @2\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\ninlinks: y.md @2\n"; got != want {
 		t.Fatalf("Run(read section) stderr = %q, want %q", got, want)
 	}
 	if strings.Contains(stderr.String(), "z.md") {
@@ -1052,7 +1076,7 @@ func TestReadWholeFileLinkSurfaceUnchangedForAnchoredInlinks(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read whole file) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\ninlinks: y.md @2, z.md @3\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\ninlinks: y.md @2, z.md @3\n"; got != want {
 		t.Fatalf("Run(read whole file) stderr = %q, want %q", got, want)
 	}
 }
@@ -1076,7 +1100,7 @@ func TestReadEmptySectionWithNoLinksEmitsOnlyBinding(t *testing.T) {
 	if got, want := stdout.String(), "## Empty Section\n\n"; got != want {
 		t.Fatalf("Run(read empty section) stdout = %q, want %q", got, want)
 	}
-	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\n"; got != want {
 		t.Fatalf("Run(read empty section) stderr = %q, want %q", got, want)
 	}
 }
@@ -1216,7 +1240,7 @@ func TestReadNumericReferenceSkipsHashCheckWhenBriefIsMissing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("Run(read @1) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	if got, want := stderr.String(), "binding: ratified\n"; got != want {
+	if got, want := stderr.String(), "binding: ratified\nsummary: missing\n"; got != want {
 		t.Fatalf("Run(read @1) stderr = %q, want %q", got, want)
 	}
 	if want := "# Note\n\nSummary.\n"; stdout.String() != want {
