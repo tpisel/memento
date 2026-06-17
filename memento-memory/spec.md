@@ -404,3 +404,7 @@ This supersedes the earlier V1 triage wording that called the gitignore insertio
 ### Addendum 2026-06-17: write success path echo
 
 `note.Write` returns the resolved absolute filesystem path it wrote. `memento write` emits `wrote: <abs path> (<byte count>, <append|overwrite>)` to stderr immediately after a successful body write and before the auto-compile result. This line is emitted even if the subsequent auto-compile fails, because the body mutation has already succeeded. Write keys remain vault-relative; a key whose first segment equals the vault directory basename is rejected with the `invalid-key` token as likely repo-relative input.
+
+### Addendum 2026-06-17: pre-commit hook compile command
+
+The pre-commit hook runs `memento compile` with no `--dir` flag. `--dir` belongs only to `memento init`; all other verbs discover the vault from the repository marker. The hook still carries the resolved manifest path for `git add -- <vault>/.memento/manifest.json`, so re-running `init` remains the way to refresh path-bearing managed surfaces after a vault rename.

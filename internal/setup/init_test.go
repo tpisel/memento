@@ -621,7 +621,7 @@ func TestInitCreatesPreCommitHookWhenAbsent(t *testing.T) {
 	for _, want := range []string{
 		"# memento:start",
 		"if command -v memento >/dev/null 2>&1; then",
-		`memento compile --dir 'memory'`,
+		"memento compile",
 		`git add -- 'memory/.memento/manifest.json'`,
 		"else",
 		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
@@ -661,6 +661,9 @@ func TestInitAppendsMementoBlockToExistingPreCommitHook(t *testing.T) {
 	if count := strings.Count(got, "# memento:start"); count != 1 {
 		t.Fatalf("pre-commit start sentinel count = %d, want 1; contents = %q", count, got)
 	}
+	if strings.Contains(got, "compile --dir") {
+		t.Fatalf("pre-commit hook = %q, want supported compile command without --dir", got)
+	}
 	if !strings.Contains(got, `git add -- 'memory/.memento/manifest.json'`) {
 		t.Fatalf("pre-commit hook = %q, want manifest staging command", got)
 	}
@@ -680,7 +683,7 @@ func TestInitReplacesExistingMementoBlockInPreCommitHook(t *testing.T) {
 		"#!/bin/sh\nset -eu\n\n",
 		"\n\necho keep\n",
 		"if command -v memento >/dev/null 2>&1; then",
-		`memento compile --dir 'project-memory'`,
+		"memento compile",
 		`git add -- 'project-memory/.memento/manifest.json'`,
 		"else",
 		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
@@ -697,6 +700,49 @@ func TestInitReplacesExistingMementoBlockInPreCommitHook(t *testing.T) {
 		t.Fatalf("pre-commit start sentinel count = %d, want 1; contents = %q", count, got)
 	}
 	assertHookCommandsInsideMementoGuard(t, got)
+}
+
+func TestInitPreCommitHookRunsCurrentCLICompileDuringCommit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pre-commit hook is a POSIX shell script")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not found: %v", err)
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skipf("go not found: %v", err)
+	}
+
+	repo := t.TempDir()
+	runSetupGit(t, repo, "init")
+	binDir := t.TempDir()
+	buildSetupMementoBinary(t, binDir)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+	writeSetupFile(t, repo, "memory/note.md", "# Note\n\nAdded after init.\n")
+	runSetupGit(t, repo, "add", "AGENTS.md", ".gitignore", "memory")
+
+	cmd := exec.Command(
+		"git",
+		"-c", "user.name=Memento Test",
+		"-c", "user.email=memento@example.invalid",
+		"commit", "--no-gpg-sign", "-m", "exercise memento hook",
+	)
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git commit failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+
+	manifest := runSetupGit(t, repo, "show", "HEAD:memory/.memento/manifest.json")
+	if !strings.Contains(manifest, `"key": "note.md"`) {
+		t.Fatalf("committed manifest = %s, want note.md entry", manifest)
+	}
 }
 
 func TestPreCommitHookSoftSkipsWhenMementoIsAbsentFromPath(t *testing.T) {
@@ -732,7 +778,7 @@ func assertHookCommandsInsideMementoGuard(t *testing.T, got string) {
 	t.Helper()
 
 	start := strings.Index(got, "if command -v memento >/dev/null 2>&1; then")
-	compile := strings.Index(got, "memento compile --dir ")
+	compile := strings.Index(got, "\nmemento compile\n")
 	add := strings.Index(got, "git add -- ")
 	elseIdx := strings.Index(got, "\nelse\n")
 	fi := strings.Index(got, "\nfi\n")
@@ -743,6 +789,53 @@ func assertHookCommandsInsideMementoGuard(t *testing.T, got string) {
 	if !(start < compile && compile < add && add < elseIdx && elseIdx < fi) {
 		t.Fatalf("pre-commit hook = %q, want compile and git add inside if-branch", got)
 	}
+}
+
+func buildSetupMementoBinary(t *testing.T, binDir string) {
+	t.Helper()
+
+	repoRoot := setupRepoRoot(t)
+	binary := filepath.Join(binDir, "memento")
+	cmd := exec.Command("go", "build", "-o", binary, "./cmd/memento")
+	cmd.Dir = repoRoot
+	cmd.Env = append(os.Environ(), "GOCACHE="+t.TempDir())
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("build memento binary: %v\n%s", err, string(out))
+	}
+}
+
+func setupRepoRoot(t *testing.T) string {
+	t.Helper()
+
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat go.mod: %v", err)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("could not find repository root from %s", dir)
+		}
+		dir = parent
+	}
+}
+
+func runSetupGit(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+	return string(out)
 }
 
 func writeSetupFile(t *testing.T, root, relPath, content string) {

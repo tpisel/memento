@@ -338,13 +338,12 @@ func ensurePreCommitHook(repoRoot string, v vault.Vault) error {
 }
 
 func preCommitHookBlock(repoRoot string, v vault.Vault) string {
-	memoryPath := displayPath(repoRoot, v.Root)
 	manifestPath := displayPath(repoRoot, v.ManifestPath)
 
 	return strings.Join([]string{
 		hookStartSentinel,
 		"if command -v memento >/dev/null 2>&1; then",
-		"memento compile --dir " + shellQuote(memoryPath),
+		"memento compile",
 		"git add -- " + shellQuote(manifestPath),
 		"else",
 		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
