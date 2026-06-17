@@ -48,13 +48,13 @@ memento init
 
 # 2. Write a note. Stdin is the body; frontmatter is optional.
 echo "We rejected SQLite because the deploy target is read-only." \
-  | memento write decisions/storage-choice
+  | memento write decisions/storage-choice.md
 
 # 3. See what the agent will see at task start.
 memento brief
 
 # 4. Read a note (body to stdout; binding + links to stderr).
-memento read decisions/storage-choice
+memento read decisions/storage-choice.md
 ```
 
 `init` adds a `<!-- memento:start -->` block to `AGENTS.md`/`CLAUDE.md` (creating the file if absent) that tells the agent how to use `brief`/`read` at task start. It also writes a `.gitignore` stanza and installs a pre-commit hook that keeps `<vault>/.memento/manifest.json` in sync.
