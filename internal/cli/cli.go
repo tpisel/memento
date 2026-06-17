@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -305,7 +306,7 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		key = target
 	}
 	if err != nil {
-		printCLIError(stderr, "read", err)
+		printReadError(stderr, v, target, err)
 		return 1
 	}
 	readKey := key
@@ -350,6 +351,55 @@ func runRead(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func printReadError(stderr io.Writer, v vault.Vault, target string, err error) {
+	if errors.Is(err, note.ErrNotFound) && !strings.HasPrefix(target, "@") {
+		if suggestions := readNotFoundSuggestions(v, target); len(suggestions) > 0 {
+			token, hint := errorToken(err), errorHint(err)
+			fmt.Fprintf(stderr, "memento read: %s: %v — did you mean: %s?\n", token, err, strings.Join(suggestions, ", "))
+			if hint != "" {
+				fmt.Fprintln(stderr, hint)
+			}
+			return
+		}
+	}
+	printCLIError(stderr, "read", err)
+}
+
+func readNotFoundSuggestions(v vault.Vault, target string) []string {
+	requestedKey, _, _ := strings.Cut(target, "#")
+	m, err := readManifest(v)
+	if err != nil {
+		return nil
+	}
+
+	suggestions := []string{}
+	seen := map[string]bool{}
+	for _, numbered := range brief.NumberedEntries(m) {
+		key := numbered.Entry.Key
+		if seen[key] || !entryKeyMatchesReadSuggestion(key, requestedKey) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(v.Root, filepath.FromSlash(key))); err != nil {
+			continue
+		}
+		seen[key] = true
+		suggestions = append(suggestions, fmt.Sprintf("%s (@%d)", key, numbered.Number))
+		if len(suggestions) == 3 {
+			break
+		}
+	}
+	return suggestions
+}
+
+func entryKeyMatchesReadSuggestion(entryKey, requestedKey string) bool {
+	base := path.Base(entryKey)
+	stem := strings.TrimSuffix(base, ".md")
+	return base == requestedKey ||
+		stem == requestedKey ||
+		strings.EqualFold(base, requestedKey) ||
+		strings.EqualFold(stem, requestedKey)
 }
 
 func manifestForReadLinks(v vault.Vault, target string, numberedManifest manifest.Manifest) (manifest.Manifest, bool, error) {

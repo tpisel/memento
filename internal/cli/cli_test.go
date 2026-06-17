@@ -1348,6 +1348,112 @@ func TestReadFailsClearlyForMissingOrIgnoredKey(t *testing.T) {
 	}
 }
 
+func TestReadSuggestsNearMatchesForMissingKey(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "learnings/google-search-grounding.md", "# Google Search Grounding\n\nBody.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "google-search-grounding"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(read missing basename) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(read missing basename) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "read", "key-not-found")
+	want := "did you mean: learnings/google-search-grounding.md (@1)?"
+	if !strings.Contains(stderr.String(), want) {
+		t.Fatalf("Run(read missing basename) stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+func TestReadSuggestsUpToThreeCaseInsensitiveNearMatches(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "a/Google-Search-Grounding.md", "# A\n")
+	writeCLIFile(t, root, "b/google-search-grounding.md", "# B\n")
+	writeCLIFile(t, root, "c/GOOGLE-SEARCH-GROUNDING.md", "# C\n")
+	writeCLIFile(t, root, "d/google-search-grounding.md", "# D\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "google-search-grounding"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(read missing basename) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(read missing basename) stdout = %q, want empty", stdout.String())
+	}
+	want := "did you mean: a/Google-Search-Grounding.md (@1), b/google-search-grounding.md (@2), c/GOOGLE-SEARCH-GROUNDING.md (@3)?"
+	if !strings.Contains(stderr.String(), want) {
+		t.Fatalf("Run(read missing basename) stderr = %q, want %q", stderr.String(), want)
+	}
+	if strings.Contains(stderr.String(), "d/google-search-grounding.md") {
+		t.Fatalf("Run(read missing basename) stderr = %q, want at most three suggestions", stderr.String())
+	}
+}
+
+func TestReadMissingKeyKeepsTerseErrorWithoutSuggestion(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "other.md", "# Other\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "missing"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(read missing) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(read missing) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "read", "key-not-found")
+	if strings.Contains(stderr.String(), "did you mean") {
+		t.Fatalf("Run(read missing) stderr = %q, want no suggestion", stderr.String())
+	}
+}
+
+func TestReadMissingKeyIgnoresStaleManifestSuggestion(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "learnings/google-search-grounding.md", "# Google Search Grounding\n\nBody.\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+	if err := os.Remove(filepath.Join(root, "learnings", "google-search-grounding.md")); err != nil {
+		t.Fatalf("remove stale manifest target: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"read", "google-search-grounding"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(read stale basename) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(read stale basename) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "read", "key-not-found")
+	if strings.Contains(stderr.String(), "did you mean") {
+		t.Fatalf("Run(read stale basename) stderr = %q, want no suggestion", stderr.String())
+	}
+}
+
 func TestReadRejectsTraversalKey(t *testing.T) {
 	makeCLIVault(t)
 
