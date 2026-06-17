@@ -343,8 +343,12 @@ func preCommitHookBlock(repoRoot string, v vault.Vault) string {
 
 	return strings.Join([]string{
 		hookStartSentinel,
+		"if command -v memento >/dev/null 2>&1; then",
 		"memento compile --dir " + shellQuote(memoryPath),
 		"git add -- " + shellQuote(manifestPath),
+		"else",
+		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
+		"fi",
 		hookEndSentinel,
 	}, "\n")
 }

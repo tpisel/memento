@@ -1,7 +1,9 @@
 package setup
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -618,14 +620,19 @@ func TestInitCreatesPreCommitHookWhenAbsent(t *testing.T) {
 	}
 	for _, want := range []string{
 		"# memento:start",
+		"if command -v memento >/dev/null 2>&1; then",
 		`memento compile --dir 'memory'`,
 		`git add -- 'memory/.memento/manifest.json'`,
+		"else",
+		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
+		"fi",
 		"# memento:end",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("pre-commit hook = %q, want it to contain %q", got, want)
 		}
 	}
+	assertHookCommandsInsideMementoGuard(t, got)
 
 	info, err := os.Stat(filepath.Join(repo, ".git/hooks/pre-commit"))
 	if err != nil {
@@ -657,6 +664,7 @@ func TestInitAppendsMementoBlockToExistingPreCommitHook(t *testing.T) {
 	if !strings.Contains(got, `git add -- 'memory/.memento/manifest.json'`) {
 		t.Fatalf("pre-commit hook = %q, want manifest staging command", got)
 	}
+	assertHookCommandsInsideMementoGuard(t, got)
 }
 
 func TestInitReplacesExistingMementoBlockInPreCommitHook(t *testing.T) {
@@ -671,8 +679,12 @@ func TestInitReplacesExistingMementoBlockInPreCommitHook(t *testing.T) {
 	for _, want := range []string{
 		"#!/bin/sh\nset -eu\n\n",
 		"\n\necho keep\n",
+		"if command -v memento >/dev/null 2>&1; then",
 		`memento compile --dir 'project-memory'`,
 		`git add -- 'project-memory/.memento/manifest.json'`,
+		"else",
+		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
+		"fi",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("pre-commit hook = %q, want it to contain %q", got, want)
@@ -683,6 +695,53 @@ func TestInitReplacesExistingMementoBlockInPreCommitHook(t *testing.T) {
 	}
 	if count := strings.Count(got, "# memento:start"); count != 1 {
 		t.Fatalf("pre-commit start sentinel count = %d, want 1; contents = %q", count, got)
+	}
+	assertHookCommandsInsideMementoGuard(t, got)
+}
+
+func TestPreCommitHookSoftSkipsWhenMementoIsAbsentFromPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pre-commit hook is a POSIX shell script")
+	}
+
+	repo := t.TempDir()
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	cmd := exec.Command("/bin/sh", filepath.Join(repo, ".git/hooks/pre-commit"))
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "PATH="+t.TempDir())
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run pre-commit hook: %v", err)
+	}
+	if stdout.String() != "" {
+		t.Fatalf("pre-commit stdout = %q, want empty", stdout.String())
+	}
+	wantStderr := "warn: memento not on PATH; skipping vault compile\n"
+	if stderr.String() != wantStderr {
+		t.Fatalf("pre-commit stderr = %q, want %q", stderr.String(), wantStderr)
+	}
+}
+
+func assertHookCommandsInsideMementoGuard(t *testing.T, got string) {
+	t.Helper()
+
+	start := strings.Index(got, "if command -v memento >/dev/null 2>&1; then")
+	compile := strings.Index(got, "memento compile --dir ")
+	add := strings.Index(got, "git add -- ")
+	elseIdx := strings.Index(got, "\nelse\n")
+	fi := strings.Index(got, "\nfi\n")
+
+	if start == -1 || compile == -1 || add == -1 || elseIdx == -1 || fi == -1 {
+		t.Fatalf("pre-commit hook = %q, want guarded compile/add block", got)
+	}
+	if !(start < compile && compile < add && add < elseIdx && elseIdx < fi) {
+		t.Fatalf("pre-commit hook = %q, want compile and git add inside if-branch", got)
 	}
 }
 
