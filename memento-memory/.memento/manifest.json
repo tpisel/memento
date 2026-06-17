@@ -876,6 +876,10 @@
           {
             "source": "Architecture decision record/adr-0022-auto-compile-after-write.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+            "type": "wiki"
           }
         ]
       }
@@ -952,7 +956,12 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -1120,7 +1129,12 @@
             "resolved": false
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -1180,6 +1194,127 @@
           },
           {
             "target": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+      "title": "Summary staleness lives in the ledger, not in frontmatter",
+      "summary": "Per-doc summary-staleness state moves from frontmatter `summary_hash` into the canonical machine ledger (`.memento/manifest.json`). Each entry gains two carried hashes (`body_sha`, `summary_sha`); compile derives a three-state flag (`current`, `stale`, `missing`) deterministically from them. Brief renders staleness markers inline plus a footer count; `read` stderr emits the state alongside `binding:` and the link surface. No new verbs, flags, or explicit-ack actions are introduced — refresh falls out of natural edits via the two-hash rule.",
+      "bytes": 11209,
+      "lines": 125,
+      "tags": [
+        "compile",
+        "frontmatter",
+        "manifest",
+        "memento",
+        "staleness",
+        "summary"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 3,
+          "text": "Ledger entry shape",
+          "slug": "ledger-entry-shape"
+        },
+        {
+          "level": 3,
+          "text": "Three-state model",
+          "slug": "three-state-model"
+        },
+        {
+          "level": 3,
+          "text": "Refresh rule",
+          "slug": "refresh-rule"
+        },
+        {
+          "level": 3,
+          "text": "Compile-time derivation and cost",
+          "slug": "compile-time-derivation-and-cost"
+        },
+        {
+          "level": 3,
+          "text": "Surfacing",
+          "slug": "surfacing"
+        },
+        {
+          "level": 3,
+          "text": "Migration",
+          "slug": "migration"
+        },
+        {
+          "level": 3,
+          "text": "Unratified files",
+          "slug": "unratified-files"
+        },
+        {
+          "level": 3,
+          "text": "Renames and deletion",
+          "slug": "renames-and-deletion"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        },
+        {
+          "level": 2,
+          "text": "Amends (partial)",
+          "slug": "amends-partial"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0018-okf-compatible-frontmatter.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0021-read-time-link-surface.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0022-auto-compile-after-write.md",
             "type": "wiki",
             "resolved": true
           }
@@ -1701,8 +1836,8 @@
       "key": "agent-human review boundaries.md",
       "title": "Agent / human review boundaries",
       "summary": "A philosophical sketch and tentative proposal — the beads/memento substrate boundary may be the surface of a deeper axis distinguishing who *authors* and who *reviews* at each layer of work. Names a review-granularity ladder (invariants → epics → atoms) and a possible bead-epic ↔ memento-note coupling. Deliberately unresolved — recorded so future design work can return with usage evidence.",
-      "bytes": 7067,
-      "lines": 75,
+      "bytes": 12589,
+      "lines": 120,
       "tags": [
         "agents",
         "beads",
@@ -1747,9 +1882,131 @@
           "level": 2,
           "text": "Provenance",
           "slug": "provenance"
+        },
+        {
+          "level": 2,
+          "text": "Addendum 2026-06-17 — bead-pending-human as the first surfaceable signal",
+          "slug": "addendum-2026-06-17-bead-pending-human-as-the-first-surfaceable-signal"
+        },
+        {
+          "level": 3,
+          "text": "Shapes considered, none built",
+          "slug": "shapes-considered-none-built"
+        },
+        {
+          "level": 3,
+          "text": "Crystallisation: \"templates as opinionated overlay\" as a posture",
+          "slug": "crystallisation-templates-as-opinionated-overlay-as-a-posture"
+        },
+        {
+          "level": 3,
+          "text": "Link to the general review-queue question",
+          "slug": "link-to-the-general-review-queue-question"
+        },
+        {
+          "level": 3,
+          "text": "Status of the open thread",
+          "slug": "status-of-the-open-thread"
         }
       ],
       "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "summary_stale": true,
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "conditional-information-access.md",
+      "title": "The two axes of conditional information access",
+      "summary": "Conditional access decomposes into two typing axes — constative/performative (what the information is) and epistemic/deontic (how access is governed) — laid over the spec's access-pattern substrates. An exploration of what follows, not a feature plan.",
+      "bytes": 10580,
+      "lines": 73,
+      "tags": [
+        "design-philosophy",
+        "information-access",
+        "theory"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The substrate axis is routing, not typing",
+          "slug": "the-substrate-axis-is-routing-not-typing"
+        },
+        {
+          "level": 2,
+          "text": "Two typing axes",
+          "slug": "two-typing-axes"
+        },
+        {
+          "level": 3,
+          "text": "Constative vs performative — what the information is",
+          "slug": "constative-vs-performative-what-the-information-is"
+        },
+        {
+          "level": 3,
+          "text": "Epistemic vs deontic — how access is governed",
+          "slug": "epistemic-vs-deontic-how-access-is-governed"
+        },
+        {
+          "level": 3,
+          "text": "Why they are independent",
+          "slug": "why-they-are-independent"
+        },
+        {
+          "level": 2,
+          "text": "The four quadrants",
+          "slug": "the-four-quadrants"
+        },
+        {
+          "level": 2,
+          "text": "Natural consequences",
+          "slug": "natural-consequences"
+        },
+        {
+          "level": 3,
+          "text": "Conditioning has a direction of safety",
+          "slug": "conditioning-has-a-direction-of-safety"
+        },
+        {
+          "level": 3,
+          "text": "Existence must outrank content",
+          "slug": "existence-must-outrank-content"
+        },
+        {
+          "level": 3,
+          "text": "Performative content carries an addressee; constative does not",
+          "slug": "performative-content-carries-an-addressee-constative-does-not"
+        },
+        {
+          "level": 3,
+          "text": "Enforcement co-locates with whoever owns the boundary",
+          "slug": "enforcement-co-locates-with-whoever-owns-the-boundary"
+        },
+        {
+          "level": 3,
+          "text": "Read and write are deontic duals",
+          "slug": "read-and-write-are-deontic-duals"
+        },
+        {
+          "level": 3,
+          "text": "Conditional access concentrates trust in the projector",
+          "slug": "conditional-access-concentrates-trust-in-the-projector"
+        },
+        {
+          "level": 2,
+          "text": "Where this leaves role and task",
+          "slug": "where-this-leaves-role-and-task"
+        },
+        {
+          "level": 2,
+          "text": "Caveats on the vocabulary",
+          "slug": "caveats-on-the-vocabulary"
+        }
+      ],
+      "mode": "living",
       "orient": false,
       "updated": "",
       "summary_stale": true,
@@ -2020,25 +2277,27 @@
     "bootloader": 1,
     "brief": 3,
     "cli": 1,
-    "compile": 4,
+    "compile": 5,
     "config": 1,
     "configuration": 1,
     "convention": 1,
+    "design-philosophy": 1,
     "distribution": 1,
     "draft": 1,
     "format": 1,
-    "frontmatter": 2,
+    "frontmatter": 3,
     "git": 1,
     "ignore": 1,
+    "information-access": 1,
     "init": 4,
     "interop": 2,
     "lifecycle": 2,
     "links": 1,
     "maintenance": 1,
-    "manifest": 5,
+    "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 26,
+    "memento": 27,
     "mode": 2,
     "namespace": 2,
     "obsidian": 3,
@@ -2054,8 +2313,11 @@
     "roadmap": 1,
     "schema": 2,
     "scope": 1,
+    "staleness": 1,
     "summaries": 1,
+    "summary": 1,
     "symlink": 1,
+    "theory": 1,
     "unicode": 1,
     "vault": 3,
     "write": 6,

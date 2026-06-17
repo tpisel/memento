@@ -73,3 +73,48 @@ So this note exists to record the thought, not act on it. Future ADRs may return
 ## Provenance
 
 Originated in a conversation on 2026-06-13 about whether the `_memento/` namespace might eventually need to demarcate not just "tool-relevant" but "agent-concern vs human-review-surface." The author noted that the spec is agnostic on this; this note records the agnosticism explicitly rather than letting it drift unspoken.
+
+## Addendum 2026-06-17 — bead-pending-human as the first surfaceable signal
+
+A design pass reviewing in-situ agent feedback returned to one face of the unresolved question above: when a bead is explicitly assigned to a human (epic review, API-key provisioning, design call, anything an agent cannot complete), what surfaces it to the human in a way that respects their existing reading habits?
+
+The motivating chain is sharper than the original note framed:
+
+1. The beads-vs-Obsidian split already demarcates an *informational-audience* boundary — beads holds machine-graph state, Obsidian is the human's reading surface. The substrate boundary is not just task-vs-knowledge; it is also CLI-shaped vs document-shaped, and humans live mostly on the document side.
+2. `bead assigned to human` is a genuinely good flow at the DAG level — it represents the handoff explicitly, blocks the right dependents, and shows up in `bd ready` for whoever the next agent is.
+3. But `bd list` / `bd show` is *not* a good interface for the human side of that handoff. Humans don't reach for the CLI to discover their queue; they open Obsidian.
+4. Therefore: the natural surface for "what a human is blocking on" is the vault itself, projected as Obsidian-renderable content (`- [ ]` task syntax being the obvious carrier).
+
+This directly answers the original note's *"A human-facing parallel to the brief"* thread, but tentatively and from the opposite direction: there is not a memento-shaped human digest verb; there is a *projection* of beads state into Obsidian's native browse surface, which Obsidian already renders well via its Tasks ecosystem.
+
+### Shapes considered, none built
+
+Four candidate shapes were weighed:
+
+1. **Memento emits the projection** — a `memento sync-beads` verb (or compile-time integration) reads bead state and writes a `_memento/human-pending.md` (or similar) file. Cost: memento gains a hard-coded dependency on beads' assignee semantics.
+2. **Beads emits the projection** — beads gains a `--vault-mirror` config that writes into the memento vault on bead state change. Cost: beads gains vault-write capability and memento-layout awareness.
+3. **Convention only** — no tooling; document that assigning agents should also write a `- [ ]` line referencing the bead key, by hand. Cost: discipline-shaped, fragile.
+4. **Template scaffolding** — init optionally scaffolds a `_memento/human-pending.md` stub; user wires up sync themselves (bd hook, script, cron) if they want it automated. Cost: low; punts the integration shape to whoever has the use case.
+
+None warranted a build now. The use case is real but unforced (no missed-handoff incident has yet cost time), and per-shape coupling cost is non-trivial — locking in either direction's dependency before the shape is pressured by usage is the failure mode spec §14 warns against.
+
+### Crystallisation: "templates as opinionated overlay" as a posture
+
+The most useful thing this pass produced isn't a decision about beads-mirror; it's a clearer articulation of *how* memento can hold two seemingly contradictory commitments at once:
+
+- **Core memento stays minimal and dependency-free.** Works without beads, without Obsidian, without any specific workflow opinion. This is load-bearing for adoption — ADR-0007's "integrated not merged" posture rests on it.
+- **Templates scaffolded at init can be opinionated and dependent.** A template that wires up bead-mirror, a template that establishes a per-epic narrative convention, a template that pre-stamps a review-queue overlay — these are *opt-in opinionatedness* that doesn't compromise the core.
+
+The boundary lets memento be principled (core) and opinionated (templates) without either contaminating the other. ADR-0010 already established `_memento/writing.md` as a project-curated overlay surface; the bead-mirror question is one face of a more general "what other overlay roles want to exist?" question that templates can answer without ADR-by-ADR ceremony.
+
+This framing reshapes the bead-mirror question itself: it isn't "should memento integrate with beads?" (answer: no, that would violate core minimality), it is "should a template ship that wires up the integration, and what shape does the template take?" That's a much smaller, more deferrable question, and one that can be answered by whichever user first hits the missed-handoff incident.
+
+### Link to the general review-queue question
+
+Bead-pending-human is one signal of "humans should look at this." ADR-0023 (summary staleness) just introduced a second: `stale` and `missing` summaries are also "humans should look at this" signals, surfaced in brief and read stderr. A third lives nearby — agent-flagged-uncertain ("I wrote this but I'm not sure about it") — though it has no surface yet.
+
+When 2-3 distinct signal sources exist, the general shape becomes worth attacking: a unified review-queue posture that subsumes them, possibly the home for the v4 `review` verb (ADR-0006). The bead-mirror question is one input to that future shape; building the narrow mirror now would foreclose the general answer. Wait.
+
+### Status of the open thread
+
+The "human-facing parallel to the brief" thread in the original *Threads worth following* section is now half-answered: yes, there is one; no, it is not a memento verb; it lives in Obsidian's native task surface, populated by a projection mechanism that may or may not eventually be ours to ship. Append further evolutions of this thread below as evidence accrues.
