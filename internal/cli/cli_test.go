@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tpisel/memento/internal/brief"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/note"
 	"github.com/tpisel/memento/internal/orient"
@@ -521,7 +522,7 @@ func TestOrientPrintsBaselineOnlyWhenNoDocsAreTagged(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("Run(orient) stderr = %q, want empty", stderr.String())
 	}
-	if got, want := stdout.String(), renderedBaselineWithoutWritingGuide(); got != want {
+	if got, want := stdout.String(), renderedBaselineWithoutWritingGuide(t, root); got != want {
 		t.Fatalf("Run(orient) stdout =\n%s\nwant baseline:\n%s", got, want)
 	}
 }
@@ -597,14 +598,35 @@ func TestOrientAppendsSingleTaggedDocAfterBaseline(t *testing.T) {
 		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
 
-	want := strings.TrimRight(renderedBaselineWithoutWritingGuide(), "\n") + "\n---\n\n" + strings.TrimRight(overlay, "\n") + "\n"
+	want := strings.TrimRight(renderedBaselineWithoutWritingGuide(t, root), "\n") + "\n---\n\n" + strings.TrimRight(overlay, "\n") + "\n"
 	if stdout.String() != want {
 		t.Fatalf("Run(orient) stdout =\n%s\nwant:\n%s", stdout.String(), want)
 	}
 }
 
-func renderedBaselineWithoutWritingGuide() string {
-	return strings.Replace(string(orient.Baseline()), "<!-- memento:triggered-preconditions -->", "None yet.", 1)
+func renderedBaselineWithoutWritingGuide(t *testing.T, root string) string {
+	t.Helper()
+	v := vault.Vault{
+		Root:         root,
+		MarkerDir:    filepath.Join(root, vault.MarkerDirName),
+		ManifestPath: filepath.Join(root, vault.MarkerDirName, vault.ManifestFileName),
+	}
+	m, err := manifest.Load(v)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+
+	out := strings.Replace(string(orient.Baseline()), "<!-- memento:triggered-preconditions -->", "None yet.", 1)
+	disclosure := "Running `memento brief` will report no notes yet."
+	if len(m.Entries) > 0 {
+		lines := bytes.Count(brief.Render(m), []byte("\n"))
+		noun := "notes"
+		if len(m.Entries) == 1 {
+			noun = "note"
+		}
+		disclosure = fmt.Sprintf("Running `memento brief` will print summaries of %d %s (~%d lines); by design it is compact and the highest-density way to learn what's in this vault.", len(m.Entries), noun, lines)
+	}
+	return strings.Replace(out, "<!-- memento:brief-disclosure -->", disclosure, 1)
 }
 
 func TestOrientSortsMultipleTaggedDocsByManifestKey(t *testing.T) {

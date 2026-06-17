@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/tpisel/memento/internal/brief"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/vault"
 )
@@ -18,6 +19,7 @@ var baselineFS embed.FS
 
 const overlaySeparator = "\n---\n\n"
 const triggeredPreconditionsMarker = "<!-- memento:triggered-preconditions -->"
+const briefDisclosureMarker = "<!-- memento:brief-disclosure -->"
 
 // Baseline returns the binary-shipped orientation baseline verbatim.
 func Baseline() []byte {
@@ -31,7 +33,7 @@ func Baseline() []byte {
 // Render composes the baseline with manifest-selected orient overlay docs.
 func Render(v vault.Vault, m manifest.Manifest) ([]byte, error) {
 	entries := orientEntries(m)
-	out, err := baselineForVault(v)
+	out, err := baselineForVault(v, m)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +59,7 @@ func Render(v vault.Vault, m manifest.Manifest) ([]byte, error) {
 	return out, nil
 }
 
-func baselineForVault(v vault.Vault) ([]byte, error) {
+func baselineForVault(v vault.Vault, m manifest.Manifest) ([]byte, error) {
 	out := append([]byte(nil), Baseline()...)
 	hasWritingGuide, err := hasWritingGuide(v)
 	if err != nil {
@@ -69,11 +71,51 @@ func baselineForVault(v vault.Vault) ([]byte, error) {
 		replacement = "- `memento write`: before authoring, run `memento read _memento/writing.md`."
 	}
 
-	marker := []byte(triggeredPreconditionsMarker)
-	if bytes.Count(out, marker) != 1 {
-		return nil, fmt.Errorf("orient baseline must contain exactly one triggered preconditions marker")
+	replacements := map[string]string{
+		triggeredPreconditionsMarker: replacement,
+		briefDisclosureMarker:        briefDisclosure(m),
 	}
-	return bytes.Replace(out, marker, []byte(replacement), 1), nil
+	for marker, replacement := range replacements {
+		markerBytes := []byte(marker)
+		if bytes.Count(out, markerBytes) != 1 {
+			return nil, fmt.Errorf("orient baseline must contain exactly one %s marker", markerName(marker))
+		}
+		out = bytes.Replace(out, markerBytes, []byte(replacement), 1)
+	}
+	return out, nil
+}
+
+func briefDisclosure(m manifest.Manifest) string {
+	count := len(m.Entries)
+	if count == 0 {
+		return "Running `memento brief` will report no notes yet."
+	}
+
+	lines := bytes.Count(brief.Render(m), []byte("\n"))
+	return fmt.Sprintf(
+		"Running `memento brief` will print summaries of %d %s (~%d lines); by design it is compact and the highest-density way to learn what's in this vault.",
+		count,
+		plural(count, "note", "notes"),
+		lines,
+	)
+}
+
+func markerName(marker string) string {
+	switch marker {
+	case triggeredPreconditionsMarker:
+		return "triggered preconditions"
+	case briefDisclosureMarker:
+		return "brief disclosure"
+	default:
+		return marker
+	}
+}
+
+func plural(n int, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
 }
 
 func hasWritingGuide(v vault.Vault) (bool, error) {
