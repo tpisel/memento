@@ -237,7 +237,12 @@
       "summary_state": "current",
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Note states.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -407,8 +412,8 @@
       "key": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
       "title": "Tool-read writing guide — _memento/writing.md, prose schema, orient-driven read",
       "summary": "Pin `_memento/writing.md` as the project-curated, prose-shaped writing guide for agents. It is optional; when present, `memento orient`'s description of `memento write` includes the precondition 'read _memento/writing.md before authoring'. The tool does not validate prose content, does not reinforce the instruction at write-time, and does not detect 'read this session' (stateless across invocations). Greenfield init scaffolds a minimal writing.md; adoption never clobbers.",
-      "bytes": 11275,
-      "lines": 103,
+      "bytes": 14836,
+      "lines": 129,
       "tags": [
         "convention",
         "memento",
@@ -460,6 +465,11 @@
           "level": 2,
           "text": "Related",
           "slug": "related"
+        },
+        {
+          "level": 2,
+          "text": "Addendum 2026-06-17 — Tool-read file pattern (verb-paired prose conventions)",
+          "slug": "addendum-2026-06-17-tool-read-file-pattern-verb-paired-prose-conventions"
         }
       ],
       "mode": "read-only",
@@ -467,7 +477,7 @@
       "updated": "",
       "body_sha": "ab0f21078190c5e7f22b34058bff2934f5b58c78dbca11c9f25a2bd115becf18",
       "summary_sha": "aca5c90be7d63501287c0d81956fcdac27852a548032a375e7f5fa09cfb2f4fa",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
@@ -491,7 +501,12 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0024-bootloader-contents.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -667,6 +682,10 @@
           {
             "source": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0024-bootloader-contents.md",
+            "type": "wiki"
           }
         ]
       }
@@ -732,7 +751,12 @@
       "summary_state": "current",
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Note states.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -784,6 +808,10 @@
         "in": [
           {
             "source": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Note states.md",
             "type": "wiki"
           }
         ]
@@ -913,6 +941,10 @@
           },
           {
             "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Note states.md",
             "type": "wiki"
           }
         ]
@@ -1175,6 +1207,14 @@
           {
             "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0024-bootloader-contents.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Note states.md",
+            "type": "wiki"
           }
         ]
       }
@@ -1365,6 +1405,117 @@
             "resolved": true
           }
         ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0024-bootloader-contents.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Note states.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0024-bootloader-contents.md",
+      "title": "Bootloader contents — what the AGENTS.md sentinel block must convey",
+      "summary": "ADR-0013 pinned the bootloader *mechanism* — a sentinel-bounded block in AGENTS.md/CLAUDE.md, written at init, otherwise inert. This ADR pins the bootloader's *contents*: the four convey-points every realisation of the block must carry — substrate identity, entry sequence (orient before brief), read primitive (read for keys/sections, not grep/cat), and the discoveries-outlive-task-into-memento boundary warning. Exact wording is implementation; the four convey-points are the contract.",
+      "bytes": 10692,
+      "lines": 118,
+      "tags": [
+        "agents",
+        "bootloader",
+        "conventions",
+        "memento",
+        "orient"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 3,
+          "text": "Convey-point 1: substrate identity",
+          "slug": "convey-point-1-substrate-identity"
+        },
+        {
+          "level": 3,
+          "text": "Convey-point 2: entry sequence",
+          "slug": "convey-point-2-entry-sequence"
+        },
+        {
+          "level": 3,
+          "text": "Convey-point 3: read primitive",
+          "slug": "convey-point-3-read-primitive"
+        },
+        {
+          "level": 3,
+          "text": "Convey-point 4: boundary warning",
+          "slug": "convey-point-4-boundary-warning"
+        },
+        {
+          "level": 3,
+          "text": "What the block must not contain",
+          "slug": "what-the-block-must-not-contain"
+        },
+        {
+          "level": 3,
+          "text": "Realisation and tuning",
+          "slug": "realisation-and-tuning"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions",
+          "slug": "open-questions"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "c82666a73e3baf099ee95dd4f07a056c14d5f6a0a67627abfc87031b367ea39c",
+      "summary_sha": "c45fbe64c6ab62312d18c13dec322fc49562a9fd456df85a603d61c808e35642",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0013-orient-verb-and-minimal-bootloader.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0021-read-time-link-surface.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
       }
     },
@@ -1498,6 +1649,121 @@
             "target": "spec @ 1",
             "type": "wiki",
             "resolved": false
+          },
+          {
+            "target": "spec.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
+      "key": "Note states.md",
+      "title": "Note states",
+      "summary": "The four-dimensional state space every memento note inhabits — exists × ratified × declared_mode × summary_state — with the cells named, the legal-vs-degenerate distinctions called out, and the projections used by write enforcement, staleness signalling, and the future review verb. Reference for review/staleness/write design conversations.",
+      "bytes": 9760,
+      "lines": 132,
+      "tags": [
+        "conventions",
+        "frontmatter",
+        "memento",
+        "mode",
+        "review",
+        "staleness",
+        "states",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The four axes",
+          "slug": "the-four-axes"
+        },
+        {
+          "level": 2,
+          "text": "Degenerate cells",
+          "slug": "degenerate-cells"
+        },
+        {
+          "level": 2,
+          "text": "Projections by consumer",
+          "slug": "projections-by-consumer"
+        },
+        {
+          "level": 3,
+          "text": "Write enforcement (per-call gate)",
+          "slug": "write-enforcement-per-call-gate"
+        },
+        {
+          "level": 3,
+          "text": "Brief render",
+          "slug": "brief-render"
+        },
+        {
+          "level": 3,
+          "text": "Read stderr",
+          "slug": "read-stderr"
+        },
+        {
+          "level": 3,
+          "text": "Review verb worklist (v4, prospective)",
+          "slug": "review-verb-worklist-v4-prospective"
+        },
+        {
+          "level": 2,
+          "text": "Adjacent dimensions, deliberately excluded",
+          "slug": "adjacent-dimensions-deliberately-excluded"
+        },
+        {
+          "level": 2,
+          "text": "Open seams",
+          "slug": "open-seams"
+        },
+        {
+          "level": 2,
+          "text": "How to use this note",
+          "slug": "how-to-use-this-note"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "b21edaf7ea9ebe208a0226154b6c5a89b21309f1be7f8a4c32d6c4f01b1f97f7",
+      "summary_sha": "d0fa66d98eb5ef9117a3e535ed8d37a03598a4761e7e4958f349e68522eebeee",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0006-review-verb-and-agent-assisted-maintenance.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0014-canonical-frontmatter-vocabulary.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0015-write-mode-taxonomy.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0021-read-time-link-surface.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+            "type": "wiki",
+            "resolved": true
           },
           {
             "target": "spec.md",
@@ -2083,8 +2349,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 42135,
-      "lines": 414,
+      "bytes": 44949,
+      "lines": 413,
       "tags": [],
       "headings": [
         {
@@ -2174,8 +2440,8 @@
         },
         {
           "level": 3,
-          "text": "Read stderr contract (v2, ADR-0021)",
-          "slug": "read-stderr-contract-v2-adr-0021"
+          "text": "Read stderr contract (v2, ADR-0021 + ADR-0023)",
+          "slug": "read-stderr-contract-v2-adr-0021-adr-0023"
         },
         {
           "level": 3,
@@ -2216,34 +2482,14 @@
           "level": 2,
           "text": "Dogfooding note",
           "slug": "dogfooding-note"
-        },
-        {
-          "level": 2,
-          "text": "Addendum 2026-06-14: vault-rename-safe gitignore block",
-          "slug": "addendum-2026-06-14-vault-rename-safe-gitignore-block"
-        },
-        {
-          "level": 3,
-          "text": "Addendum 2026-06-17: write success path echo",
-          "slug": "addendum-2026-06-17-write-success-path-echo"
-        },
-        {
-          "level": 3,
-          "text": "Addendum 2026-06-17: pre-commit hook compile command",
-          "slug": "addendum-2026-06-17-pre-commit-hook-compile-command"
-        },
-        {
-          "level": 3,
-          "text": "Addendum 2026-06-17: brief render polish",
-          "slug": "addendum-2026-06-17-brief-render-polish"
         }
       ],
-      "mode": "append-only",
+      "mode": "living",
       "orient": false,
-      "updated": "2026-06-15T00:00:00Z",
+      "updated": "2026-06-17T00:00:00Z",
       "body_sha": "e457cd21c291bff480f5c757014c21c5d22d29dd65b7f97074f5829152a03e88",
       "summary_sha": "7030caf3d5a3a521bf2f019c01c7974ab29addce19188ac80f263b44476bac60",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
@@ -2294,6 +2540,10 @@
           },
           {
             "source": "Incremental disclosure and ergonomics.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Note states.md",
             "type": "wiki"
           }
         ]
@@ -2355,20 +2605,21 @@
     }
   ],
   "tags": {
-    "agents": 7,
+    "agents": 8,
     "beads": 2,
-    "bootloader": 1,
+    "bootloader": 2,
     "brief": 3,
     "cli": 1,
     "compile": 5,
     "config": 1,
     "configuration": 1,
     "convention": 1,
+    "conventions": 2,
     "design-philosophy": 1,
     "distribution": 1,
     "draft": 1,
     "format": 1,
-    "frontmatter": 3,
+    "frontmatter": 4,
     "git": 1,
     "ignore": 1,
     "information-access": 1,
@@ -2380,30 +2631,31 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 27,
-    "mode": 2,
+    "memento": 29,
+    "mode": 3,
     "namespace": 2,
     "obsidian": 3,
     "okf": 3,
     "open-question": 3,
-    "orient": 2,
+    "orient": 3,
     "philosophy": 1,
     "portability": 1,
     "proposal": 3,
     "read": 4,
     "retrieval": 1,
-    "review": 3,
+    "review": 4,
     "roadmap": 1,
     "schema": 2,
     "scope": 1,
-    "staleness": 1,
+    "staleness": 2,
+    "states": 1,
     "summaries": 1,
     "summary": 1,
     "symlink": 1,
     "theory": 1,
     "unicode": 1,
     "vault": 3,
-    "write": 6,
+    "write": 7,
     "writing": 1
   }
 }
