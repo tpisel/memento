@@ -64,14 +64,13 @@ const (
 )
 
 type frontmatter struct {
-	title               string
-	summary             string
-	description         string
-	tags                []string
-	mode                WriteMode
-	orient              bool
-	updated             time.Time
-	legacySummaryDigest string
+	title       string
+	summary     string
+	description string
+	tags        []string
+	mode        WriteMode
+	orient      bool
+	updated     time.Time
 }
 
 const frontmatterFenceLookaheadLines = 64
@@ -308,8 +307,6 @@ func applyFrontmatterField(fm *frontmatter, key, value string) error {
 			return err
 		}
 		fm.updated = updated
-	case "summary_hash":
-		fm.legacySummaryDigest = cleanScalar(value)
 	case "type", "resource", "timestamp", "okf_version":
 		// OKF convention fields are accepted and ignored by design.
 	default:
