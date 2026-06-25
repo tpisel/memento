@@ -2010,6 +2010,38 @@ func TestWriteRejectsVaultPrefixedKeyWithInvalidKeyToken(t *testing.T) {
 	}
 }
 
+func TestWriteRejectsDifferentlyCasedVaultPrefixedKeyWithInvalidKeyToken(t *testing.T) {
+	repo := t.TempDir()
+	root := filepath.Join(repo, "agents-memory")
+	if err := os.MkdirAll(filepath.Join(root, vault.MarkerDirName), 0o755); err != nil {
+		t.Fatalf("mkdir vault marker: %v", err)
+	}
+	chdirCLI(t, repo)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "AGENTS-MEMORY/learnings/x.md"},
+		strings.NewReader("# Learning\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write vault-prefixed) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write vault-prefixed) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write", "invalid-key")
+	for _, want := range []string{"key is vault-relative, not repo-relative", `did you mean "learnings/x.md"?`} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("Run(write vault-prefixed) stderr = %q, want %q", stderr.String(), want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "AGENTS-MEMORY", "learnings", "x.md")); !os.IsNotExist(err) {
+		t.Fatalf("differently-cased vault-prefixed nested file was created; stat err = %v", err)
+	}
+}
+
 func TestCLIErrorTokensForAdditionalDeterministicPaths(t *testing.T) {
 	t.Run("invalid arguments", func(t *testing.T) {
 		var stdout, stderr bytes.Buffer

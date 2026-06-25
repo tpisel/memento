@@ -444,15 +444,22 @@ func TestWriteRejectsVaultPrefixedKey(t *testing.T) {
 		t.Fatalf("mkdir vault marker: %v", err)
 	}
 
-	_, err := Write(vaultFromRoot(root), "agents-memory/learnings/x.md", []byte("# Learning\n"), WriteOptions{})
-	if !errors.Is(err, ErrVaultPrefixedKey) {
-		t.Fatalf("Write(vault-prefixed key) error = %v, want ErrVaultPrefixedKey", err)
-	}
-	if got := err.Error(); !strings.Contains(got, "key is vault-relative, not repo-relative") || !strings.Contains(got, `did you mean "learnings/x.md"?`) {
-		t.Fatalf("Write(vault-prefixed key) error = %q, want suggestion", got)
-	}
-	if _, err := os.Stat(filepath.Join(root, "agents-memory", "learnings", "x.md")); !os.IsNotExist(err) {
-		t.Fatalf("vault-prefixed nested file was created; stat err = %v", err)
+	for _, key := range []string{
+		"agents-memory/learnings/x.md",
+		"AGENTS-MEMORY/learnings/x.md",
+	} {
+		t.Run(key, func(t *testing.T) {
+			_, err := Write(vaultFromRoot(root), key, []byte("# Learning\n"), WriteOptions{})
+			if !errors.Is(err, ErrVaultPrefixedKey) {
+				t.Fatalf("Write(vault-prefixed key) error = %v, want ErrVaultPrefixedKey", err)
+			}
+			if got := err.Error(); !strings.Contains(got, "key is vault-relative, not repo-relative") || !strings.Contains(got, `did you mean "learnings/x.md"?`) {
+				t.Fatalf("Write(vault-prefixed key) error = %q, want suggestion", got)
+			}
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(key))); !os.IsNotExist(err) {
+				t.Fatalf("vault-prefixed nested file was created; stat err = %v", err)
+			}
+		})
 	}
 }
 

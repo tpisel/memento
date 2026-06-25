@@ -76,7 +76,7 @@ func normalizeWritableKey(v vault.Vault, key string) (string, error) {
 		return "", err
 	}
 	parts := strings.Split(key, "/")
-	if parts[0] == filepath.Base(v.Root) {
+	if strings.EqualFold(parts[0], filepath.Base(v.Root)) {
 		suggestion := strings.Join(parts[1:], "/")
 		return "", fmt.Errorf("%w; did you mean %q?", ErrVaultPrefixedKey, suggestion)
 	}
