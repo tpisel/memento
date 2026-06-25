@@ -25,5 +25,5 @@ Memento is a thin retrieval and writing layer over a human-curated markdown memo
 
 ## Entry Index
 
-Run `memento brief` to scan the entry index before deciding which notes or sections to read.
+Use `memento brief` when you need the doc landscape for note or section selection.
 <!-- memento:brief-disclosure -->

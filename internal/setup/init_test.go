@@ -55,10 +55,11 @@ func TestInitCreatesAgentInstructionsWhenAbsent(t *testing.T) {
 	for _, want := range []string{
 		"<!-- memento:start -->",
 		"Durable project knowledge lives in `sample-app-memory`: curated design decisions, specs, constraints, and discoveries, not task state.",
-		"Before anything else, run `memento orient` then `memento brief`.",
-		"`brief` is intentionally dense; no need to pipe it through `head`.",
+		"Before any other memento action, run `memento orient`.",
+		"Run `memento brief` when you need the doc landscape; it is pull-only, not a mandatory second step.",
 		"Use `memento read <key|@N>#<heading>` or `memento read <key|@N>` instead of grep/cat: it emits link-graph metadata on stderr and supports section extraction.",
 		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
+		"Discoveries that outlive a task belong in `sample-app-memory`, not the task store.",
 		"<!-- memento:end -->",
 	} {
 		if !strings.Contains(got, want) {
@@ -178,10 +179,11 @@ func TestInitBootloaderUsesCustomMemoryDirectoryPath(t *testing.T) {
 	got := readSetupFile(t, repo, "AGENTS.md")
 	for _, want := range []string{
 		"Durable project knowledge lives in `docs/project-memory`: curated design decisions, specs, constraints, and discoveries, not task state.",
-		"Before anything else, run `memento orient` then `memento brief`.",
-		"`brief` is intentionally dense; no need to pipe it through `head`.",
+		"Before any other memento action, run `memento orient`.",
+		"Run `memento brief` when you need the doc landscape; it is pull-only, not a mandatory second step.",
 		"Use `memento read <key|@N>#<heading>` or `memento read <key|@N>` instead of grep/cat: it emits link-graph metadata on stderr and supports section extraction.",
 		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
+		"Discoveries that outlive a task belong in `docs/project-memory`, not the task store.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("AGENTS.md = %q, want it to contain %q", got, want)
@@ -866,10 +868,11 @@ func assertPointerBootloader(t *testing.T, relPath, got, memoryPath string) {
 
 	for _, want := range []string{
 		"Durable project knowledge lives in `" + memoryPath + "`: curated design decisions, specs, constraints, and discoveries, not task state.",
-		"Before anything else, run `memento orient` then `memento brief`.",
-		"`brief` is intentionally dense; no need to pipe it through `head`.",
+		"Before any other memento action, run `memento orient`.",
+		"Run `memento brief` when you need the doc landscape; it is pull-only, not a mandatory second step.",
 		"Use `memento read <key|@N>#<heading>` or `memento read <key|@N>` instead of grep/cat: it emits link-graph metadata on stderr and supports section extraction.",
 		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
+		"Discoveries that outlive a task belong in `" + memoryPath + "`, not the task store.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("%s = %q, want it to contain %q", relPath, got, want)
@@ -882,6 +885,8 @@ func assertPointerBootloader(t *testing.T, relPath, got, memoryPath string) {
 		"agent-facing manifest projection",
 		"Identify relevant entries",
 		"read only the bodies",
+		"Before anything else, run `memento orient` then `memento brief`.",
+		"`brief` is intentionally dense",
 	} {
 		if strings.Contains(got, unwanted) {
 			t.Fatalf("%s = %q, want no raw manifest guidance containing %q", relPath, got, unwanted)

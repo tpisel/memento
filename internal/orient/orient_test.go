@@ -25,6 +25,27 @@ func TestBaselineContainsRenderMarkers(t *testing.T) {
 	}
 }
 
+func TestBaselineFramesBriefAsOnDemand(t *testing.T) {
+	got := string(Baseline())
+	for _, want := range []string{
+		"Use `memento brief` when you need the doc landscape",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Baseline() =\n%s\nwant it to contain %q", got, want)
+		}
+	}
+	for _, unwanted := range []string{
+		"run `memento brief` first",
+		"Before anything else",
+		"then `memento brief`",
+		"before deciding which notes or sections to read",
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("Baseline() =\n%s\nwant no mandatory brief framing containing %q", got, unwanted)
+		}
+	}
+}
+
 func TestRenderSubstitutesBriefDisclosure(t *testing.T) {
 	v := testVault(t)
 	m := manifest.Manifest{
@@ -53,7 +74,7 @@ func TestRenderSubstitutesBriefDisclosure(t *testing.T) {
 	}
 
 	lineEstimate := bytes.Count(brief.Render(m), []byte("\n"))
-	want := fmt.Sprintf("Running `memento brief` will print summaries of 2 notes (~%d lines); by design it is dense", lineEstimate)
+	want := fmt.Sprintf("`memento brief` will print summaries of 2 notes (~%d lines); it is dense and pull-only.", lineEstimate)
 	if !strings.Contains(string(out), want) {
 		t.Fatalf("Render() output =\n%s\nwant brief disclosure containing %q", out, want)
 	}
@@ -71,7 +92,7 @@ func TestRenderBriefDisclosureForEmptyManifest(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	want := "Running `memento brief` will report no notes yet."
+	want := "`memento brief` will report no notes yet."
 	if !strings.Contains(string(out), want) {
 		t.Fatalf("Render() output =\n%s\nwant empty-manifest disclosure %q", out, want)
 	}

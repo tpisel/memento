@@ -453,10 +453,11 @@ func bootloaderBlock(repoRoot string, v vault.Vault) string {
 	return strings.Join([]string{
 		bootloaderStartSentinel,
 		fmt.Sprintf("Durable project knowledge lives in `%s`: curated design decisions, specs, constraints, and discoveries, not task state.", memoryPath),
-		"Before anything else, run `memento orient` then `memento brief`.",
-		"`brief` is intentionally dense; no need to pipe it through `head`.",
+		"Before any other memento action, run `memento orient`.",
+		"Run `memento brief` when you need the doc landscape; it is pull-only, not a mandatory second step.",
 		"Use `memento read <key|@N>#<heading>` or `memento read <key|@N>` instead of grep/cat: it emits link-graph metadata on stderr and supports section extraction.",
 		"`@N` indexes come from `brief`; `memento read` writes `binding: ratified|unratified` plus non-empty role-flattened link lines to stderr before stdout content.",
+		fmt.Sprintf("Discoveries that outlive a task belong in `%s`, not the task store.", memoryPath),
 		bootloaderEndSentinel,
 	}, "\n")
 }

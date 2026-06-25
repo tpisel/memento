@@ -88,12 +88,12 @@ func baselineForVault(v vault.Vault, m manifest.Manifest) ([]byte, error) {
 func briefDisclosure(m manifest.Manifest) string {
 	count := len(m.Entries)
 	if count == 0 {
-		return "Running `memento brief` will report no notes yet."
+		return "`memento brief` will report no notes yet."
 	}
 
 	lines := bytes.Count(brief.Render(m), []byte("\n"))
 	return fmt.Sprintf(
-		"Running `memento brief` will print summaries of %d %s (~%d lines); by design it is dense and the highest-density way to learn what's in this vault.",
+		"`memento brief` will print summaries of %d %s (~%d lines); it is dense and pull-only.",
 		count,
 		plural(count, "note", "notes"),
 		lines,
