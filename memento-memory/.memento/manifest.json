@@ -239,6 +239,10 @@
         "out": [],
         "in": [
           {
+            "source": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki"
+          },
+          {
             "source": "Note states.md",
             "type": "wiki"
           }
@@ -352,6 +356,10 @@
           {
             "source": "Architecture decision record/adr-0022-auto-compile-after-write.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki"
           }
         ]
       }
@@ -403,6 +411,10 @@
         "in": [
           {
             "source": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
             "type": "wiki"
           }
         ]
@@ -504,6 +516,10 @@
         "in": [
           {
             "source": "Architecture decision record/adr-0024-bootloader-contents.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
             "type": "wiki"
           }
         ]
@@ -686,6 +702,14 @@
           {
             "source": "Architecture decision record/adr-0024-bootloader-contents.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0027-role-based-autoload.md",
+            "type": "wiki"
           }
         ]
       }
@@ -752,6 +776,10 @@
       "links": {
         "out": [],
         "in": [
+          {
+            "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki"
+          },
           {
             "source": "Note states.md",
             "type": "wiki"
@@ -1028,6 +1056,10 @@
           {
             "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki"
           }
         ]
       }
@@ -1090,7 +1122,12 @@
             "resolved": false
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -1132,7 +1169,12 @@
       "summary_state": "current",
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -1516,7 +1558,345 @@
             "resolved": true
           }
         ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+      "title": "Agent integration — SessionStart orient hook and write skill scaffold",
+      "summary": "Builds the apparatus needed to spike tool-adherence questions empirically: a SessionStart orient hook (inject-not-instruct) that completes ADR-0013's bet by guaranteeing the dynamic orient verb actually runs; orient as a lean router with brief made pull-only; and a write skill authored at _memento/skills/write.md as a ready-to-install artifact (no install, no symlink yet). Hooks and skills are strictly additive UX over the portable CLI contract (ADR-0019). Whether to install them by default, and whether to add write-side enforcement, are deferred to the A-UAT regime ([[adr-0026-agent-uat-validation-regime]]) pending evidence.",
+      "bytes": 9132,
+      "lines": 75,
+      "tags": [
+        "agents",
+        "hooks",
+        "memento",
+        "orient",
+        "skills"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 3,
+          "text": "Adopted now (not evidence-gated)",
+          "slug": "adopted-now-not-evidence-gated"
+        },
+        {
+          "level": 3,
+          "text": "Invariant: additive only (ADR-0019)",
+          "slug": "invariant-additive-only-adr-0019"
+        },
+        {
+          "level": 3,
+          "text": "Posture for when install lands",
+          "slug": "posture-for-when-install-lands"
+        },
+        {
+          "level": 2,
+          "text": "Items to be validated with evidence before decisioning",
+          "slug": "items-to-be-validated-with-evidence-before-decisioning"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "b829d4f69ece875dd9f988c696f66dd1dc594e9c064cc1f5e2ce4f2a2252e166",
+      "summary_sha": "61b9bf6c59ac679f61340c383d202a41c70e6fc3353229ab11dafbc503b9b945",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0008-memento-brief-projection.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0013-orient-verb-and-minimal-bootloader.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0019-descope-mcp-transport.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0024-bootloader-contents.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0027-role-based-autoload.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+      "title": "Agent user-ability testing (A-UAT) — validating tool-encouragement levers",
+      "summary": "Proposes a lightweight, pre-registered behavioural test regime for deciding which agent tool-encouragement levers (orient hook, write skill, write-side enforcement) memento should ship. Expectations are fixed in advance ('prompt Z creates circumstance X; under X the agent should do Y'), a Claude subagent and/or headless Codex agent is run on prompt Z, and observed tool use is compared to expectation across a small n. Depends on the apparatus built in [[adr-0025-agent-integration-orient-hook-and-write-skill]]. The full scenario matrix and harness are out of scope here; this ADR fixes the shape.",
+      "bytes": 4488,
+      "lines": 56,
+      "tags": [
+        "a-uat",
+        "agents",
+        "hooks",
+        "memento",
+        "orient",
+        "skills",
+        "testing"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Why this is its own ADR",
+          "slug": "why-this-is-its-own-adr"
+        },
+        {
+          "level": 2,
+          "text": "Decision (shape)",
+          "slug": "decision-shape"
+        },
+        {
+          "level": 2,
+          "text": "Levers under test (initial)",
+          "slug": "levers-under-test-initial"
+        },
+        {
+          "level": 2,
+          "text": "Candidate scenarios (illustrative, to be finalised on first run)",
+          "slug": "candidate-scenarios-illustrative-to-be-finalised-on-first-run"
+        },
+        {
+          "level": 2,
+          "text": "Out of scope",
+          "slug": "out-of-scope"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "c42896cf5578ae57132050e98a863c6064f1ac5a714bbc59cb3b2061315e212c",
+      "summary_sha": "258f91fc4d9d508f99af614de6e666aee7e0d4c5737cc54e5ff12b9c528badcf",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0006-review-verb-and-agent-assisted-maintenance.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0027-role-based-autoload.md",
+      "title": "Role-based autoload (thought-bubble) — per-role orientation stances",
+      "summary": "Placeholder. Today an agent gets one autoload stance (the orient overlay via orient: true). This thought-bubble captures the natural extension to role-based stances — worker / planner / reviewer — where each role autoloads a different orientation set. A capability to add, not a requirement for typical use. Not yet scoped; do not build.",
+      "bytes": 2423,
+      "lines": 46,
+      "tags": [
+        "agents",
+        "memento",
+        "orient",
+        "roles",
+        "thought-bubble"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The thought",
+          "slug": "the-thought"
+        },
+        {
+          "level": 2,
+          "text": "Why deferred",
+          "slug": "why-deferred"
+        },
+        {
+          "level": 2,
+          "text": "Open, when picked up",
+          "slug": "open-when-picked-up"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "45fb7b19679ca5985bb71018300c539a98768328eec6beee64c6fbcc62cef3cd",
+      "summary_sha": "1e791543113709833732599eab61ff6be07eca072deb1c8acbf3b443173c1aff",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0013-orient-verb-and-minimal-bootloader.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+      "title": "Obsidian-managed skills (thought-bubble) — skills as vault content",
+      "summary": "Placeholder. Skills are markdown with frontmatter, and memento manages markdown with frontmatter — so memento could own skills as first-class, Obsidian-viewable vault notes, symlinked out into each harness's skills dir. Likely converges on _memento/skills/ (already seeded by ADR-0025). Two crux constraints noted: skill-frontmatter vs memento canonical frontmatter, and symlink direction vs ADR-0020. Not scoped; do not build.",
+      "bytes": 3271,
+      "lines": 45,
+      "tags": [
+        "agents",
+        "memento",
+        "obsidian",
+        "portability",
+        "skills",
+        "thought-bubble"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The thought",
+          "slug": "the-thought"
+        },
+        {
+          "level": 2,
+          "text": "Two crux constraints (bank now)",
+          "slug": "two-crux-constraints-bank-now"
+        },
+        {
+          "level": 2,
+          "text": "Why deferred",
+          "slug": "why-deferred"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "65b02a2a66f6d0e0d2572e3bd60651f1e788841cee76daca9eafcb1cba7a79af",
+      "summary_sha": "e27dc9237715b442abb7410fbf71966397cf82d184cb602071ecacd629cc896e",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0009-memento-subfolder-namespace.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0014-canonical-frontmatter-vocabulary.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0018-okf-compatible-frontmatter.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0020-v1-vault-walk-portability.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -1910,6 +2290,25 @@
             "type": "wiki"
           }
         ]
+      }
+    },
+    {
+      "key": "_memento/skills/write.md",
+      "title": "Writing to the memento vault",
+      "summary": "Use before creating or updating any note in the memento vault (memento-memory/). Loads the project writing guide and the safe-write rules so durable knowledge lands correctly and read-only notes are not corrupted.",
+      "bytes": 1112,
+      "lines": 14,
+      "tags": [],
+      "headings": [],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "064774a0a772aec52f107c2763a9f942ff92f6ef02958d6041d57f05f59bb859",
+      "summary_sha": "f7b56ed67989a22b228647df13bf5d7215a3c4b57cb1344eadba456319479bf4",
+      "summary_state": "current",
+      "links": {
+        "out": [],
+        "in": []
       }
     },
     {
@@ -2605,7 +3004,8 @@
     }
   ],
   "tags": {
-    "agents": 8,
+    "a-uat": 1,
+    "agents": 12,
     "beads": 2,
     "bootloader": 2,
     "brief": 3,
@@ -2621,6 +3021,7 @@
     "format": 1,
     "frontmatter": 4,
     "git": 1,
+    "hooks": 2,
     "ignore": 1,
     "information-access": 1,
     "init": 4,
@@ -2631,28 +3032,32 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 29,
+    "memento": 33,
     "mode": 3,
     "namespace": 2,
-    "obsidian": 3,
+    "obsidian": 4,
     "okf": 3,
     "open-question": 3,
-    "orient": 3,
+    "orient": 6,
     "philosophy": 1,
-    "portability": 1,
+    "portability": 2,
     "proposal": 3,
     "read": 4,
     "retrieval": 1,
     "review": 4,
     "roadmap": 1,
+    "roles": 1,
     "schema": 2,
     "scope": 1,
+    "skills": 3,
     "staleness": 2,
     "states": 1,
     "summaries": 1,
     "summary": 1,
     "symlink": 1,
+    "testing": 1,
     "theory": 1,
+    "thought-bubble": 2,
     "unicode": 1,
     "vault": 3,
     "write": 7,
