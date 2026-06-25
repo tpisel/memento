@@ -2728,7 +2728,12 @@
       "summary_state": "current",
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "review-audit-doctor faculties.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -2827,6 +2832,85 @@
       "summary_state": "current",
       "links": {
         "out": [],
+        "in": [
+          {
+            "source": "review-audit-doctor faculties.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "review-audit-doctor faculties.md",
+      "title": "Review / audit / doctor — faculty boundaries",
+      "summary": "A carve for three maintenance-shaped verbs that have been blurring together. `doctor` is already assigned the machine/config-health role (ADR-0025), which frees `audit` from the machinery it was straddling. The remaining cut is between `review` (closed-world: judge the vault against itself + world-facts — form, structure, internal consistency) and `audit` (open-world: judge the vault against an external referent — the human's intent and an untampered ground truth). \"Is each note well-formed / is the corpus tidy / is it self-consistent\" is review; \"is this the memory you actually want, and has it been silently rewritten\" is audit. Not decided — records the dividing principle so the review/audit/doctor verb ADRs don't each re-derive it.",
+      "bytes": 7015,
+      "lines": 74,
+      "tags": [
+        "audit",
+        "doctor",
+        "memento",
+        "open-question",
+        "proposal",
+        "review",
+        "roadmap"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "What is already decided",
+          "slug": "what-is-already-decided"
+        },
+        {
+          "level": 2,
+          "text": "Why review is overbroad",
+          "slug": "why-review-is-overbroad"
+        },
+        {
+          "level": 2,
+          "text": "The carve",
+          "slug": "the-carve"
+        },
+        {
+          "level": 2,
+          "text": "The seam to watch (level 3)",
+          "slug": "the-seam-to-watch-level-3"
+        },
+        {
+          "level": 2,
+          "text": "Tool-read-file implication (ADR-0010)",
+          "slug": "tool-read-file-implication-adr-0010"
+        },
+        {
+          "level": 2,
+          "text": "Explicitly not decided",
+          "slug": "explicitly-not-decided"
+        },
+        {
+          "level": 2,
+          "text": "Provenance",
+          "slug": "provenance"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "e1b64d34e05d39bdafcbb3a9dc69da019b72ccb4aeae0710e32690281866649d",
+      "summary_sha": "f5e95c7826b6e8d6d8cdcfb04b78b571177b6f8fd34e9bccd93808ad099420f3",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "agent-human review boundaries.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "conditional-information-access.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
       }
     },
@@ -3092,6 +3176,7 @@
   "tags": {
     "a-uat": 2,
     "agents": 13,
+    "audit": 1,
     "beads": 2,
     "bootloader": 2,
     "brief": 3,
@@ -3103,6 +3188,7 @@
     "conventions": 2,
     "design-philosophy": 1,
     "distribution": 1,
+    "doctor": 1,
     "draft": 1,
     "format": 1,
     "frontmatter": 4,
@@ -3118,20 +3204,20 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 33,
+    "memento": 34,
     "mode": 3,
     "namespace": 2,
     "obsidian": 4,
     "okf": 3,
-    "open-question": 3,
+    "open-question": 4,
     "orient": 6,
     "philosophy": 1,
     "portability": 2,
-    "proposal": 3,
+    "proposal": 4,
     "read": 4,
     "retrieval": 1,
-    "review": 4,
-    "roadmap": 1,
+    "review": 5,
+    "roadmap": 2,
     "roles": 1,
     "schema": 2,
     "scope": 1,
