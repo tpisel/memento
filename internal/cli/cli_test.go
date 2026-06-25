@@ -46,6 +46,110 @@ func TestHelpCommand(t *testing.T) {
 	}
 }
 
+func TestSubcommandHelp(t *testing.T) {
+	tests := []struct {
+		verb string
+		want []string
+	}{
+		{
+			verb: "brief",
+			want: []string{
+				"Usage:",
+				"memento brief",
+				"Print the agent-facing manifest projection",
+				"No flags.",
+				"memento orient",
+			},
+		},
+		{
+			verb: "compile",
+			want: []string{
+				"Usage:",
+				"memento compile",
+				"Rebuild .memento/manifest.json and _memento/brief.md",
+				"No flags.",
+				"memento orient",
+			},
+		},
+		{
+			verb: "init",
+			want: []string{
+				"Usage:",
+				"memento init [--dir <vault>]",
+				"Adopt or create a memory vault",
+				"--dir <vault>",
+				"memento orient",
+			},
+		},
+		{
+			verb: "orient",
+			want: []string{
+				"Usage:",
+				"memento orient",
+				"Print tool-usage orientation",
+				"No flags.",
+				"memento orient",
+			},
+		},
+		{
+			verb: "read",
+			want: []string{
+				"Usage:",
+				"memento read <key|@N>",
+				"memento read <key|@N>#<heading>",
+				"vault-relative .md path",
+				"@N reads the numbered entry",
+				"key#heading and @N#heading",
+				"stderr begins with binding: ratified|unratified",
+				"summary: current|stale|missing",
+				"inlinks:, outlinks:, transcludes:, transcluded-by:",
+				"memento orient",
+			},
+		},
+		{
+			verb: "write",
+			want: []string{
+				"Usage:",
+				"memento write [--overwrite] <key>",
+				"vault-relative .md path",
+				"--overwrite",
+				"write appends by default",
+				"append-only is the default",
+				"living accepts appends and overwrites",
+				"read-only rejects writes after ratification",
+				"edit window",
+				"wrote: <abs path> (<byte count>, <append|overwrite>)",
+				"memento orient",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		for _, helpFlag := range []string{"-h", "--help"} {
+			t.Run(tt.verb+" "+helpFlag, func(t *testing.T) {
+				var stdout, stderr bytes.Buffer
+
+				code := Run([]string{tt.verb, helpFlag}, &stdout, &stderr)
+				if code != 0 {
+					t.Fatalf("Run(%s %s) exit code = %d, want 0; stderr = %q", tt.verb, helpFlag, code, stderr.String())
+				}
+				if stderr.Len() != 0 {
+					t.Fatalf("Run(%s %s) stderr = %q, want empty", tt.verb, helpFlag, stderr.String())
+				}
+				out := stdout.String()
+				if out == "" {
+					t.Fatalf("Run(%s %s) stdout = empty, want help", tt.verb, helpFlag)
+				}
+				for _, want := range tt.want {
+					if !strings.Contains(out, want) {
+						t.Fatalf("Run(%s %s) stdout =\n%s\nwant substring %q", tt.verb, helpFlag, out, want)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestReadmeCurrentVerbsMatchHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 

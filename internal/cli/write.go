@@ -14,11 +14,9 @@ import (
 
 func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("write", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
 	overwrite := flags.Bool("overwrite", false, "replace the target note with stdin instead of appending")
-	if err := flags.Parse(args); err != nil {
-		printCLIError(stderr, "write", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
-		return 2
+	if ok, code := parseSubcommandFlags(flags, args, stdout, stderr, "write", writeHelpText); !ok {
+		return code
 	}
 	if flags.NArg() != 1 {
 		printCLIError(stderr, "write", fmt.Errorf("%w: expected exactly one key", ErrInvalidArguments))

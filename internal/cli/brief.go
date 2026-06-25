@@ -13,10 +13,8 @@ import (
 
 func runBrief(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("brief", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	if err := flags.Parse(args); err != nil {
-		printCLIError(stderr, "brief", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
-		return 2
+	if ok, code := parseSubcommandFlags(flags, args, stdout, stderr, "brief", briefHelpText); !ok {
+		return code
 	}
 	if flags.NArg() != 0 {
 		printCLIError(stderr, "brief", fmt.Errorf("%w: unexpected argument %q", ErrInvalidArguments, flags.Arg(0)))

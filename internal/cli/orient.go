@@ -10,10 +10,8 @@ import (
 
 func runOrient(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("orient", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	if err := flags.Parse(args); err != nil {
-		printCLIError(stderr, "orient", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
-		return 2
+	if ok, code := parseSubcommandFlags(flags, args, stdout, stderr, "orient", orientHelpText); !ok {
+		return code
 	}
 	if flags.NArg() != 0 {
 		printCLIError(stderr, "orient", fmt.Errorf("%w: unexpected argument %q", ErrInvalidArguments, flags.Arg(0)))

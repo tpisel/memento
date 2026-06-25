@@ -23,10 +23,8 @@ const readNoManifestLinkSurfaceHint = "note: no manifest; link surface unavailab
 
 func runRead(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("read", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	if err := flags.Parse(args); err != nil {
-		printCLIError(stderr, "read", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
-		return 2
+	if ok, code := parseSubcommandFlags(flags, args, stdout, stderr, "read", readHelpText); !ok {
+		return code
 	}
 	if flags.NArg() != 1 {
 		printCLIError(stderr, "read", fmt.Errorf("%w: expected exactly one key or @N entry reference", ErrInvalidArguments))

@@ -14,10 +14,8 @@ import (
 
 func runCompile(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("compile", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	if err := flags.Parse(args); err != nil {
-		printCLIError(stderr, "compile", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
-		return 2
+	if ok, code := parseSubcommandFlags(flags, args, stdout, stderr, "compile", compileHelpText); !ok {
+		return code
 	}
 	if flags.NArg() != 0 {
 		printCLIError(stderr, "compile", fmt.Errorf("%w: unexpected argument %q", ErrInvalidArguments, flags.Arg(0)))

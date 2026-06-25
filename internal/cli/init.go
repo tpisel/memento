@@ -11,11 +11,9 @@ import (
 
 func runInit(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
 	dir := flags.String("dir", "", "memory vault directory")
-	if err := flags.Parse(args); err != nil {
-		printCLIError(stderr, "init", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
-		return 2
+	if ok, code := parseSubcommandFlags(flags, args, stdout, stderr, "init", initHelpText); !ok {
+		return code
 	}
 	if flags.NArg() != 0 {
 		printCLIError(stderr, "init", fmt.Errorf("%w: unexpected argument %q", ErrInvalidArguments, flags.Arg(0)))
