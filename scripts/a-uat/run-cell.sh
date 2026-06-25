@@ -108,6 +108,13 @@ keep="$keep_dir/${stamp}_${model_label}_${arm}_${behavior}_t${trial}.jsonl"
 cp "$stream" "$keep"
 
 scored="$(python3 "$script_dir/score.py" "$stream" "$behavior" "$guard")"
+rate_limited=$(printf '%s' "$scored" | python3 -c 'import json,sys; print("1" if json.load(sys.stdin)["rate_limited"] else "0")')
+# A session/rate limit means nothing useful ran. Do not append a polluting row
+# (the cell stays "not done" and is retried); signal the batch to stop with 3.
+if [ "$rate_limited" = 1 ]; then
+  echo "cell: $model_label $arm $behavior t$trial -> RATE-LIMITED; stopping (re-run to resume). log: $keep" >&2
+  exit 3
+fi
 result=$(printf '%s' "$scored" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"])')
 review=$(printf '%s' "$scored" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin)["review"] else "no")')
 note_txt=$(printf '%s' "$scored" | python3 -c 'import json,sys; print(json.load(sys.stdin)["note"])')

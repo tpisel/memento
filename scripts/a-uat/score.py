@@ -21,9 +21,12 @@ VAULT = "memento-memory"
 
 def load_events(path: str):
     """Flatten the stream into an ordered event list: bash commands, native
-    file-edit tool calls, other tool calls, and hook responses."""
+    file-edit tool calls, other tool calls, and hook responses. Also returns
+    the run's terminal result metadata so a failed probe (e.g. a 429 session
+    limit) is never mistaken for a behavioral pass."""
     events = []
     final_text = ""
+    result_meta = {"is_error": False, "api_error_status": None, "text": ""}
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -49,7 +52,11 @@ def load_events(path: str):
                         final_text = c.get("text", "") or final_text
             elif t == "system" and obj.get("subtype") == "hook_response":
                 events.append(("hook", obj.get("hook_name", ""), obj.get("output", "")))
-    return events, final_text
+            elif t == "result":
+                result_meta["is_error"] = bool(obj.get("is_error"))
+                result_meta["api_error_status"] = obj.get("api_error_status")
+                result_meta["text"] = obj.get("result", "") or ""
+    return events, final_text, result_meta
 
 
 def first_index(events, pred):
@@ -169,14 +176,29 @@ def main():
         print("usage: score.py <stream.jsonl> <behavior> <arm_vault_guard:0|1>", file=sys.stderr)
         sys.exit(2)
     path, behavior, vg = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
-    events, final_text = load_events(path)
+    events, final_text, result_meta = load_events(path)
     ev = analyze(events)
-    result, review, note = score(behavior, vg, ev)
+
+    # A failed run can never be a behavioral pass: the SessionStart hook still
+    # fires before a 429, so orient_injected etc. would otherwise spoof a pass.
+    text = result_meta["text"]
+    is_rate = result_meta["api_error_status"] == 429 or bool(
+        re.search(r"session limit|rate.?limit|usage limit", text, re.I)
+    )
+    if result_meta["is_error"] or not events:
+        result, review = "error", True
+        note = ("rate/session limit: " if is_rate else "probe error/empty: ") + (
+            text[:120] or "no events captured"
+        )
+    else:
+        result, review, note = score(behavior, vg, ev)
+
     out = {
         "behavior": behavior,
         "result": result,
         "review": review,
         "note": note,
+        "rate_limited": is_rate,
         "evidence": ev,
         "final_text_tail": final_text[-280:],
     }

@@ -34,11 +34,14 @@ plan=(
 
 label() { case "$1" in opus) echo claude-opus ;; sonnet) echo claude-sonnet ;; *) echo "$1" ;; esac; }
 
+# A cell counts as done only if it has a *successful* ([ok]) row; error rows
+# (e.g. a 429 that slipped through) do not count, so they get retried.
 done_cell() { # model_label arm behavior trial
-  [ -f "$report" ] && grep -qF "\`$short\` | $1 | $2 | $3 | $4 |" "$report"
+  [ -f "$report" ] || return 1
+  grep -F "\`$short\` | $1 | $2 | $3 | $4 |" "$report" | grep -q '\[ok\]'
 }
 
-total=0 ran=0 skipped=0 failed=0
+total=0 ran=0 skipped=0 failed=0 stopped=0
 for model in $models; do
   ml="$(label "$model")"
   for entry in "${plan[@]}"; do
@@ -56,8 +59,12 @@ for model in $models; do
           continue
         fi
         echo ">>> ($((ran + 1)) run / $skipped skipped) $ml $arm $behavior t$trial"
-        if "$script_dir/run-cell.sh" "$model" "$arm" "$behavior" "$trial"; then
+        rc=0
+        "$script_dir/run-cell.sh" "$model" "$arm" "$behavior" "$trial" || rc=$?
+        if [ "$rc" -eq 0 ]; then
           ran=$((ran + 1))
+        elif [ "$rc" -eq 3 ]; then
+          stopped=1; break 4   # rate/session limit: stop; re-run later to resume
         else
           failed=$((failed + 1))
           echo "!!! cell failed (continuing): $ml $arm $behavior t$trial"
@@ -66,4 +73,8 @@ for model in $models; do
     done
   done
 done
-echo "=== batch: total=$total ran=$ran skipped=$skipped failed=$failed (frozen=$short) ==="
+if [ "$stopped" = 1 ]; then
+  echo "=== STOPPED on rate/session limit: ran=$ran skipped=$skipped failed=$failed. Re-run to resume. (frozen=$short) ==="
+else
+  echo "=== batch complete: total=$total ran=$ran skipped=$skipped failed=$failed (frozen=$short) ==="
+fi
