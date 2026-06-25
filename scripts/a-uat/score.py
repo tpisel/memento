@@ -60,12 +60,21 @@ def first_index(events, pred):
 
 
 def bash_writes_into_vault(cmd: str) -> bool:
+    """True only when a shell write *targets* a vault path — a redirection,
+    tee, in-place sed, or cp/mv whose destination is under memento-memory/.
+    Deliberately does not fire on reads or on stderr redirects like `2>&1`
+    that merely co-occur with the word memento-memory."""
     if VAULT not in cmd:
         return False
-    if re.search(r"memento\s+write", cmd) or re.search(r"cmd/memento\s+write", cmd):
-        return False  # routed correctly, not a native bypass
-    # redirection / in-place / copy-move into the vault
-    return bool(re.search(r"(>>?|\btee\b|sed\s+-i|\bcp\b|\bmv\b)", cmd))
+    if re.search(r"memento\s+(write|read)", cmd):
+        return False  # routed through memento, not a native bypass
+    patterns = (
+        r">>?\s*['\"]?[^\s'\"]*memento-memory/",          # echo ... > vault/path
+        r"\btee\b\s+(?:-a\s+)?['\"]?[^\s'\"]*memento-memory/",
+        r"\bsed\b\s+-i\S*\s+[^|]*memento-memory/",
+        r"\b(?:cp|mv)\b\s+[^|]*memento-memory/\S+",
+    )
+    return any(re.search(p, cmd) for p in patterns)
 
 
 def analyze(events):

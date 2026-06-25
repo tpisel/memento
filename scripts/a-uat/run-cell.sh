@@ -22,7 +22,9 @@ report_key=${REPORT_KEY:-a-uat/run-report.md}
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(git -C "$script_dir" rev-parse --show-toplevel)"
-frozen=${FROZEN:-$(git -C "$repo_root" rev-parse HEAD)}
+# frozen_at tracks the matrix's freeze (its last-touched commit), not HEAD, so
+# unrelated harness commits don't shift the key that resumability is built on.
+frozen=${FROZEN:-$(git -C "$repo_root" log -1 --format=%H -- memento-memory/a-uat/test-matrix.md)}
 
 case "$model" in
   opus) model_alias=opus; model_label=claude-opus ;;
@@ -55,6 +57,12 @@ cleanup() {
 trap cleanup EXIT
 
 git -C "$repo_root" worktree add --detach "$wt" "$frozen" >/dev/null
+
+# Preserve probe blindness: the A-UAT apparatus (the matrix and the run report)
+# must not be visible in the worktree, or a probe that explores a-uat/ could
+# read its own test plan and game it. Removing them is uniform across all cells
+# and does not affect any probe task (probes only ever create new a-uat notes).
+rm -f "$wt/memento-memory/a-uat/test-matrix.md" "$wt/memento-memory/a-uat/run-report.md"
 
 # Build the arm's settings. Scoped allowlist (default permission mode) so the
 # probe acts autonomously while PreToolUse hooks still fire. Hooks point at the
@@ -91,6 +99,14 @@ status=ok
     --settings "$settings" \
     > "$stream" 2> "$stderr_log" ) || status="exit=$?"
 
+# Persist the transcript out of the worktree first, so a scoring bug can never
+# lose the evidence (the worktree and $work are removed on exit).
+keep_dir="$repo_root/scripts/a-uat/runs"
+mkdir -p "$keep_dir"
+stamp="$(date +%Y%m%dT%H%M%S)"
+keep="$keep_dir/${stamp}_${model_label}_${arm}_${behavior}_t${trial}.jsonl"
+cp "$stream" "$keep"
+
 scored="$(python3 "$script_dir/score.py" "$stream" "$behavior" "$guard")"
 result=$(printf '%s' "$scored" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"])')
 review=$(printf '%s' "$scored" | python3 -c 'import json,sys; print("yes" if json.load(sys.stdin)["review"] else "no")')
@@ -99,16 +115,8 @@ evidence=$(printf '%s' "$scored" | python3 -c '
 import json,sys
 e=json.load(sys.stdin)["evidence"]
 flags=[k for k in ("orient_called","orient_injected","brief_called","writing_read","memento_write","native_vault_write","adr0026_native_edit","guard_deny") if e.get(k)]
-print(("; ".join(flags) if flags else "no key tool-use") + f" (bash={e[\"n_bash\"]},native={e[\"n_native\"]})")
+print(("; ".join(flags) if flags else "no key tool-use") + " (bash={},native={})".format(e["n_bash"], e["n_native"]))
 ')
-
-# Persist the full transcript out of the worktree before it is removed, so
-# evidence is reproducible after the fact.
-keep_dir="$repo_root/scripts/a-uat/runs"
-mkdir -p "$keep_dir"
-stamp="$(date +%Y%m%dT%H%M%S)"
-keep="$keep_dir/${stamp}_${model_label}_${arm}_${behavior}_t${trial}.jsonl"
-cp "$stream" "$keep"
 
 sanitize() { printf '%s' "$1" | tr '|\n' '/ '; }
 row="| \`${frozen:0:12}\` | $model_label | $arm | $behavior | $trial | $result | $review | $(sanitize "$evidence") — $(sanitize "$note_txt") [$status] | log: \`${keep#"$repo_root"/}\` |"

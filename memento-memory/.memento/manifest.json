@@ -2357,21 +2357,32 @@
     {
       "key": "a-uat/run-report.md",
       "title": "A-UAT run report",
-      "summary": "Append-only log of A-UAT cells run against the ADR-0026 test matrix. One row per model x arm x behavior x trial, with tool-log evidence and a provisional result. Rows flagged review=yes need human adjudication; never overwrite, only append.",
-      "bytes": 875,
-      "lines": 16,
+      "summary": "Append-only-in-practice results log from the A-UAT runner against the ADR-0026 test matrix. One row per model x arm x behavior x trial cell, with tool-log evidence and a provisional result. Resumable - the batch driver skips cells already recorded for the current frozen_at. Rows flagged review=yes need human adjudication. (Mode is living so the header can be restructured during the run; harden to append-only once the run set is complete.)",
+      "bytes": 2064,
+      "lines": 27,
       "tags": [
         "a-uat",
         "results",
         "testing"
       ],
-      "headings": [],
-      "mode": "append-only",
+      "headings": [
+        {
+          "level": 2,
+          "text": "How this is maintained and resumed",
+          "slug": "how-this-is-maintained-and-resumed"
+        },
+        {
+          "level": 2,
+          "text": "Results",
+          "slug": "results"
+        }
+      ],
+      "mode": "living",
       "orient": false,
       "updated": "",
-      "body_sha": "2c32d750fabaeeb540a35da2c8196b583abd173fba24d27567e3716ce090782c",
-      "summary_sha": "0ea6d63f267b9608eca38121f7320eabd98a69e15c88e6d8a9f1792b749887e6",
-      "summary_state": "current",
+      "body_sha": "cc5f8c182a167c1c8af8353613997a7a4b545cef30f2cbcea22d5e67c4726713",
+      "summary_sha": "451613bbf73b0a2581a2726b6cb3a29edfd82af1a4549ead9204d8b9ba0811dc",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
