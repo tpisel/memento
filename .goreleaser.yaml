@@ -35,7 +35,7 @@ brews:
   - name: memento
     repository:
       owner: tpisel
-      name: homebrew-memento
+      name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: https://github.com/tpisel/memento
     description: A markdown-based, in-repo memory substrate for AI coding agents.

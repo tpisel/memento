@@ -17,7 +17,7 @@ Pre-1.0 means the **manifest schema may break** before 1.0 (a schema bump bumps 
 ### Homebrew (macOS, recommended)
 
 ```sh
-brew install tpisel/memento/memento
+brew install tpisel/tap/memento
 ```
 
 ### `go install` (any Go-capable system)

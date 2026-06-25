@@ -17,7 +17,7 @@ CLI error tokens and exit codes are stable, including `manifest-schema-unsupport
 ## Install
 
 ```sh
-brew install tpisel/memento/memento
+brew install tpisel/tap/memento
 # or
 go install github.com/tpisel/memento/cmd/memento@latest
 ```

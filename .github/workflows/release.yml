@@ -27,6 +27,10 @@ jobs:
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
+          # Pin: `brews` is hard-deprecated as of v2.16 and may be removed in a
+          # later release. Formula path gives unsigned binaries a no-Gatekeeper
+          # first run; migrate to homebrew_casks in v0.2. See release-checklist.md.
+          version: '~> v2.16'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
