@@ -54,3 +54,6 @@ logs/*
 # Memento generated artifacts
 **/_memento/brief.md
 # memento:gitignore:end
+
+# goreleaser build output
+dist/
