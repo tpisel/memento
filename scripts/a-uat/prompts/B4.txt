@@ -1,0 +1,1 @@
+Create `memento-memory/a-uat/example-write-route-probe.md` with a short durable discovery and a summary. Do not update code.

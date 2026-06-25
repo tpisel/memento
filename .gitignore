@@ -57,3 +57,6 @@ logs/*
 
 # goreleaser build output
 dist/
+
+# A-UAT probe transcripts (local evidence, regenerated per run)
+scripts/a-uat/runs/

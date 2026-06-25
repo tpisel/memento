@@ -1757,6 +1757,10 @@
             "type": "wiki"
           },
           {
+            "source": "a-uat/run-report.md",
+            "type": "wiki"
+          },
+          {
             "source": "a-uat/test-matrix.md",
             "type": "wiki"
           }
@@ -2351,11 +2355,45 @@
       }
     },
     {
+      "key": "a-uat/run-report.md",
+      "title": "A-UAT run report",
+      "summary": "Append-only log of A-UAT cells run against the ADR-0026 test matrix. One row per model x arm x behavior x trial, with tool-log evidence and a provisional result. Rows flagged review=yes need human adjudication; never overwrite, only append.",
+      "bytes": 875,
+      "lines": 16,
+      "tags": [
+        "a-uat",
+        "results",
+        "testing"
+      ],
+      "headings": [],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "2c32d750fabaeeb540a35da2c8196b583abd173fba24d27567e3716ce090782c",
+      "summary_sha": "0ea6d63f267b9608eca38121f7320eabd98a69e15c88e6d8a9f1792b749887e6",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "a-uat/test-matrix.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
       "key": "a-uat/test-matrix.md",
       "title": "A-UAT test matrix",
-      "summary": "Concrete manual A-UAT matrix for ADR-0026, covering model rows, runnable hook/skill arms, disposable probe prompts, and expected tool-use evidence for orient, brief, writing, and read-only behaviors.",
-      "bytes": 9071,
-      "lines": 150,
+      "summary": "Concrete manual A-UAT matrix for ADR-0026, covering model rows, runnable hook/skill arms, disposable probe prompts, expected tool-use evidence, and the pre-registered per-lever decision rules that turn observed behavior into ship/skip calls for the orient hook, write skill, and write-side enforcement levers.",
+      "bytes": 17968,
+      "lines": 204,
       "tags": [
         "a-uat",
         "agents",
@@ -2364,6 +2402,11 @@
         "testing"
       ],
       "headings": [
+        {
+          "level": 2,
+          "text": "Pre-registration and freezing",
+          "slug": "pre-registration-and-freezing"
+        },
         {
           "level": 2,
           "text": "Model dimension",
@@ -2410,6 +2453,16 @@
           "slug": "b5-read-only-note-not-natively-edited"
         },
         {
+          "level": 3,
+          "text": "Known limitation: Bash bypass of the vault guard",
+          "slug": "known-limitation-bash-bypass-of-the-vault-guard"
+        },
+        {
+          "level": 2,
+          "text": "Decision rules (pre-registered)",
+          "slug": "decision-rules-pre-registered"
+        },
+        {
           "level": 2,
           "text": "Run log fields",
           "slug": "run-log-fields"
@@ -2418,8 +2471,8 @@
       "mode": "living",
       "orient": false,
       "updated": "",
-      "body_sha": "3c5174e518b755d5ff70d5e00eef5cc41189879ffd87ab13d7dc9b3580b8c722",
-      "summary_sha": "cdbaefe42d692fd3926ec47833d1f9fd9de1f6effb0f6d351c8d4892fac6e124",
+      "body_sha": "d6af6828843b5c230e360702331190e13e0930b62e1c7ceee4f1a313e212467d",
+      "summary_sha": "978550575caf03c385c5944eb6acb0597233cc3ecb837fccc6d9d8c2a85a909f",
       "summary_state": "current",
       "links": {
         "out": [
@@ -2429,7 +2482,12 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "a-uat/run-report.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -3174,7 +3232,7 @@
     }
   ],
   "tags": {
-    "a-uat": 2,
+    "a-uat": 3,
     "agents": 13,
     "audit": 1,
     "beads": 2,
@@ -3215,6 +3273,7 @@
     "portability": 2,
     "proposal": 4,
     "read": 4,
+    "results": 1,
     "retrieval": 1,
     "review": 5,
     "roadmap": 2,
@@ -3227,7 +3286,7 @@
     "summaries": 1,
     "summary": 1,
     "symlink": 1,
-    "testing": 2,
+    "testing": 3,
     "theory": 1,
     "thought-bubble": 2,
     "unicode": 1,

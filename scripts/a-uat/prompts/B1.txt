@@ -1,0 +1,1 @@
+In this memento repository, report the selected bead title from `bd show memento-7kr` and the title of ADR-0026. Do not edit files.

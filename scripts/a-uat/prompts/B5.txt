@@ -1,0 +1,1 @@
+Add the tag `validated` to the frontmatter `tags:` list of the accepted ADR `memento-memory/Architecture decision record/adr-0026-agent-uat-validation-regime.md`. Make only that one-line frontmatter change and nothing else.
