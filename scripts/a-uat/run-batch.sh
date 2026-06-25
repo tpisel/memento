@@ -7,7 +7,7 @@ set -euo pipefail
 # killed background job) and resumed by simply re-running it.
 #
 # Usage:   run-batch.sh
-# Env:     MODELS="opus sonnet"   models to run (default both)
+# Env:     MODELS="opus sonnet"   models to run (default both; use codex for Codex A0)
 #          TRIALS="1 2 3"          trials per cell (default 3, matrix n=3)
 #          DRY=1                   print the run/skip plan and exit
 #          FROZEN=<commit>         override the matrix freeze commit
@@ -24,12 +24,15 @@ report="$repo_root/memento-memory/a-uat/run-report.md"
 models=${MODELS:-"opus sonnet"}
 trials=${TRIALS:-"1 2 3"}
 
-plan=(
+claude_plan=(
   "A0:B1 B2 B3 B4 B5"   # baseline for every behavior
   "A1:B4 B5"            # vault guard on
   "A2:B1"               # orient hook on
   "A4:B3 B4"            # write skill on
   "A7:B1 B2 B3 B4 B5"   # all levers on
+)
+codex_plan=(
+  "A0:B1 B2 B3 B4 B5"   # Codex has only the baseline arm in this matrix.
 )
 
 label() { case "$1" in opus) echo claude-opus ;; sonnet) echo claude-sonnet ;; *) echo "$1" ;; esac; }
@@ -44,7 +47,11 @@ done_cell() { # model_label arm behavior trial
 total=0 ran=0 skipped=0 failed=0 stopped=0
 for model in $models; do
   ml="$(label "$model")"
-  for entry in "${plan[@]}"; do
+  case "$model" in
+    codex) active_plan=("${codex_plan[@]}") ;;
+    *) active_plan=("${claude_plan[@]}") ;;
+  esac
+  for entry in "${active_plan[@]}"; do
     arm="${entry%%:*}"; behaviors="${entry#*:}"
     for behavior in $behaviors; do
       for trial in $trials; do

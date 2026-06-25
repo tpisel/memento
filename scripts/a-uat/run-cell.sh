@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# A-UAT cell runner (Claude arms). Runs one model x arm x behavior x trial cell
+# A-UAT cell runner. Runs one model x arm x behavior x trial cell
 # headless against a frozen commit, captures the tool-use transcript, scores it
-# with score.py, and appends one row to the append-only run-report vault note.
+# with score.py / score-codex.py, and appends one row to the append-only
+# run-report vault note.
 #
-# This is the intervention half of the runner (observation lives in score.py).
-# It reproduces an ADR-0025 lever arm faithfully by injecting that arm's hooks
-# and skill into an isolated git worktree via `claude --settings`, rather than
-# mutating the repo. The probe sees only the frozen prompt Z — never the matrix,
-# the expectations, or the scoring — so it cannot game the test.
+# This is the intervention half of the runner. Claude arms reproduce ADR-0025
+# levers by injecting hooks and skill into an isolated git worktree. Codex is
+# A0-only in this matrix.
 #
-# Usage: run-cell.sh <model: opus|sonnet> <arm: A0..A7> <behavior: B1..B5> <trial>
+# Usage: run-cell.sh <model: opus|sonnet|codex> <arm: A0..A7> <behavior: B1..B5> <trial>
 # Env:   FROZEN=<commit>   commit to base the worktree on (default: HEAD)
 #        TIMEOUT=<secs>    per-probe wall clock (default: 420)
 #        REPORT_KEY=<key>  vault-relative report note (default: a-uat/run-report.md)
@@ -29,6 +28,7 @@ frozen=${FROZEN:-$(git -C "$repo_root" log -1 --format=%H -- memento-memory/a-ua
 case "$model" in
   opus) model_alias=opus; model_label=claude-opus ;;
   sonnet) model_alias=sonnet; model_label=claude-sonnet ;;
+  codex) model_alias=${CODEX_MODEL:-gpt-5.5}; model_label=codex ;;
   *) echo "unknown model: $model" >&2; exit 2 ;;
 esac
 
@@ -44,6 +44,11 @@ case "$arm" in
   A7) skill=1; orient=1; guard=1 ;;
   *) echo "unknown arm: $arm" >&2; exit 2 ;;
 esac
+
+if [ "$model" = codex ] && [ "$arm" != A0 ]; then
+  echo "codex supports only A0 in this matrix (got $arm)" >&2
+  exit 2
+fi
 
 prompt_file="$script_dir/prompts/$behavior.txt"
 [ -f "$prompt_file" ] || { echo "no prompt for $behavior" >&2; exit 2; }
@@ -93,11 +98,26 @@ fi
 stream="$work/stream.jsonl"
 stderr_log="$work/stderr.log"
 status=ok
-( cd "$wt" && timeout "$timeout_secs" claude -p "$(cat "$prompt_file")" \
-    --model "$model_alias" \
-    --output-format stream-json --include-hook-events --verbose \
-    --settings "$settings" \
-    > "$stream" 2> "$stderr_log" ) || status="exit=$?"
+if [ "$model" = codex ]; then
+  ( cd "$wt" && timeout "$timeout_secs" codex exec - \
+      --json \
+      --ephemeral \
+      --ignore-user-config \
+      --disable memories \
+      --sandbox workspace-write \
+      --model "$model_alias" \
+      -c 'approval_policy="never"' \
+      -c 'web_search="disabled"' \
+      -c 'base_instructions=""' \
+      < "$prompt_file" \
+      > "$stream" 2> "$stderr_log" ) || status="exit=$?"
+else
+  ( cd "$wt" && timeout "$timeout_secs" claude -p "$(cat "$prompt_file")" \
+      --model "$model_alias" \
+      --output-format stream-json --include-hook-events --verbose \
+      --settings "$settings" \
+      > "$stream" 2> "$stderr_log" ) || status="exit=$?"
+fi
 
 # Persist the transcript out of the worktree first, so a scoring bug can never
 # lose the evidence (the worktree and $work are removed on exit).
@@ -107,7 +127,11 @@ stamp="$(date +%Y%m%dT%H%M%S)"
 keep="$keep_dir/${stamp}_${model_label}_${arm}_${behavior}_t${trial}.jsonl"
 cp "$stream" "$keep"
 
-scored="$(python3 "$script_dir/score.py" "$stream" "$behavior" "$guard")"
+if [ "$model" = codex ]; then
+  scored="$(python3 "$script_dir/score-codex.py" "$stream" "$behavior")"
+else
+  scored="$(python3 "$script_dir/score.py" "$stream" "$behavior" "$guard")"
+fi
 rate_limited=$(printf '%s' "$scored" | python3 -c 'import json,sys; print("1" if json.load(sys.stdin)["rate_limited"] else "0")')
 # A session/rate limit means nothing useful ran. Do not append a polluting row
 # (the cell stays "not done" and is retried); signal the batch to stop with 3.
