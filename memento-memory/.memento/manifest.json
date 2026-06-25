@@ -1570,7 +1570,7 @@
       "key": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
       "title": "Agent integration — SessionStart orient hook and write skill scaffold",
       "summary": "Builds the apparatus needed to spike tool-adherence questions empirically: a SessionStart orient hook (inject-not-instruct) that completes ADR-0013's bet by guaranteeing the dynamic orient verb actually runs; orient as a lean router with brief made pull-only; and a write skill authored at _memento/skills/write.md as a ready-to-install artifact (no install, no symlink yet). Hooks and skills are strictly additive UX over the portable CLI contract (ADR-0019). Whether to install them by default, and whether to add write-side enforcement, are deferred to the A-UAT regime ([[adr-0026-agent-uat-validation-regime]]) pending evidence.",
-      "bytes": 9132,
+      "bytes": 9339,
       "lines": 75,
       "tags": [
         "agents",
@@ -1626,7 +1626,7 @@
       "updated": "",
       "body_sha": "b829d4f69ece875dd9f988c696f66dd1dc594e9c064cc1f5e2ce4f2a2252e166",
       "summary_sha": "61b9bf6c59ac679f61340c383d202a41c70e6fc3353229ab11dafbc503b9b945",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
@@ -1754,6 +1754,10 @@
           },
           {
             "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki"
+          },
+          {
+            "source": "a-uat/test-matrix.md",
             "type": "wiki"
           }
         ]
@@ -2343,6 +2347,88 @@
       "summary_state": "current",
       "links": {
         "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "a-uat/test-matrix.md",
+      "title": "A-UAT test matrix",
+      "summary": "Concrete manual A-UAT matrix for ADR-0026, covering model rows, runnable hook/skill arms, disposable probe prompts, and expected tool-use evidence for orient, brief, writing, and read-only behaviors.",
+      "bytes": 9071,
+      "lines": 150,
+      "tags": [
+        "a-uat",
+        "agents",
+        "hooks",
+        "skills",
+        "testing"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Model dimension",
+          "slug": "model-dimension"
+        },
+        {
+          "level": 2,
+          "text": "Variation arms",
+          "slug": "variation-arms"
+        },
+        {
+          "level": 2,
+          "text": "Desired behaviors",
+          "slug": "desired-behaviors"
+        },
+        {
+          "level": 2,
+          "text": "Expectation pairs",
+          "slug": "expectation-pairs"
+        },
+        {
+          "level": 3,
+          "text": "B1 - orient before acting",
+          "slug": "b1-orient-before-acting"
+        },
+        {
+          "level": 3,
+          "text": "B2 - brief loaded only when needed",
+          "slug": "b2-brief-loaded-only-when-needed"
+        },
+        {
+          "level": 3,
+          "text": "B3 - writing guide read before composing a vault write",
+          "slug": "b3-writing-guide-read-before-composing-a-vault-write"
+        },
+        {
+          "level": 3,
+          "text": "B4 - writes routed through memento write",
+          "slug": "b4-writes-routed-through-memento-write"
+        },
+        {
+          "level": 3,
+          "text": "B5 - read-only note not natively edited",
+          "slug": "b5-read-only-note-not-natively-edited"
+        },
+        {
+          "level": 2,
+          "text": "Run log fields",
+          "slug": "run-log-fields"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "3c5174e518b755d5ff70d5e00eef5cc41189879ffd87ab13d7dc9b3580b8c722",
+      "summary_sha": "cdbaefe42d692fd3926ec47833d1f9fd9de1f6effb0f6d351c8d4892fac6e124",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
         "in": []
       }
     },
@@ -3004,8 +3090,8 @@
     }
   ],
   "tags": {
-    "a-uat": 1,
-    "agents": 12,
+    "a-uat": 2,
+    "agents": 13,
     "beads": 2,
     "bootloader": 2,
     "brief": 3,
@@ -3021,7 +3107,7 @@
     "format": 1,
     "frontmatter": 4,
     "git": 1,
-    "hooks": 2,
+    "hooks": 3,
     "ignore": 1,
     "information-access": 1,
     "init": 4,
@@ -3049,13 +3135,13 @@
     "roles": 1,
     "schema": 2,
     "scope": 1,
-    "skills": 3,
+    "skills": 4,
     "staleness": 2,
     "states": 1,
     "summaries": 1,
     "summary": 1,
     "symlink": 1,
-    "testing": 1,
+    "testing": 2,
     "theory": 1,
     "thought-bubble": 2,
     "unicode": 1,
