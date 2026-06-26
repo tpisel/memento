@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/tpisel/memento/internal/brief"
+	"github.com/tpisel/memento/internal/convention"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/vault"
 )
@@ -30,33 +31,63 @@ func Baseline() []byte {
 	return data
 }
 
-// Render composes the baseline with manifest-selected orient overlay docs.
-func Render(v vault.Vault, m manifest.Manifest) ([]byte, error) {
-	entries := orientEntries(m)
-	out, err := baselineForVault(v, m)
+// Render composes the baseline with the When To Read Conventions block and
+// manifest-selected orient overlay docs. It returns one warning string per
+// invalid convention file; warnings never suppress valid conventions or fail
+// the render.
+func Render(v vault.Vault, m manifest.Manifest) (out []byte, warnings []string, err error) {
+	out, err = baselineForVault(v, m)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	conventions, warnings, err := convention.List(v)
+	if err != nil {
+		return nil, nil, err
+	}
+	if section := conventionsSection(conventions); section != "" {
+		out = bytes.TrimRight(out, "\n")
+		out = append(out, "\n\n"...)
+		out = append(out, section...)
+		out = append(out, '\n')
+	}
+
+	entries := orientEntries(m)
 	if len(entries) == 0 {
-		return out, nil
+		return out, warnings, nil
 	}
 
 	out = bytes.TrimRight(out, "\n")
 	for _, entry := range entries {
 		path, err := entryPath(v, entry.Key)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("read orient overlay %s: %w", entry.Key, err)
+			return nil, nil, fmt.Errorf("read orient overlay %s: %w", entry.Key, err)
 		}
 		out = append(out, overlaySeparator...)
 		out = append(out, data...)
 		out = bytes.TrimRight(out, "\n")
 	}
 	out = append(out, '\n')
-	return out, nil
+	return out, warnings, nil
+}
+
+// conventionsSection renders the When To Read Conventions block, or "" when
+// there are no valid conventions. Conventions arrive sorted by name, so the
+// output is deterministic.
+func conventionsSection(conventions []convention.Convention) string {
+	if len(conventions) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("## When To Read Conventions\n\n")
+	for _, c := range conventions {
+		fmt.Fprintf(&b, "- %s: `memento convention %s`\n", c.WhenToRead, c.Name)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func baselineForVault(v vault.Vault, m manifest.Manifest) ([]byte, error) {

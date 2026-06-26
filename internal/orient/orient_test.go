@@ -68,7 +68,7 @@ func TestRenderSubstitutesBriefDisclosure(t *testing.T) {
 		},
 	}
 
-	out, err := Render(v, m)
+	out, _, err := Render(v, m)
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
@@ -87,7 +87,7 @@ func TestRenderBriefDisclosureForEmptyManifest(t *testing.T) {
 	v := testVault(t)
 	m := manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion}
 
-	out, err := Render(v, m)
+	out, _, err := Render(v, m)
 	if err != nil {
 		t.Fatalf("Render() error = %v", err)
 	}
@@ -95,6 +95,82 @@ func TestRenderBriefDisclosureForEmptyManifest(t *testing.T) {
 	want := "`memento brief` will report no notes yet."
 	if !strings.Contains(string(out), want) {
 		t.Fatalf("Render() output =\n%s\nwant empty-manifest disclosure %q", out, want)
+	}
+}
+
+func writeConvention(t *testing.T, v vault.Vault, name, contents string) {
+	t.Helper()
+	dir := filepath.Join(v.Root, vault.ToolDirName, "conventions")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir conventions: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name+".md"), []byte(contents), 0o644); err != nil {
+		t.Fatalf("write convention %s: %v", name, err)
+	}
+}
+
+func TestRenderListsValidConventionsSortedByName(t *testing.T) {
+	v := testVault(t)
+	// Written out of order to prove deterministic sorting by name.
+	writeConvention(t, v, "writing", "---\ntitle: Writing\nwhen_to_read: before authoring a memento vault write\n---\nbody\n")
+	writeConvention(t, v, "conventions", "---\ntitle: Conventions\nwhen_to_read: before adding or editing a convention\n---\nbody\n")
+	writeConvention(t, v, "summarising", "---\ntitle: Summarising\nwhen_to_read: when writing a note summary\n---\nbody\n")
+
+	out, warnings, err := Render(v, manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("Render() warnings = %v, want none", warnings)
+	}
+
+	want := "## When To Read Conventions\n\n" +
+		"- before adding or editing a convention: `memento convention conventions`\n" +
+		"- when writing a note summary: `memento convention summarising`\n" +
+		"- before authoring a memento vault write: `memento convention writing`\n"
+	if !strings.Contains(string(out), want) {
+		t.Fatalf("Render() output =\n%s\nwant conventions block:\n%s", out, want)
+	}
+}
+
+func TestRenderOmitsConventionsBlockWhenNone(t *testing.T) {
+	v := testVault(t)
+
+	out, warnings, err := Render(v, manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("Render() warnings = %v, want none", warnings)
+	}
+	if strings.Contains(string(out), "When To Read Conventions") {
+		t.Fatalf("Render() output =\n%s\nwant no conventions block", out)
+	}
+}
+
+func TestRenderWarnsAboutInvalidConventionButKeepsValid(t *testing.T) {
+	v := testVault(t)
+	writeConvention(t, v, "writing", "---\ntitle: Writing\nwhen_to_read: before authoring a memento vault write\n---\nbody\n")
+	// Missing when_to_read makes this convention invalid.
+	writeConvention(t, v, "broken", "---\ntitle: Broken\n---\nbody\n")
+
+	out, warnings, err := Render(v, manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("Render() warnings = %v, want exactly one", warnings)
+	}
+	if !strings.Contains(warnings[0], "broken.md") {
+		t.Fatalf("Render() warning = %q, want it to name broken.md", warnings[0])
+	}
+
+	want := "- before authoring a memento vault write: `memento convention writing`"
+	if !strings.Contains(string(out), want) {
+		t.Fatalf("Render() output =\n%s\nwant valid convention retained:\n%s", out, want)
+	}
+	if strings.Contains(string(out), "broken") {
+		t.Fatalf("Render() output =\n%s\nwant invalid convention omitted", out)
 	}
 }
 

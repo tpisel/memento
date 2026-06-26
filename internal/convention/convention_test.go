@@ -102,3 +102,61 @@ func TestReadNoFrontmatterIsInvalid(t *testing.T) {
 		t.Fatalf("Read error = %v, want ErrInvalid", err)
 	}
 }
+
+func TestListReturnsValidConventionsSortedByName(t *testing.T) {
+	v := newVault(t)
+	writeConvention(t, v, "writing", "---\nwhen_to_read: before a write\n---\nbody\n")
+	writeConvention(t, v, "beads", "---\nwhen_to_read: before touching beads\n---\nbody\n")
+	writeConvention(t, v, "summarising", "---\nwhen_to_read: when summarising\n---\nbody\n")
+
+	valid, warnings, err := List(v)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("List() warnings = %v, want none", warnings)
+	}
+	got := []string{valid[0].Name, valid[1].Name, valid[2].Name}
+	want := []string{"beads", "summarising", "writing"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("List() names = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestListWarnsAboutInvalidFilesAndSkipsNonMarkdown(t *testing.T) {
+	v := newVault(t)
+	writeConvention(t, v, "writing", "---\nwhen_to_read: before a write\n---\nbody\n")
+	writeConvention(t, v, "broken", "---\ntitle: Broken\n---\nbody\n")
+	if err := os.WriteFile(filepath.Join(v.Root, vault.ToolDirName, DirName, "notes.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write notes.txt: %v", err)
+	}
+
+	valid, warnings, err := List(v)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(valid) != 1 || valid[0].Name != "writing" {
+		t.Fatalf("List() valid = %v, want only writing", valid)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("List() warnings = %v, want exactly one", warnings)
+	}
+	if !strings.Contains(warnings[0], "broken.md") {
+		t.Fatalf("List() warning = %q, want it to name broken.md", warnings[0])
+	}
+}
+
+func TestListMissingDirIsEmpty(t *testing.T) {
+	root := t.TempDir()
+	v := vault.Vault{Root: root}
+
+	valid, warnings, err := List(v)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(valid) != 0 || len(warnings) != 0 {
+		t.Fatalf("List() = (%v, %v), want empty", valid, warnings)
+	}
+}

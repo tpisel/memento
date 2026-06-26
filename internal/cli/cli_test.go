@@ -700,6 +700,34 @@ func TestOrientOmitsWritingGuidePreconditionWhenWritingGuideIsAbsent(t *testing.
 	}
 }
 
+func TestOrientRendersConventionsBlockAndWarnsOnInvalid(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\ntitle: Writing\nwhen_to_read: before authoring a memento vault write\n---\nbody\n")
+	writeCLIFile(t, root, "_memento/conventions/broken.md",
+		"---\ntitle: Broken\n---\nbody\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	if code := Run([]string{"compile"}, &compileStdout, &compileStderr); code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"orient"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+
+	want := "## When To Read Conventions\n\n- before authoring a memento vault write: `memento convention writing`\n"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("Run(orient) stdout =\n%s\nwant conventions block:\n%s", stdout.String(), want)
+	}
+	if !strings.Contains(stderr.String(), "broken.md") {
+		t.Fatalf("Run(orient) stderr = %q, want warning naming broken.md", stderr.String())
+	}
+}
+
 func TestOrientAppendsSingleTaggedDocAfterBaseline(t *testing.T) {
 	root := makeCLIVault(t)
 	overlay := "---\norient: true\n---\n# Project Orientation\n\nUse the project guide.\n"

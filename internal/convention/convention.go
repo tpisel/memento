@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -100,6 +101,40 @@ func Read(v vault.Vault, name string) (Convention, error) {
 		WhenToRead: whenToRead,
 		Body:       body,
 	}, nil
+}
+
+// List scans _memento/conventions/ and returns every valid convention sorted
+// by name, plus a warning string for each *.md file that exists but is not a
+// valid convention (bad name or missing/empty when_to_read). A missing
+// conventions directory yields no conventions and no warnings; List does not
+// treat it as an error because conventions are optional.
+func List(v vault.Vault) (valid []Convention, warnings []string, err error) {
+	dir := filepath.Join(v.Root, vault.ToolDirName, DirName)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("read conventions dir %s/%s: %w", vault.ToolDirName, DirName, err)
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".md") {
+			continue
+		}
+		stem := strings.TrimSuffix(name, ".md")
+		c, rerr := Read(v, stem)
+		if rerr != nil {
+			warnings = append(warnings, rerr.Error())
+			continue
+		}
+		valid = append(valid, c)
+	}
+
+	sort.Slice(valid, func(i, j int) bool { return valid[i].Name < valid[j].Name })
+	sort.Strings(warnings)
+	return valid, warnings, nil
 }
 
 // frontmatterScalar returns the trimmed, unquoted value of a single-line scalar

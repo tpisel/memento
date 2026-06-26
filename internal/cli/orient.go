@@ -29,10 +29,13 @@ func runOrient(args []string, stdout, stderr io.Writer) int {
 		printCLIError(stderr, "orient", err)
 		return 1
 	}
-	data, err := orient.Render(v, m)
+	data, warnings, err := orient.Render(v, m)
 	if err != nil {
 		printCLIError(stderr, "orient", err)
 		return 1
+	}
+	for _, w := range warnings {
+		fmt.Fprintf(stderr, "memento orient: warning: %s\n", w)
 	}
 	if _, err := stdout.Write(data); err != nil {
 		printCLIError(stderr, "orient", fmt.Errorf("%w: write stdout: %v", ErrIO, err))
