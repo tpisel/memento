@@ -79,7 +79,7 @@ if [ "$orient" = 1 ]; then
   sep=","
 fi
 if [ "$guard" = 1 ]; then
-  hooks_json+="$sep\"PreToolUse\":[{\"matcher\":\"Write|Edit|MultiEdit\",\"hooks\":[{\"type\":\"command\",\"command\":\"$wt/scripts/agent-hooks/pre-write-vault-guard.sh\"}]}]"
+  hooks_json+="$sep\"PreToolUse\":[{\"matcher\":\"Write|Edit|MultiEdit|Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"$wt/scripts/agent-hooks/pre-write-vault-guard.sh\"}]}]"
 fi
 
 settings="$work/settings.json"

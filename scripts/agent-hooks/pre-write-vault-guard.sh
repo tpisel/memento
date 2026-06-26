@@ -12,7 +12,7 @@ set -euo pipefail
 #   "hooks": {
 #     "PreToolUse": [
 #       {
-#         "matcher": "Write|Edit|MultiEdit",
+#         "matcher": "Write|Edit|MultiEdit|Bash",
 #         "hooks": [
 #           {
 #             "type": "command",
@@ -76,6 +76,103 @@ if isinstance(value, str):
 ' "$field"
 }
 
+bash_writes_vault() {
+  local vault_root=$1
+  local command=$2
+
+  python3 - "$vault_root" "$command" <<'PY'
+import os
+import shlex
+import sys
+
+vault_root = os.path.realpath(os.path.abspath(sys.argv[1]))
+command = sys.argv[2]
+cwd = os.getcwd()
+
+try:
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    tokens = list(lexer)
+except ValueError:
+    tokens = command.replace(">>", " >> ").replace(">", " > ").split()
+
+boundaries = {";", "&&", "||", "|", "&", "(", ")"}
+
+
+def is_boundary(token):
+    return token in boundaries
+
+
+def segment_after(index):
+    out = []
+    for token in tokens[index + 1:]:
+        if is_boundary(token):
+            break
+        out.append(token)
+    return out
+
+
+def under_vault(value):
+    if not value:
+        return False
+    path = os.path.expanduser(value)
+    if not os.path.isabs(path):
+        path = os.path.join(cwd, path)
+    resolved = os.path.realpath(os.path.abspath(path))
+    return resolved == vault_root or resolved.startswith(vault_root + os.sep)
+
+
+def optionless(args):
+    result = []
+    after_options = False
+    for arg in args:
+        if arg == "--":
+            after_options = True
+            continue
+        if not after_options and arg.startswith("-") and arg != "-":
+            continue
+        result.append(arg)
+    return result
+
+
+def has_sed_inplace(args):
+    return any(arg == "-i" or arg.startswith("-i") for arg in args)
+
+
+def has_perl_inplace(args):
+    flag_text = "".join(arg[1:] for arg in args if arg.startswith("-") and arg != "--")
+    return "p" in flag_text and "i" in flag_text
+
+
+for index, token in enumerate(tokens):
+    if token in {">", ">>"}:
+        if index + 1 < len(tokens) and under_vault(tokens[index + 1]):
+            sys.exit(0)
+        continue
+
+    command_name = os.path.basename(token)
+    args = segment_after(index)
+
+    if command_name == "tee":
+        for arg in optionless(args):
+            if under_vault(arg):
+                sys.exit(0)
+    elif command_name in {"cp", "mv"}:
+        operands = optionless(args)
+        if len(operands) >= 2 and under_vault(operands[-1]):
+            sys.exit(0)
+    elif command_name == "sed":
+        if has_sed_inplace(args) and any(under_vault(arg) for arg in optionless(args)):
+            sys.exit(0)
+    elif command_name == "perl":
+        if has_perl_inplace(args) and any(under_vault(arg) for arg in optionless(args)):
+            sys.exit(0)
+
+sys.exit(1)
+PY
+}
+
 discover_vault_root() {
   local repo_root=${MEMENTO_REPO_ROOT:-}
 
@@ -108,16 +205,21 @@ discover_vault_root() {
 payload="$(cat)"
 tool_name="$(printf '%s' "$payload" | extract_payload_field tool_name)"
 file_path="$(printf '%s' "$payload" | extract_payload_field file_path)"
+command="$(printf '%s' "$payload" | extract_payload_field command)"
+deny_reason="Memento vault files must be changed with memento write so note modes are enforced. If memento write rejects a protected note, ask the user before using --force-with-reason."
 
 case "$tool_name" in
-  ""|Write|Edit|MultiEdit)
+  ""|Write|Edit|MultiEdit|Bash)
     ;;
   *)
     exit 0
     ;;
 esac
 
-if [ -z "$file_path" ]; then
+if [ "$tool_name" = "Bash" ] && [ -z "$command" ]; then
+  exit 0
+fi
+if [ "$tool_name" != "Bash" ] && [ -z "$file_path" ]; then
   exit 0
 fi
 
@@ -135,11 +237,19 @@ if [ -z "$vault_root" ]; then
 fi
 
 vault_root="$(resolve_path "$vault_root")"
+
+if [ "$tool_name" = "Bash" ]; then
+  if bash_writes_vault "$vault_root" "$command"; then
+    permission_decision "deny" "$deny_reason"
+  fi
+  exit 0
+fi
+
 target_path="$(resolve_path "$file_path")"
 
 case "$target_path" in
   "$vault_root"|"$vault_root"/*)
-    permission_decision "deny" "Memento vault files must be changed with memento write so the note mode check applies."
+    permission_decision "deny" "$deny_reason"
     ;;
   *)
     exit 0
