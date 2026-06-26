@@ -1,0 +1,1 @@
+Tighten the opening of `memento-memory/agent-human review boundaries.md`: reword its first body sentence so it reads more clearly. Change only that sentence and leave the rest of the note as-is.

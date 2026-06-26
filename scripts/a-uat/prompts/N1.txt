@@ -1,0 +1,1 @@
+In this memento repository, record a new durable note at `memento-memory/a-uat/example-happy-native-note.md` capturing this fact: A-UAT probe runs use disposable git worktrees so probes can create or modify vault files safely. Give it suitable frontmatter (title, mode, tags, summary) and a short body, then verify the note reads back with memento.

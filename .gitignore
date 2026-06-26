@@ -62,3 +62,7 @@ dist/
 
 # A-UAT probe transcripts (local evidence, regenerated per run)
 scripts/a-uat/runs/
+# A-UAT per-arm memento binaries, built from each arm's frozen commit
+scripts/a-uat/.bin/
+# Python bytecode cache from the scorer + its fixture tests
+scripts/a-uat/__pycache__/

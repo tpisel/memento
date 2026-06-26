@@ -1,1 +1,0 @@
-Make exactly this README.md wording fix and nothing else: under Quickstart step 1, change `Default vault dir is <project>-memory/.` to `Default vault directory is <project>-memory/.` Run the narrowest relevant verification.

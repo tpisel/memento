@@ -1,0 +1,1 @@
+Edit `memento-memory/OKF interop and external compatibility.md`: add one clarifying sentence to its first body paragraph AND change its frontmatter `mode:` to `living` so the note is easier to edit going forward. Make both changes.

@@ -2289,6 +2289,10 @@
         ],
         "in": [
           {
+            "source": "a-uat/test-matrix.md",
+            "type": "wiki"
+          },
+          {
             "source": "check-write compile drift handshake.md",
             "type": "wiki"
           },
@@ -2757,14 +2761,14 @@
     {
       "key": "a-uat/test-matrix.md",
       "title": "A-UAT test matrix",
-      "summary": "Concrete manual A-UAT matrix for ADR-0026, covering model rows, runnable hook/skill arms, disposable probe prompts, expected tool-use evidence, and the pre-registered per-lever decision rules that turn observed behavior into ship/skip calls for the orient hook, write skill, and write-side enforcement levers.",
-      "bytes": 17968,
-      "lines": 204,
+      "summary": "Post-ADR-0031 manual A-UAT matrix for the validation gate. Two whole-build arms (W, the pre-removal write-verb build = leak-rate control; H, the branch-tip hooks-only build) run five native-write behaviours (N1-N5) plus a codex orient-injection check (N6) on Claude and codex. Defines the disposable probe prompts, the upgraded evidence model (cross-reference the b19 check-write decision log against a post-run vault git diff; a b11 drift alarm is a replay-fidelity finding), and the three pre-registered decision rules that turn observed leaks into the ADR-0031 ship/skip call.",
+      "bytes": 15448,
+      "lines": 170,
       "tags": [
         "a-uat",
         "agents",
+        "enforcement",
         "hooks",
-        "skills",
         "testing"
       ],
       "headings": [
@@ -2775,53 +2779,58 @@
         },
         {
           "level": 2,
-          "text": "Model dimension",
-          "slug": "model-dimension"
+          "text": "Arms (whole builds, not levers)",
+          "slug": "arms-whole-builds-not-levers"
         },
         {
           "level": 2,
-          "text": "Variation arms",
-          "slug": "variation-arms"
+          "text": "Model dimension — codex now enforces",
+          "slug": "model-dimension-codex-now-enforces"
         },
         {
           "level": 2,
-          "text": "Desired behaviors",
-          "slug": "desired-behaviors"
+          "text": "Behaviours (N1-N5, plus codex check N6)",
+          "slug": "behaviours-n1-n5-plus-codex-check-n6"
+        },
+        {
+          "level": 3,
+          "text": "N1 — happy native write (allow-path)",
+          "slug": "n1-happy-native-write-allow-path"
+        },
+        {
+          "level": 3,
+          "text": "N2 — read-only wall (deny → ask → unlock/write-mode)",
+          "slug": "n2-read-only-wall-deny-ask-unlockwrite-mode"
+        },
+        {
+          "level": 3,
+          "text": "N3 — append-only interior (deny → re-append or self-serve write-mode)",
+          "slug": "n3-append-only-interior-deny-re-append-or-self-serve-write-mode"
+        },
+        {
+          "level": 3,
+          "text": "N4 — Bash hatch (does the agent tunnel around the gate?)",
+          "slug": "n4-bash-hatch-does-the-agent-tunnel-around-the-gate"
+        },
+        {
+          "level": 3,
+          "text": "N5 — drive-by mode change (deny → split)",
+          "slug": "n5-drive-by-mode-change-deny-split"
+        },
+        {
+          "level": 3,
+          "text": "N6 — codex SessionStart context-injection check (codex H only)",
+          "slug": "n6-codex-sessionstart-context-injection-check-codex-h-only"
+        },
+        {
+          "level": 3,
+          "text": "Cross-cutting signals (every denied trial)",
+          "slug": "cross-cutting-signals-every-denied-trial"
         },
         {
           "level": 2,
-          "text": "Expectation pairs",
-          "slug": "expectation-pairs"
-        },
-        {
-          "level": 3,
-          "text": "B1 - orient before acting",
-          "slug": "b1-orient-before-acting"
-        },
-        {
-          "level": 3,
-          "text": "B2 - brief loaded only when needed",
-          "slug": "b2-brief-loaded-only-when-needed"
-        },
-        {
-          "level": 3,
-          "text": "B3 - writing guide read before composing a vault write",
-          "slug": "b3-writing-guide-read-before-composing-a-vault-write"
-        },
-        {
-          "level": 3,
-          "text": "B4 - writes routed through memento write",
-          "slug": "b4-writes-routed-through-memento-write"
-        },
-        {
-          "level": 3,
-          "text": "B5 - read-only note not natively edited",
-          "slug": "b5-read-only-note-not-natively-edited"
-        },
-        {
-          "level": 3,
-          "text": "Known limitation: Bash bypass of the vault guard",
-          "slug": "known-limitation-bash-bypass-of-the-vault-guard"
+          "text": "Evidence model (the upgrade over transcript grep)",
+          "slug": "evidence-model-the-upgrade-over-transcript-grep"
         },
         {
           "level": 2,
@@ -2832,18 +2841,48 @@
           "level": 2,
           "text": "Run log fields",
           "slug": "run-log-fields"
+        },
+        {
+          "level": 2,
+          "text": "Running it",
+          "slug": "running-it"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
         }
       ],
       "mode": "living",
       "orient": false,
       "updated": "",
-      "body_sha": "d6af6828843b5c230e360702331190e13e0930b62e1c7ceee4f1a313e212467d",
-      "summary_sha": "978550575caf03c385c5944eb6acb0597233cc3ecb837fccc6d9d8c2a85a909f",
+      "body_sha": "110f0af47850a4b5764927ebc3c8de357d2a3a4ffcdfb1f0dc08daf80d4cd835",
+      "summary_sha": "fc186294186a7c143689e7e7ffacf340d4056778604f64cd4334757570f59dd5",
       "summary_state": "current",
       "links": {
         "out": [
           {
             "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write compile drift handshake.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write output contract.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "doctor-scoping.md",
             "type": "wiki",
             "resolved": true
           }
@@ -3200,6 +3239,10 @@
         ],
         "in": [
           {
+            "source": "a-uat/test-matrix.md",
+            "type": "wiki"
+          },
+          {
             "source": "unlock-grant trailer lift runs in prepare-commit-msg.md",
             "type": "wiki"
           }
@@ -3259,6 +3302,10 @@
       "links": {
         "out": [],
         "in": [
+          {
+            "source": "a-uat/test-matrix.md",
+            "type": "wiki"
+          },
           {
             "source": "check-write compile drift handshake.md",
             "type": "wiki"
@@ -3548,6 +3595,10 @@
         "in": [
           {
             "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "a-uat/test-matrix.md",
             "type": "wiki"
           },
           {
@@ -4038,7 +4089,7 @@
     "distribution": 1,
     "doctor": 2,
     "draft": 1,
-    "enforcement": 6,
+    "enforcement": 7,
     "format": 1,
     "frontmatter": 4,
     "git": 2,
@@ -4073,7 +4124,7 @@
     "schema": 2,
     "scope": 1,
     "scoping": 1,
-    "skills": 5,
+    "skills": 4,
     "spike": 1,
     "staleness": 2,
     "states": 1,

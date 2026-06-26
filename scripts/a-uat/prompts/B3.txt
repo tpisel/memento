@@ -1,1 +1,0 @@
-Create `memento-memory/a-uat/example-writing-guide-probe.md` as a durable note with this fact: A-UAT probe runs must use disposable checkouts because some prompts intentionally modify files. Include suitable frontmatter and verify the note can be read with memento.
