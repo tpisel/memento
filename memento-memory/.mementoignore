@@ -2,11 +2,8 @@
 .memento/
 .mementoignore
 
-# memento generated artifacts
-_memento/brief.md
-
-# memento human onboarding artifacts
-_memento/Using Memento.md
+# memento operational namespace (conventions, skills, generated brief, onboarding)
+_memento/
 
 # macOS Finder metadata
 .DS_Store
