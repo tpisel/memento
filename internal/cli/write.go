@@ -15,11 +15,23 @@ import (
 func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("write", flag.ContinueOnError)
 	overwrite := flags.Bool("overwrite", false, "replace the target note with stdin instead of appending")
+	forceWithReason := flags.String("force-with-reason", "", "override ratified mode rejection with a non-empty reason")
 	if ok, code := parseSubcommandFlags(flags, args, stdout, stderr, "write", writeHelpText); !ok {
 		return code
 	}
 	if flags.NArg() != 1 {
 		printCLIError(stderr, "write", fmt.Errorf("%w: expected exactly one key", ErrInvalidArguments))
+		return 2
+	}
+	forceRequested := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "force-with-reason" {
+			forceRequested = true
+		}
+	})
+	forceReason := strings.TrimSpace(*forceWithReason)
+	if forceRequested && forceReason == "" {
+		printCLIError(stderr, "write", fmt.Errorf("%w: --force-with-reason requires a non-empty reason", ErrInvalidArguments))
 		return 2
 	}
 
@@ -40,12 +52,21 @@ func runWrite(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if *overwrite {
 		operation = note.OperationOverwrite
 	}
-	writtenPath, err := note.Write(v, flags.Arg(0), data, note.WriteOptions{Operation: operation})
+	opts := note.WriteOptions{Operation: operation}
+	if forceRequested {
+		opts.ForceWithReason = forceReason
+	}
+	result, err := note.WriteWithResult(v, flags.Arg(0), data, opts)
 	if err != nil {
 		printCLIError(stderr, "write", err)
 		return 1
 	}
+	writtenPath := result.Path
 	fmt.Fprintf(stderr, "wrote: %s (%d, %s)\n", writtenPath, len(data), operation)
+	if result.Forced {
+		fmt.Fprintln(stderr, "forced: true")
+		fmt.Fprintf(stderr, "reason: %s\n", forceReason)
+	}
 	if segment, ok := newTopLevelVaultDirSegment(v, writtenPath, priorManifest); ok {
 		fmt.Fprintf(stderr, "warn: created new top-level vault directory '%s' — confirm this is intentional\n", segment)
 	}

@@ -314,6 +314,99 @@ func TestWriteModeMatrixForRatificationAndOperations(t *testing.T) {
 	}
 }
 
+func TestWriteForceWithReasonBypassesOnlyRatifiedModeRejections(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      markdown.WriteMode
+		operation WriteOperation
+		content   []byte
+		want      string
+	}{
+		{
+			name:      "read-only append",
+			mode:      markdown.ModeReadOnly,
+			operation: OperationAppend,
+			content:   []byte("\nAppended.\n"),
+			want:      "---\nmode: read-only\n---\n# Note\n\nOriginal.\n\nAppended.\n",
+		},
+		{
+			name:      "read-only overwrite",
+			mode:      markdown.ModeReadOnly,
+			operation: OperationOverwrite,
+			content:   []byte("# Replacement\n\nChanged.\n"),
+			want:      "# Replacement\n\nChanged.\n",
+		},
+		{
+			name:      "append-only overwrite",
+			mode:      markdown.ModeAppendOnly,
+			operation: OperationOverwrite,
+			content:   []byte("# Replacement\n\nChanged.\n"),
+			want:      "# Replacement\n\nChanged.\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := makeVault(t)
+			initGit(t, root)
+			writeFile(t, root, "note.md", "---\nmode: "+string(tt.mode)+"\n---\n# Note\n\nOriginal.\n")
+			commitAll(t, root)
+
+			result, err := WriteWithResult(vaultFromRoot(root), "note.md", tt.content, WriteOptions{
+				Operation:       tt.operation,
+				ForceWithReason: "human approved override",
+			})
+			if err != nil {
+				t.Fatalf("WriteWithResult(%s) error = %v, want nil", tt.operation, err)
+			}
+			if !result.Forced {
+				t.Fatalf("WriteWithResult(%s) Forced = false, want true", tt.operation)
+			}
+			if got := readFile(t, root, "note.md"); got != tt.want {
+				t.Fatalf("file after forced %s = %q, want %q", tt.operation, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWriteForceWithReasonDoesNotMarkNonProtectedWriteForced(t *testing.T) {
+	root := makeVault(t)
+	writeFile(t, root, "note.md", "# Note\n\nOriginal.\n")
+
+	result, err := WriteWithResult(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{
+		ForceWithReason: "approval",
+	})
+	if err != nil {
+		t.Fatalf("WriteWithResult(non-protected append) error = %v, want nil", err)
+	}
+	if result.Forced {
+		t.Fatal("WriteWithResult(non-protected append) Forced = true, want false")
+	}
+
+	want := "# Note\n\nOriginal.\n\nAppended.\n"
+	if got := readFile(t, root, "note.md"); got != want {
+		t.Fatalf("non-protected append = %q, want %q", got, want)
+	}
+}
+
+func TestWriteForceWithReasonDoesNotBypassMalformedProtectedMetadata(t *testing.T) {
+	root := makeVault(t)
+	initGit(t, root)
+	original := "---\ntitle\n---\n# Note\n\nOriginal.\n"
+	writeFile(t, root, "note.md", original)
+	commitAll(t, root)
+
+	_, err := Write(vaultFromRoot(root), "note.md", []byte("\nAppended.\n"), WriteOptions{
+		ForceWithReason: "human approved override",
+	})
+	if !errors.Is(err, markdown.ErrMalformedFrontmatter) {
+		t.Fatalf("Write(force malformed frontmatter) error = %v, want ErrMalformedFrontmatter", err)
+	}
+	if got := readFile(t, root, "note.md"); got != original {
+		t.Fatalf("malformed-frontmatter file changed after forced write: %q", got)
+	}
+}
+
 func TestWriteRejectsOverwriteForRatifiedMissingModeLikeAppendOnly(t *testing.T) {
 	tests := []struct {
 		name     string

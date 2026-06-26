@@ -27,47 +27,62 @@ const (
 )
 
 type WriteOptions struct {
-	Operation WriteOperation
+	Operation       WriteOperation
+	ForceWithReason string
+}
+
+type WriteResult struct {
+	Path   string
+	Forced bool
 }
 
 func Write(v vault.Vault, key string, content []byte, opts WriteOptions) (string, error) {
+	result, err := WriteWithResult(v, key, content, opts)
+	if err != nil {
+		return "", err
+	}
+	return result.Path, nil
+}
+
+func WriteWithResult(v vault.Vault, key string, content []byte, opts WriteOptions) (WriteResult, error) {
 	if opts.Operation == "" {
 		opts.Operation = OperationAppend
 	}
 	if opts.Operation != OperationAppend && opts.Operation != OperationOverwrite {
-		return "", fmt.Errorf("%w: %s", ErrUnsupportedWriteOperation, opts.Operation)
+		return WriteResult{}, fmt.Errorf("%w: %s", ErrUnsupportedWriteOperation, opts.Operation)
 	}
 
 	key, err := normalizeWritableKey(v, key)
 	if err != nil {
-		return "", err
+		return WriteResult{}, err
 	}
 
 	path, err := writablePath(v, key)
 	if err != nil {
-		return "", err
+		return WriteResult{}, err
 	}
 
-	if err := validateWriteMode(v, key, path, opts.Operation); err != nil {
-		return "", err
+	forced, err := validateWriteMode(v, key, path, opts)
+	if err != nil {
+		return WriteResult{}, err
 	}
 
 	if opts.Operation == OperationOverwrite {
 		if err := os.WriteFile(path, content, 0o644); err != nil {
-			return "", fmt.Errorf("overwrite %s: %w", key, err)
+			return WriteResult{}, fmt.Errorf("overwrite %s: %w", key, err)
 		}
-		return path, nil
+		return WriteResult{Path: path, Forced: forced}, nil
 	}
 
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
-		return "", fmt.Errorf("open %s for append: %w", key, err)
+		return WriteResult{}, fmt.Errorf("open %s for append: %w", key, err)
 	}
 	defer file.Close()
 	if _, err := file.Write(content); err != nil {
-		return "", fmt.Errorf("write %s: %w", key, err)
+		return WriteResult{}, fmt.Errorf("write %s: %w", key, err)
 	}
-	return path, nil
+	return WriteResult{Path: path, Forced: forced}, nil
 }
 
 func normalizeWritableKey(v vault.Vault, key string) (string, error) {
@@ -112,35 +127,45 @@ func normalizeWritableKey(v vault.Vault, key string) (string, error) {
 	return key, nil
 }
 
-func validateWriteMode(v vault.Vault, key, path string, op WriteOperation) error {
+func validateWriteMode(v vault.Vault, key, path string, opts WriteOptions) (bool, error) {
 	ratified, err := isRatified(v, key)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !ratified {
-		return nil
+		return false, nil
 	}
 
 	source, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return fmt.Errorf("read %s metadata: %w", key, err)
+		return false, fmt.Errorf("read %s metadata: %w", key, err)
 	}
 
 	meta, err := markdown.ExtractMetadata(key, source)
 	if err != nil {
-		return fmt.Errorf("extract metadata from %s: %w", key, err)
+		return false, fmt.Errorf("extract metadata from %s: %w", key, err)
 	}
 
 	if meta.Mode == markdown.ModeReadOnly {
-		return fmt.Errorf("%w: %s is %s", ErrReadOnly, key, meta.Mode)
+		if forceWithReason(opts) {
+			return true, nil
+		}
+		return false, fmt.Errorf("%w: %s is %s", ErrReadOnly, key, meta.Mode)
 	}
-	if meta.Mode == markdown.ModeAppendOnly && op == OperationOverwrite {
-		return fmt.Errorf("%w: %s", ErrReadOnly, key)
+	if meta.Mode == markdown.ModeAppendOnly && opts.Operation == OperationOverwrite {
+		if forceWithReason(opts) {
+			return true, nil
+		}
+		return false, fmt.Errorf("%w: %s", ErrReadOnly, key)
 	}
-	return nil
+	return false, nil
+}
+
+func forceWithReason(opts WriteOptions) bool {
+	return strings.TrimSpace(opts.ForceWithReason) != ""
 }
 
 func writablePath(v vault.Vault, key string) (string, error) {

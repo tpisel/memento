@@ -110,9 +110,10 @@ func TestSubcommandHelp(t *testing.T) {
 			verb: "write",
 			want: []string{
 				"Usage:",
-				"memento write [--overwrite] <key>",
+				"memento write [--overwrite] [--force-with-reason <reason>] <key>",
 				"vault-relative .md path",
 				"--overwrite",
+				"--force-with-reason",
 				"write appends by default",
 				"append-only is the default",
 				"living accepts appends and overwrites",
@@ -1956,6 +1957,149 @@ func TestWriteOverwriteRejectsRatifiedAppendOnlyMode(t *testing.T) {
 	}
 }
 
+func TestWriteRejectsRatifiedReadOnlyModeWithoutForce(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	original := "---\nmode: read-only\n---\n# Frozen\n\nOriginal.\n"
+	writeCLIFile(t, root, "frozen.md", original)
+	commitCLIGit(t, root)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "frozen.md"},
+		strings.NewReader("\nAppend.\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write read-only) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write read-only) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write", "mode-rejects-write")
+	if got := readCLIFile(t, root, "frozen.md"); got != original {
+		t.Fatalf("read-only note changed after rejected write: %q", got)
+	}
+}
+
+func TestWriteRejectsEmptyForceReasonBeforeWriting(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	original := "---\nmode: read-only\n---\n# Frozen\n\nOriginal.\n"
+	writeCLIFile(t, root, "frozen.md", original)
+	commitCLIGit(t, root)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--force-with-reason", " \t ", "frozen.md"},
+		strings.NewReader("\nAppend.\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 2 {
+		t.Fatalf("Run(write empty force reason) exit code = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write empty force reason) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write", "invalid-arguments")
+	if got := readCLIFile(t, root, "frozen.md"); got != original {
+		t.Fatalf("read-only note changed after empty force reason: %q", got)
+	}
+}
+
+func TestWriteForceWithReasonAppendsRatifiedReadOnlyMode(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	original := "---\nmode: read-only\n---\n# Frozen\n\nOriginal.\n"
+	writeCLIFile(t, root, "frozen.md", original)
+	commitCLIGit(t, root)
+	body := "\nApproved append.\n"
+	reason := "human approved superseding note repair"
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--force-with-reason", reason, "frozen.md"},
+		strings.NewReader(body),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write forced read-only append) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write forced read-only append) stdout = %q, want empty", stdout.String())
+	}
+	want := writeStatusLine(t, root, "frozen.md", len(body), note.OperationAppend) +
+		"forced: true\n" +
+		"reason: " + reason + "\n" +
+		compiledStatusLine(1)
+	if got := stderr.String(); got != want {
+		t.Fatalf("Run(write forced read-only append) stderr = %q, want %q", got, want)
+	}
+	if got, want := readCLIFile(t, root, "frozen.md"), original+body; got != want {
+		t.Fatalf("forced read-only append = %q, want %q", got, want)
+	}
+}
+
+func TestWriteForceWithReasonOverwritesRatifiedAppendOnlyMode(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	original := "---\nmode: append-only\n---\n# Note\n\nOriginal.\n"
+	writeCLIFile(t, root, "note.md", original)
+	commitCLIGit(t, root)
+	body := "---\nmode: append-only\n---\n# Note\n\nReplacement.\n"
+	reason := "human approved history repair"
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--overwrite", "--force-with-reason", " " + reason + " ", "note.md"},
+		strings.NewReader(body),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write forced append-only overwrite) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write forced append-only overwrite) stdout = %q, want empty", stdout.String())
+	}
+	want := writeStatusLine(t, root, "note.md", len(body), note.OperationOverwrite) +
+		"forced: true\n" +
+		"reason: " + reason + "\n" +
+		compiledStatusLine(1)
+	if got := stderr.String(); got != want {
+		t.Fatalf("Run(write forced append-only overwrite) stderr = %q, want %q", got, want)
+	}
+	if got := readCLIFile(t, root, "note.md"); got != body {
+		t.Fatalf("forced append-only overwrite = %q, want %q", got, body)
+	}
+}
+
+func TestWriteForceWithReasonDoesNotChangeNonProtectedAppend(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nExisting.\n")
+	body := "\nAppended.\n"
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--force-with-reason", "approval", "note.md"},
+		strings.NewReader(body),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("Run(write forced non-protected append) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write forced non-protected append) stdout = %q, want empty", stdout.String())
+	}
+	if got, want := stderr.String(), writeSuccessStderr(t, root, "note.md", len(body), note.OperationAppend, 1); got != want {
+		t.Fatalf("Run(write forced non-protected append) stderr = %q, want %q", got, want)
+	}
+}
+
 func TestWriteRejectsTraversalKey(t *testing.T) {
 	makeCLIVault(t)
 
@@ -1975,6 +2119,73 @@ func TestWriteRejectsTraversalKey(t *testing.T) {
 	assertCLIErrorToken(t, stderr.String(), "write", "invalid-key")
 	if !strings.Contains(stderr.String(), "invalid key") {
 		t.Fatalf("Run(write traversal) stderr = %q, want invalid key message", stderr.String())
+	}
+}
+
+func TestWriteForceWithReasonDoesNotBypassKeyValidation(t *testing.T) {
+	makeCLIVault(t)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--force-with-reason", "approval", "../outside.md"},
+		strings.NewReader("# Outside\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write forced traversal) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write forced traversal) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write", "invalid-key")
+}
+
+func TestWriteForceWithReasonDoesNotBypassMalformedProtectedMetadata(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	original := "---\ntitle\n---\n# Note\n"
+	writeCLIFile(t, root, "note.md", original)
+	commitCLIGit(t, root)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--force-with-reason", "approval", "note.md"},
+		strings.NewReader("append\n"),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write forced malformed frontmatter) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write forced malformed frontmatter) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write", "frontmatter-invalid")
+	if got := readCLIFile(t, root, "note.md"); got != original {
+		t.Fatalf("malformed-frontmatter note changed after forced write: %q", got)
+	}
+}
+
+func TestWriteForceWithReasonDoesNotBypassStdinReadErrors(t *testing.T) {
+	root := makeCLIVault(t)
+
+	var stdout, stderr bytes.Buffer
+	code := RunWithInput(
+		[]string{"write", "--force-with-reason", "approval", "note.md"},
+		failingReader{},
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("Run(write forced stdin failure) exit code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("Run(write forced stdin failure) stdout = %q, want empty", stdout.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write", "io-error")
+	if _, err := os.Stat(filepath.Join(root, "note.md")); !os.IsNotExist(err) {
+		t.Fatalf("note was created after stdin failure; stat err = %v", err)
 	}
 }
 
@@ -2260,6 +2471,12 @@ func writeSuccessStderr(t *testing.T, root, key string, byteCount int, operation
 
 func writeNewTopLevelDirWarning(segment string) string {
 	return fmt.Sprintf("warn: created new top-level vault directory '%s' — confirm this is intentional\n", segment)
+}
+
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) {
+	return 0, errors.New("injected read failure")
 }
 
 func resolvedCLIPath(t *testing.T, root, key string) string {
