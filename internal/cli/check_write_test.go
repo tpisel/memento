@@ -23,6 +23,25 @@ func checkWritePayload(t *testing.T, tool, filePath, content string) string {
 	return string(b)
 }
 
+// checkEditPayload renders a raw PreToolUse JSON payload for an Edit, mirroring
+// the harness envelope: a single old_string→new_string substitution.
+func checkEditPayload(t *testing.T, filePath, oldString, newString string, replaceAll bool) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{
+		"tool_name": "Edit",
+		"tool_input": map[string]any{
+			"file_path":   filePath,
+			"old_string":  oldString,
+			"new_string":  newString,
+			"replace_all": replaceAll,
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal Edit payload: %v", err)
+	}
+	return string(b)
+}
+
 // invokeCheckWrite feeds payload on stdin and returns the verdict's decode plus the
 // raw streams. A missing hookSpecificOutput (empty stdout) decodes to the zero
 // value, which the allow/inert cases assert against.
@@ -223,20 +242,55 @@ func TestCheckWriteAmbiguousVaultAsks(t *testing.T) {
 	}
 }
 
-func TestCheckWriteUnsupportedDerivationFailsClosed(t *testing.T) {
+func TestCheckWriteAppendOnlyInteriorEditDeniedTailAppendAllowed(t *testing.T) { // US3
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "log.md", "---\nmode: append-only\n---\n# Log\n\nEntry one.\nEntry two.\n")
+	commitCLIGit(t, root)
+	target := filepath.Join(root, "log.md")
+
+	// An interior Edit rewrites bytes the old content already committed, breaking
+	// the append-only prefix: denied.
+	decision, reasonCode, reason, _, stderr, code := invokeCheckWrite(t,
+		checkEditPayload(t, target, "Entry one.", "Edited one.", false))
+	if code != 0 {
+		t.Fatalf("interior edit exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "deny" || reasonCode != "append_only_interior" {
+		t.Fatalf("interior edit verdict = (%q,%q), want (deny, append_only_interior)", decision, reasonCode)
+	}
+	if !strings.Contains(reason, "log.md") {
+		t.Fatalf("reason = %q, want it to name the note", reason)
+	}
+
+	// A tail-append Edit extends the last line, keeping the old bytes as a prefix:
+	// allowed.
+	decision, _, _, _, stderr, code = invokeCheckWrite(t,
+		checkEditPayload(t, target, "Entry two.\n", "Entry two.\nEntry three.\n", false))
+	if code != 0 {
+		t.Fatalf("tail append exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "allow" {
+		t.Fatalf("tail append decision = %q, want allow", decision)
+	}
+}
+
+func TestCheckWriteUnderivableEditFailsClosed(t *testing.T) {
 	root := makeCLIVault(t)
 	initCLIGit(t, root)
 	writeCLIFile(t, root, "note.md", "---\nmode: read-only\n---\n# Note\n\nBody.\n")
 	commitCLIGit(t, root)
 
 	target := filepath.Join(root, "note.md")
+	// old_string is absent from the note, so the replay aborts and no faithful
+	// new-bytes exist: the wrapper must fail closed rather than gate invented bytes.
 	_, _, _, _, stderr, code := invokeCheckWrite(t,
-		checkWritePayload(t, "Edit", target, ""))
+		checkEditPayload(t, target, "no such text", "x", false))
 	if code == 0 {
-		t.Fatalf("exit code = 0, want non-zero for an unimplemented in-vault derivation (wrapper fails closed)")
+		t.Fatalf("exit code = 0, want non-zero for an in-vault edit whose replay aborts (wrapper fails closed)")
 	}
 	if !strings.Contains(stderr, "Edit") {
-		t.Fatalf("stderr = %q, want it to name the unsupported tool", stderr)
+		t.Fatalf("stderr = %q, want it to name the tool", stderr)
 	}
 }
 

@@ -24,20 +24,34 @@ const (
 )
 
 // errUnsupportedDerivation marks a tool whose new-bytes derivation this build
-// cannot compute yet (Edit/MultiEdit/Bash/codex land in later beads). For an
-// in-vault target it surfaces as an internal error so the dumb-pipe wrapper
-// fails closed (ADR-0031) rather than silently allowing an ungated write.
+// cannot compute yet (Bash redirects / codex apply_patch land in later beads).
+// For an in-vault target it surfaces as an internal error so the dumb-pipe
+// wrapper fails closed (ADR-0031) rather than silently allowing an ungated write.
 var errUnsupportedDerivation = errors.New("unsupported write derivation")
 
 // preToolUse is the slice of the raw PreToolUse payload check-write consumes.
 // Unknown fields are ignored; only the tool name and the file-write inputs the
-// Write derivation needs are read.
+// Write/Edit/MultiEdit derivations need are read.
 type preToolUse struct {
 	ToolName  string `json:"tool_name"`
 	ToolInput struct {
 		FilePath string `json:"file_path"`
-		Content  string `json:"content"`
+		// Write derivation.
+		Content string `json:"content"`
+		// Edit derivation (a single-edit MultiEdit).
+		OldString  string `json:"old_string"`
+		NewString  string `json:"new_string"`
+		ReplaceAll bool   `json:"replace_all"`
+		// MultiEdit derivation: edits applied in order.
+		Edits []editInput `json:"edits"`
 	} `json:"tool_input"`
+}
+
+// editInput is one element of a MultiEdit payload's edits array.
+type editInput struct {
+	OldString  string `json:"old_string"`
+	NewString  string `json:"new_string"`
+	ReplaceAll bool   `json:"replace_all"`
 }
 
 type hookOutput struct {
@@ -127,9 +141,9 @@ func runCheckWrite(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	newBytes, err := deriveNewBytes(p, old)
+	newBytes, err := deriveNewBytes(p, old, exists)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento check-write: %s derivation is not implemented in this build: %v\n", p.ToolName, err)
+		fmt.Fprintf(stderr, "memento check-write: cannot derive new bytes for %s: %v\n", p.ToolName, err)
 		return 1
 	}
 
@@ -144,7 +158,7 @@ func runCheckWrite(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	decision := enforce.EvaluateVaultWrite(normKey, effectiveMode(normKey, old), old, newBytes, exists, ratified, granted, enforce.ReasonAppendOnlyOverwrite)
+	decision := enforce.EvaluateVaultWrite(normKey, effectiveMode(normKey, old), old, newBytes, exists, ratified, granted, brokenPrefixReason(p.ToolName))
 	if decision.Allow {
 		emitVerdict(stdout, "allow", "", "")
 		return 0
@@ -154,14 +168,41 @@ func runCheckWrite(stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 // deriveNewBytes computes the bytes a tool would land on disk. Per ADR-0031 the
-// payload-alone derivation is exact only for Write (content verbatim); Edit /
-// MultiEdit must replay the tool's mutation algorithm against disk-old (a
-// separate bead), so they report errUnsupportedDerivation here.
-func deriveNewBytes(p preToolUse, _ []byte) ([]byte, error) {
-	if p.ToolName == "Write" {
+// payload-alone derivation is exact only for Write (content verbatim); Edit and
+// MultiEdit replay Claude's apply algorithm against disk-old via
+// enforce.ReplayEdits — a replay abort (no match, ambiguous match, create via
+// edit) returns an error so the in-vault write fails closed.
+func deriveNewBytes(p preToolUse, old []byte, exists bool) ([]byte, error) {
+	switch p.ToolName {
+	case "Write":
 		return []byte(p.ToolInput.Content), nil
+	case "Edit":
+		return enforce.ReplayEdits(old, exists, []enforce.Edit{{
+			OldString:  p.ToolInput.OldString,
+			NewString:  p.ToolInput.NewString,
+			ReplaceAll: p.ToolInput.ReplaceAll,
+		}})
+	case "MultiEdit":
+		edits := make([]enforce.Edit, len(p.ToolInput.Edits))
+		for i, e := range p.ToolInput.Edits {
+			edits[i] = enforce.Edit{OldString: e.OldString, NewString: e.NewString, ReplaceAll: e.ReplaceAll}
+		}
+		return enforce.ReplayEdits(old, exists, edits)
 	}
 	return nil, fmt.Errorf("%w: %s", errUnsupportedDerivation, p.ToolName)
+}
+
+// brokenPrefixReason selects the append-only denial code by mutation shape: a
+// whole-file Write/truncate carries ReasonAppendOnlyOverwrite, an in-place
+// Edit/MultiEdit carries ReasonAppendOnlyInterior. They fire on the same prefix
+// invariant and differ only in the recovery the message offers (ADR-0031).
+func brokenPrefixReason(toolName string) string {
+	switch toolName {
+	case "Edit", "MultiEdit":
+		return enforce.ReasonAppendOnlyInterior
+	default:
+		return enforce.ReasonAppendOnlyOverwrite
+	}
 }
 
 // effectiveMode reads the note's current declared mode from its on-disk bytes,
