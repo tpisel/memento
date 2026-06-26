@@ -19,10 +19,6 @@ Memento is a thin retrieval and writing layer over a human-curated markdown memo
 - `read-only` is for frozen records such as accepted ADRs. Ratified notes reject appends and overwrites.
 - Unratified notes are still in their edit window and accept appends and overwrites regardless of declared mode.
 
-## Triggered Preconditions
-
-<!-- memento:triggered-preconditions -->
-
 ## Entry Index
 
 Use `memento brief` when you need the doc landscape for note or section selection.

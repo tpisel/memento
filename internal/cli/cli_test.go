@@ -642,40 +642,17 @@ func TestOrientPrintsBaselineOnlyWhenNoDocsAreTagged(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("Run(orient) stderr = %q, want empty", stderr.String())
 	}
-	if got, want := stdout.String(), renderedBaselineWithoutWritingGuide(t, root); got != want {
+	if got, want := stdout.String(), renderedBaseline(t, root); got != want {
 		t.Fatalf("Run(orient) stdout =\n%s\nwant baseline:\n%s", got, want)
 	}
 }
 
-func TestOrientIncludesWritingGuidePreconditionWhenWritingGuideExists(t *testing.T) {
+func TestOrientNeverReferencesLegacyWritingGuidePath(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+	// A leftover legacy writing guide must not resurrect the old triggered
+	// precondition: the writing prompt now flows through the conventions block.
 	writeCLIFile(t, root, "_memento/writing.md", "---\nmode: read-only\n---\n# Writing\n\nUse judgement.\n")
-
-	var compileStdout, compileStderr bytes.Buffer
-	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
-	if code != 0 {
-		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
-	}
-
-	var stdout, stderr bytes.Buffer
-	code = Run([]string{"orient"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("Run(orient) stderr = %q, want empty", stderr.String())
-	}
-
-	want := "before authoring, run `memento read _memento/writing.md`."
-	if !strings.Contains(stdout.String(), want) {
-		t.Fatalf("Run(orient) stdout =\n%s\nwant writing guide precondition %q", stdout.String(), want)
-	}
-}
-
-func TestOrientOmitsWritingGuidePreconditionWhenWritingGuideIsAbsent(t *testing.T) {
-	root := makeCLIVault(t)
-	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
 
 	var compileStdout, compileStderr bytes.Buffer
 	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
@@ -691,12 +668,37 @@ func TestOrientOmitsWritingGuidePreconditionWhenWritingGuideIsAbsent(t *testing.
 
 	out := stdout.String()
 	for _, unwanted := range []string{
-		"before authoring, run `memento read _memento/writing.md`.",
-		"consider writing one",
+		"_memento/writing.md",
+		"memento read _memento/writing",
+		"Triggered Preconditions",
 	} {
 		if strings.Contains(out, unwanted) {
-			t.Fatalf("Run(orient) stdout =\n%s\nwant no writing guide text containing %q", out, unwanted)
+			t.Fatalf("Run(orient) stdout =\n%s\nwant no legacy writing-guide reference %q", out, unwanted)
 		}
+	}
+}
+
+func TestOrientRoutesWritingPromptThroughConvention(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\ntitle: Writing\nwhen_to_read: before authoring a memento vault write\n---\nbody\n")
+
+	var compileStdout, compileStderr bytes.Buffer
+	code := Run([]string{"compile"}, &compileStdout, &compileStderr)
+	if code != 0 {
+		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, compileStderr.String())
+	}
+
+	var stdout, stderr bytes.Buffer
+	code = Run([]string{"orient"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+
+	want := "before authoring a memento vault write: `memento convention writing`"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("Run(orient) stdout =\n%s\nwant writing prompt via convention %q", stdout.String(), want)
 	}
 }
 
@@ -746,13 +748,13 @@ func TestOrientAppendsSingleTaggedDocAfterBaseline(t *testing.T) {
 		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
 	}
 
-	want := strings.TrimRight(renderedBaselineWithoutWritingGuide(t, root), "\n") + "\n---\n\n" + strings.TrimRight(overlay, "\n") + "\n"
+	want := strings.TrimRight(renderedBaseline(t, root), "\n") + "\n---\n\n" + strings.TrimRight(overlay, "\n") + "\n"
 	if stdout.String() != want {
 		t.Fatalf("Run(orient) stdout =\n%s\nwant:\n%s", stdout.String(), want)
 	}
 }
 
-func renderedBaselineWithoutWritingGuide(t *testing.T, root string) string {
+func renderedBaseline(t *testing.T, root string) string {
 	t.Helper()
 	v := vault.Vault{
 		Root:         root,
@@ -764,7 +766,6 @@ func renderedBaselineWithoutWritingGuide(t *testing.T, root string) string {
 		t.Fatalf("load manifest: %v", err)
 	}
 
-	out := strings.Replace(string(orient.Baseline()), "<!-- memento:triggered-preconditions -->", "None yet.", 1)
 	disclosure := "`memento brief` will report no notes yet."
 	if len(m.Entries) > 0 {
 		lines := bytes.Count(brief.Render(m), []byte("\n"))
@@ -774,7 +775,7 @@ func renderedBaselineWithoutWritingGuide(t *testing.T, root string) string {
 		}
 		disclosure = fmt.Sprintf("`memento brief` will print summaries of %d %s (~%d lines); it is dense and pull-only.", len(m.Entries), noun, lines)
 	}
-	return strings.Replace(out, "<!-- memento:brief-disclosure -->", disclosure, 1)
+	return strings.Replace(string(orient.Baseline()), "<!-- memento:brief-disclosure -->", disclosure, 1)
 }
 
 func TestOrientSortsMultipleTaggedDocsByManifestKey(t *testing.T) {

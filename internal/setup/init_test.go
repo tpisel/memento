@@ -406,11 +406,20 @@ func TestInitScaffoldsDefaultWriteSkillSource(t *testing.T) {
 	for _, want := range []string{
 		"name: memento-write",
 		"Before authoring a vault write:",
-		"memento read _memento/writing",
+		"memento convention writing",
+		"_memento/conventions/writing.md",
 		"memento write",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("_memento/skills/write.md = %q, want it to contain %q", source, want)
+		}
+	}
+	for _, unwanted := range []string{
+		"memento read _memento/writing",
+		"`_memento/writing.md`",
+	} {
+		if strings.Contains(source, unwanted) {
+			t.Fatalf("_memento/skills/write.md = %q, want no legacy writing-guide reference %q", source, unwanted)
 		}
 	}
 	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
@@ -601,29 +610,21 @@ func TestInitCreatesUsingMementoGuideForGreenfieldVault(t *testing.T) {
 	}
 }
 
-func TestInitCreatesWritingGuideForGreenfieldVault(t *testing.T) {
+func TestInitDoesNotCreateLegacyWritingGuideForGreenfieldVault(t *testing.T) {
 	repo := t.TempDir()
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
 	}
 
-	got := readSetupFile(t, repo, "memory/_memento/writing.md")
-	for _, want := range []string{
-		"title:",
-		"mode: read-only",
-		"summary:",
-		"hard-won learnings",
-		"paths we decided not to take",
-		"constraints that aren't visible in code",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("_memento/writing.md = %q, want it to contain %q", got, want)
-		}
+	// The writing guide now lives at _memento/conventions/writing.md; greenfield
+	// init must not also scaffold the superseded _memento/writing.md path.
+	if _, err := os.Stat(filepath.Join(repo, "memory", "_memento", "writing.md")); !os.IsNotExist(err) {
+		t.Fatalf("_memento/writing.md stat err = %v, want file not to exist", err)
 	}
-	_, body, ok := strings.Cut(got, "---\n\n")
-	if !ok || strings.TrimSpace(body) == "" {
-		t.Fatalf("_memento/writing.md = %q, want non-empty body", got)
+	got := readSetupFile(t, repo, "memory/_memento/conventions/writing.md")
+	if !strings.Contains(got, "when_to_read: before authoring a memento vault write") {
+		t.Fatalf("_memento/conventions/writing.md = %q, want the writing convention scaffolded instead", got)
 	}
 }
 

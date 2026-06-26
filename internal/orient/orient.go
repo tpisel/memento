@@ -19,7 +19,6 @@ import (
 var baselineFS embed.FS
 
 const overlaySeparator = "\n---\n\n"
-const triggeredPreconditionsMarker = "<!-- memento:triggered-preconditions -->"
 const briefDisclosureMarker = "<!-- memento:brief-disclosure -->"
 
 // Baseline returns the binary-shipped orientation baseline verbatim.
@@ -36,7 +35,7 @@ func Baseline() []byte {
 // invalid convention file; warnings never suppress valid conventions or fail
 // the render.
 func Render(v vault.Vault, m manifest.Manifest) (out []byte, warnings []string, err error) {
-	out, err = baselineForVault(v, m)
+	out, err = baselineForVault(m)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -90,29 +89,13 @@ func conventionsSection(conventions []convention.Convention) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func baselineForVault(v vault.Vault, m manifest.Manifest) ([]byte, error) {
+func baselineForVault(m manifest.Manifest) ([]byte, error) {
 	out := append([]byte(nil), Baseline()...)
-	hasWritingGuide, err := hasWritingGuide(v)
-	if err != nil {
-		return nil, err
+	marker := []byte(briefDisclosureMarker)
+	if bytes.Count(out, marker) != 1 {
+		return nil, fmt.Errorf("orient baseline must contain exactly one brief disclosure marker")
 	}
-
-	replacement := "None yet."
-	if hasWritingGuide {
-		replacement = "- `memento write`: before authoring, run `memento read _memento/writing.md`."
-	}
-
-	replacements := map[string]string{
-		triggeredPreconditionsMarker: replacement,
-		briefDisclosureMarker:        briefDisclosure(m),
-	}
-	for marker, replacement := range replacements {
-		markerBytes := []byte(marker)
-		if bytes.Count(out, markerBytes) != 1 {
-			return nil, fmt.Errorf("orient baseline must contain exactly one %s marker", markerName(marker))
-		}
-		out = bytes.Replace(out, markerBytes, []byte(replacement), 1)
-	}
+	out = bytes.Replace(out, marker, []byte(briefDisclosure(m)), 1)
 	return out, nil
 }
 
@@ -131,34 +114,11 @@ func briefDisclosure(m manifest.Manifest) string {
 	)
 }
 
-func markerName(marker string) string {
-	switch marker {
-	case triggeredPreconditionsMarker:
-		return "triggered preconditions"
-	case briefDisclosureMarker:
-		return "brief disclosure"
-	default:
-		return marker
-	}
-}
-
 func plural(n int, singular, plural string) string {
 	if n == 1 {
 		return singular
 	}
 	return plural
-}
-
-func hasWritingGuide(v vault.Vault) (bool, error) {
-	path := filepath.Join(v.Root, vault.ToolDirName, "writing.md")
-	info, err := os.Stat(path)
-	if err == nil {
-		return !info.IsDir(), nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, fmt.Errorf("stat writing guide: %w", err)
 }
 
 func orientEntries(m manifest.Manifest) []manifest.Entry {

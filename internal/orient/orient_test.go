@@ -16,11 +16,23 @@ import (
 
 func TestBaselineContainsRenderMarkers(t *testing.T) {
 	for _, marker := range [][]byte{
-		[]byte("<!-- memento:triggered-preconditions -->"),
 		[]byte("<!-- memento:brief-disclosure -->"),
 	} {
 		if got := bytes.Count(Baseline(), marker); got != 1 {
 			t.Fatalf("Baseline marker %q count = %d, want 1", marker, got)
+		}
+	}
+}
+
+func TestBaselineHasNoLegacyWritingGuidePrecondition(t *testing.T) {
+	got := string(Baseline())
+	for _, unwanted := range []string{
+		"<!-- memento:triggered-preconditions -->",
+		"Triggered Preconditions",
+		"_memento/writing.md",
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("Baseline() =\n%s\nwant no legacy writing-guide precondition %q", got, unwanted)
 		}
 	}
 }

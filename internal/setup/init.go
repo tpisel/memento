@@ -83,11 +83,11 @@ var defaultWriteSkill = strings.Join([]string{
 	"",
 	"Before authoring a vault write:",
 	"",
-	"1. **Read the writing guide.** Run `memento read _memento/writing` to load when/what to write, what to keep in the task store instead, and the expected note shape. Do this before composing, not after.",
+	"1. **Read the writing guide.** Run `memento convention writing` to load when/what to write, what to keep in the task store instead, and the expected note shape. Do this before composing, not after.",
 	"2. **Write through memento, not native file edits.** Use `memento write` so the mode check (`append-only` / `living` / `read-only`) is applied. A native file edit of a vault note bypasses that check and can silently overwrite a `read-only` note - the read-only guarantee lives in the write verb, not in the file.",
 	"3. **Keep it scannable.** Durable notes should read cleanly from `memento brief`; lead the summary with the load-bearing fact or decision.",
 	"",
-	"This skill is a delivery surface for `_memento/writing.md` - that file is the source of truth. If the two ever disagree, the guide wins.",
+	"This skill is a delivery surface for the `writing` convention (`_memento/conventions/writing.md`) - that file is the source of truth. If the two ever disagree, the convention wins.",
 	"",
 }, "\n")
 
@@ -135,9 +135,6 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if greenfield {
 		if err := ensureFile(filepath.Join(vaultRoot, "example.md"), []byte(defaultExampleNote), 0o644); err != nil {
 			return vault.Vault{}, fmt.Errorf("create example note: %w", err)
-		}
-		if err := ensureWritingGuide(v); err != nil {
-			return vault.Vault{}, err
 		}
 	}
 	if err := ensureUsingMementoGuide(v); err != nil {
@@ -265,29 +262,6 @@ func ensureUsingMementoGuide(v vault.Vault) error {
 
 	if err := writeNewFile(path, []byte(defaultUsingMementoGuide), 0o644); err != nil {
 		return fmt.Errorf("create _memento Using Memento guide: %w", err)
-	}
-	return nil
-}
-
-var defaultWritingGuide = strings.Join([]string{
-	"---",
-	"title: Writing guide",
-	"mode: read-only",
-	"summary: Project-local guidance for deciding when durable memento notes are worth authoring.",
-	"---",
-	"",
-	"# Writing guide",
-	"",
-	"Retain durable project knowledge that should survive a task: hard-won learnings, paths we decided not to take, and constraints that aren't visible in code.",
-	"",
-	"Do not record transient task progress, guesses, or details already made clear by the code.",
-	"",
-}, "\n")
-
-func ensureWritingGuide(v vault.Vault) error {
-	path := filepath.Join(v.Root, vault.ToolDirName, "writing.md")
-	if err := writeNewFile(path, []byte(defaultWritingGuide), 0o644); err != nil {
-		return fmt.Errorf("create _memento writing guide: %w", err)
 	}
 	return nil
 }
