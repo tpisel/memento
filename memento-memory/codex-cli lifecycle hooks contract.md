@@ -1,0 +1,191 @@
+---
+title: codex-cli lifecycle hooks contract
+summary: "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml/hooks.json schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences."
+tags:
+  - memento
+  - codex
+  - hooks
+  - enforcement
+  - agents
+  - spike
+mode: living
+status: reference
+date: 2026-06-27
+---
+
+# codex-cli lifecycle hooks contract
+
+Spike for ADR-0031 (memento-ryr.15) to pin the empirical facts the codex install
+beads depend on. Evidence is `codex-cli 0.142.2` itself, not docs: `codex features
+list` (feature flag state), the JSON-Schema blobs the binary embeds for every hook
+event's stdin/stdout (`strings` over the Mach-O), the embedded config reference, and
+a `codex doctor` parse test against a hand-written `config.toml`. Nothing here is
+inferred from Claude Code — it is read off codex's own wire schema, which happens to
+match.
+
+## Feature is real and stable
+
+`codex features list` reports **`hooks  stable  true`**. (`plugin_hooks` is `removed`;
+`request_permissions_tool`/`exec_permission_approvals` are still under development —
+those are a different surface.) So lifecycle hooks are on by default in ≥ 0.142, not
+an experimental opt-in. This retires ADR-0025's "codex = skill-only, no hooks".
+
+## Lifecycle events
+
+Nine events ship (`HookEventsToml`): **PreToolUse, PermissionRequest, PostToolUse,
+PreCompact, PostCompact, SessionStart, UserPromptSubmit, SubagentStart,
+SubagentStop**. Each event's stdin/stdout is JSON, one object per line, with an
+embedded draft-07 schema — i.e. the **JSON-on-stdin → JSON-on-stdout, synchronous
+shell command** contract ADR-0031 assumed.
+
+`memento` only needs **PreToolUse** (the pre-mutate gate, Claude-equivalent) and
+**PostToolUse** (compile + drift alarm). `PermissionRequest` is a codex-only extra
+(see caveat below) we do not use.
+
+## PreToolUse — the gate `check-write` answers
+
+**Input** (`pre-tool-use.command.input`), required keys:
+`cwd, hook_event_name, model, permission_mode, session_id, tool_input, tool_name,
+tool_use_id, transcript_path, turn_id` (plus optional `agent_id`, `agent_type`).
+`tool_input` is untyped (`true` in schema) — the raw tool payload, same role as
+Claude's `tool_input`. Codex adds `turn_id`/`model`/`permission_mode`/`tool_use_id`;
+`hook_event_name` const is `"PreToolUse"`. `permission_mode` enum:
+`default | acceptEdits | plan | dontAsk | bypassPermissions`.
+
+**Output** (`pre-tool-use.command.output`) — two accepted forms:
+
+- **Claude-shaped (use this):**
+  ```json
+  {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"<text>"}}
+  ```
+  `permissionDecision` enum (`PreToolUsePermissionDecisionWire`) is
+  **`allow | deny | ask`**. `hookEventName` is a **required** field of
+  `hookSpecificOutput` — the ADR's shorthand
+  (`{"hookSpecificOutput":{"permissionDecision":"deny",…}}`) omits it, but codex's
+  schema requires it (Claude also expects it), so the byte-identity claim only holds
+  with `hookEventName` present. This is exactly what `check-write` already emits — see
+  [[check-write output contract]] — so the same stdout works on both harnesses.
+- **Legacy top-level:** `decision` (`PreToolUseDecisionWire` = `approve | block`) +
+  `reason`. We do not emit this; noted so a stray `decision` key is read correctly.
+
+Extra top-level fields exist (`continue`, `stopReason`, `suppressOutput`,
+`systemMessage`); all default to no-op. The schema is `additionalProperties:false`
+at the top level — but `check-write`'s extra `reason_code` rides **inside** behaviour
+that the harness ignores in practice (verify on first live-fire; if codex rejects
+unknown top-level keys, `reason_code` must move or be dropped for codex).
+
+## ask IS supported (resolves the vault_discovery_ambiguous fallback)
+
+`permissionDecision: "ask"` is a first-class PreToolUse value in codex. So
+ADR-0031's `vault_discovery_ambiguous` row — "ask (not deny): set
+MEMENTO_VAULT_ROOT" — works natively on codex; **no deny-fallback is required.**
+(`PermissionRequest`'s decision is allow/deny only — but that is not the event
+`check-write` answers.)
+
+## PostToolUse
+
+Output `decision` is `BlockDecisionWire` = **`block` only** (no allow — PostToolUse
+runs after the mutation). `hookSpecificOutput` carries `additionalContext` /
+`updatedMCPToolOutput`. Matches Claude. compile's drift alarm can surface via
+`block` + `reason`/stderr.
+
+## Exit-code semantics match Claude
+
+The binary carries messages like *"PostToolUse hook exited with code 2 but did not
+write feedback to stderr"* and *"PermissionRequest hook exited with code 2 but did
+not write a denial reason to stderr"*. So **exit 2 + stderr = block/deny**, same
+convention ADR-0031 relies on ("harness blocks only on exit 2 or explicit
+permissionDecision:deny"). Other non-zero exits are not the block path.
+
+## Config: where hooks are declared
+
+> Note: TOML array-of-tables headers are shown here with spaced brackets
+> (`[ [hooks.PreToolUse] ]`) **only** to dodge memento's own wikilink extractor —
+> see the parser caveat at the end. Real codex TOML uses the tight `[[...]]` form.
+
+- `config.toml` has a top-level **`hooks`** field (`ConfigToml`, alongside
+  `skills`/`plugins`/`marketplaces`). Two shapes:
+  - **inline TOML**, keyed by PascalCase event name. A PreToolUse command hook is an
+    array-of-tables entry under header `hooks.PreToolUse` (`matcher`, then a nested
+    array-of-tables `hooks.PreToolUse.hooks` whose entries are
+    `type = "command"`, `command = "memento check-write"`, `timeout_sec = 5`).
+  - **path indirection**: `hooks = "./hooks.json"` (a `HooksFile`), the same
+    mechanism `plugin.json`'s `hooks` field uses. The JSON form (no TOML
+    bracket-escaping needed, parallels Claude's `.claude/settings.json`):
+    ```json
+    {
+      "PreToolUse": [
+        {
+          "matcher": "Shell",
+          "hooks": [
+            { "type": "command", "command": "memento check-write", "timeout_sec": 5 }
+          ]
+        }
+      ]
+    }
+    ```
+- `MatcherGroup = { matcher, hooks: [HookHandlerConfig] }`; the handler enum is
+  internally tagged on `type` with `Command | Prompt | Agent`. The `Command` variant
+  fields (from the app-server `ConfiguredHookHandler` type): `command`,
+  `commandWindows`, `timeoutSec`, `async`, `type` (TOML authoring keys are the
+  snake_case forms, e.g. `timeout_sec`, `command_windows`).
+- **`init` install note (b16):** install PreToolUse + PostToolUse entries; keep each
+  command a dumb pipe to `memento check-write` / `memento compile`. The
+  `hooks = "./hooks.json"` path form is the cleaner install target (per-agent-family
+  branching then writes a codex `hooks.json` here vs a `.claude/settings.json` there,
+  both JSON).
+- **Caveat — doctor does NOT deep-validate hooks.** With a hand-written
+  `config.toml`, `codex doctor` reports `config.toml parse  ok` even for an unknown
+  event name or an unknown handler field. "parse ok" = valid TOML, **not** valid hook
+  config. memento's own `doctor` liveness check cannot lean on codex doctor to confirm
+  the gate is wired; it must check the hook shape itself (consistent with ADR-0031
+  making doctor a hard dependency).
+
+## Trust model — trust-by-hash, so init can't silently install a live gate
+
+Confirmed. Hook trust is **persisted per content hash**: `ProjectConfig`/
+`HookStateToml` carry a **`trusted_hash`**; the binary has a TUI trust flow
+(`hooks_browser_view.rs`, *"Failed to trust hook"*, *"is marked as untrusted in …"*)
+and an override flag **`--dangerously-bypass-hook-trust`** (env `BYPASS_HOOK_TRUST`,
+described "Run enabled hooks without requiring persisted hook trust for this
+invocation. DANGEROUS. Intended only for automation that already vets hook sources").
+
+Consequence for `init`: writing the `config.toml`/`hooks.json` entry installs the
+hook **untrusted** — it is skipped until the user reviews and trusts it (its hash is
+recorded). `init` therefore **cannot install a live gate non-interactively**; it can
+only stage the config and must tell the user to trust it (or the run must opt into
+the dangerous bypass). This is the codex analogue of the fail-open-on-absence honesty
+in ADR-0031: on codex the gate is additionally fail-open-until-trusted.
+
+## Limits of this spike
+
+- The PreToolUse **deny was confirmed against codex's own embedded schema**, not by a
+  live tool call — this box's codex is unauthenticated (`doctor` handshake → HTTP 401),
+  so an end-to-end "deny actually blocks an `apply_patch`/shell call" run is deferred
+  to the A-UAT gate (ADR-0026). The schema is authoritative for the contract shape;
+  execution-level byte-identity is schema-confirmed, not yet run-confirmed.
+- `reason_code` survival as a top-level extra on codex (vs `additionalProperties:false`)
+  is the one thing to check on first live-fire.
+
+## Side discovery — memento's wikilink extractor ignores code context
+
+Authoring this note surfaced a memento parser limitation worth recording: the
+double-square-bracket wikilink extractor matches **inside fenced code blocks and
+inline code spans**, not just prose. TOML array-of-tables headers written tight
+(double-`[` ... double-`]`) inside a ```` ```toml ```` fence, and the same token in
+an inline code span, both became dangling outlinks (e.g. `hooks.PreToolUse`,
+`hooks.PreToolUse.hooks`) on `compile`/`read`. Any note documenting TOML, Obsidian,
+or other syntax that uses the double-bracket token will silently pollute the link
+graph. Worth a separate bead to make link extraction skip code spans/fences; until
+then, escape or space the brackets as done above.
+
+## Related
+
+- [[Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes]]
+  — this spike pins its "Multi-agent" §; confirms codex-in-scope, corrects the deny
+  envelope to require `hookEventName`, and resolves `vault_discovery_ambiguous` to a
+  native `ask`.
+- [[check-write output contract]] — the stdout `check-write` already emits; verified
+  here to be codex-PreToolUse-valid as-is.
+- [[adr-0026-agent-uat-validation-regime]] — owns the live-fire A/B gate that closes
+  the execution-confirmation gap above.

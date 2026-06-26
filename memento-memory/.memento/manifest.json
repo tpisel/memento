@@ -1824,6 +1824,10 @@
           {
             "source": "a-uat/test-matrix.md",
             "type": "wiki"
+          },
+          {
+            "source": "codex-cli lifecycle hooks contract.md",
+            "type": "wiki"
           }
         ]
       }
@@ -2289,11 +2293,19 @@
             "type": "wiki"
           },
           {
+            "source": "codex-cli lifecycle hooks contract.md",
+            "type": "wiki"
+          },
+          {
             "source": "doctor-scoping.md",
             "type": "wiki"
           },
           {
             "source": "remove-write-agreed-points.md",
+            "type": "wiki"
+          },
+          {
+            "source": "unlock-grant trailer lift runs in prepare-commit-msg.md",
             "type": "wiki"
           }
         ]
@@ -3186,7 +3198,12 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "unlock-grant trailer lift runs in prepare-commit-msg.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -3214,8 +3231,115 @@
           {
             "source": "check-write compile drift handshake.md",
             "type": "wiki"
+          },
+          {
+            "source": "codex-cli lifecycle hooks contract.md",
+            "type": "wiki"
           }
         ]
+      }
+    },
+    {
+      "key": "codex-cli lifecycle hooks contract.md",
+      "title": "codex-cli lifecycle hooks contract",
+      "summary": "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml/hooks.json schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences.",
+      "bytes": 10636,
+      "lines": 191,
+      "tags": [
+        "agents",
+        "codex",
+        "enforcement",
+        "hooks",
+        "memento",
+        "spike"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Feature is real and stable",
+          "slug": "feature-is-real-and-stable"
+        },
+        {
+          "level": 2,
+          "text": "Lifecycle events",
+          "slug": "lifecycle-events"
+        },
+        {
+          "level": 2,
+          "text": "PreToolUse — the gate check-write answers",
+          "slug": "pretooluse-the-gate-check-write-answers"
+        },
+        {
+          "level": 2,
+          "text": "ask IS supported (resolves the vault_discovery_ambiguous fallback)",
+          "slug": "ask-is-supported-resolves-the-vault_discovery_ambiguous-fallback"
+        },
+        {
+          "level": 2,
+          "text": "PostToolUse",
+          "slug": "posttooluse"
+        },
+        {
+          "level": 2,
+          "text": "Exit-code semantics match Claude",
+          "slug": "exit-code-semantics-match-claude"
+        },
+        {
+          "level": 2,
+          "text": "Config: where hooks are declared",
+          "slug": "config-where-hooks-are-declared"
+        },
+        {
+          "level": 2,
+          "text": "Trust model — trust-by-hash, so init can't silently install a live gate",
+          "slug": "trust-model-trust-by-hash-so-init-cant-silently-install-a-live-gate"
+        },
+        {
+          "level": 2,
+          "text": "Limits of this spike",
+          "slug": "limits-of-this-spike"
+        },
+        {
+          "level": 2,
+          "text": "Side discovery — memento's wikilink extractor ignores code context",
+          "slug": "side-discovery-mementos-wikilink-extractor-ignores-code-context"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "f9a62d13737dead3b5bc9d51616c68c26c514292a106b846e4de7a98e94303ae",
+      "summary_sha": "7c8d709dde1e24da2f15c83bb7cd16c82fdd3faba3084353f2f19228e68c1e4e",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "...",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write output contract.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
       }
     },
     {
@@ -3564,8 +3688,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 44949,
-      "lines": 413,
+      "bytes": 44670,
+      "lines": 411,
       "tags": [],
       "headings": [
         {
@@ -3765,6 +3889,42 @@
       }
     },
     {
+      "key": "unlock-grant trailer lift runs in prepare-commit-msg.md",
+      "title": "unlock-grant trailer lift runs in prepare-commit-msg",
+      "summary": "ADR-0031 says 'the pre-commit hook lifts pending grant justifications into a Memento-Unlock: commit trailer before clearing them' — but a git pre-commit hook runs before the commit message exists and cannot write a trailer. The lift+clear is implemented as a prepare-commit-msg hook (memento lift-grants \\\"$1\\\"): the only stage that runs after pre-commit succeeds AND owns the message file. pre-commit still does compile + git add manifest; prepare-commit-msg owns the trailer + grant clear.",
+      "bytes": 3177,
+      "lines": 56,
+      "tags": [
+        "enforcement",
+        "git",
+        "hooks",
+        "memento",
+        "unlock"
+      ],
+      "headings": [],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "54ca67d13e83a7ac5bb89dfbbf177c7238d2593049358846bfacf7874aaa4327",
+      "summary_sha": "2640c8750f1956571c9fdbd0f89998377e948c5b5a607ba98b64da801abb77cc",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write compile drift handshake.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
       "key": "what makes a good summary.md",
       "title": "What makes a good summary",
       "summary": "A summary is read by an agent scanning the brief to decide what to open next. Lead with the decision or the load-bearing fact — not the question, the context, or the motivation. If reading the summary tells you the answer, the brief is doing its job; if it only tells you a file exists on the topic, the brief is just an index.",
@@ -3822,12 +3982,13 @@
   "tags": {
     "_memento": 2,
     "a-uat": 3,
-    "agents": 15,
+    "agents": 16,
     "audit": 1,
     "beads": 2,
     "bootloader": 2,
     "brief": 4,
     "cli": 2,
+    "codex": 1,
     "compile": 6,
     "config": 1,
     "configuration": 1,
@@ -3837,11 +3998,11 @@
     "distribution": 1,
     "doctor": 2,
     "draft": 1,
-    "enforcement": 3,
+    "enforcement": 5,
     "format": 1,
     "frontmatter": 4,
-    "git": 1,
-    "hooks": 7,
+    "git": 2,
+    "hooks": 9,
     "ignore": 1,
     "information-access": 1,
     "init": 4,
@@ -3852,7 +4013,7 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 41,
+    "memento": 43,
     "mode": 5,
     "namespace": 3,
     "obsidian": 4,
@@ -3872,6 +4033,7 @@
     "scope": 1,
     "scoping": 1,
     "skills": 5,
+    "spike": 1,
     "staleness": 2,
     "states": 1,
     "summaries": 1,
@@ -3881,6 +4043,7 @@
     "theory": 1,
     "thought-bubble": 2,
     "unicode": 1,
+    "unlock": 1,
     "vault": 3,
     "write": 11,
     "writing": 1
