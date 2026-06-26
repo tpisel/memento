@@ -2796,6 +2796,21 @@ func readCLIFile(t *testing.T, root, relPath string) string {
 	return string(data)
 }
 
+func hasCLIFile(t *testing.T, root, relPath string) bool {
+	t.Helper()
+
+	path := filepath.Join(root, filepath.FromSlash(relPath))
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	t.Fatalf("stat %q: %v", relPath, err)
+	return false
+}
+
 func initCLIGit(t *testing.T, root string) {
 	t.Helper()
 

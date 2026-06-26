@@ -153,6 +153,28 @@ Stderr:
 For the deeper picture, run: memento orient
 `
 
+const unlockHelpText = `memento unlock
+
+Usage:
+  memento unlock <key> --justification <reason>
+
+Record a temporary single-key exception that re-opens the edit window on a read-only note until the next commit.
+
+Key contract:
+  key is a vault-relative .md path naming an existing note. Repo-relative paths and paths prefixed with the vault directory are invalid.
+
+Justification:
+  --justification <reason> is required. The reason is held in a gitignored .memento/unlock-grants.json sidecar and lifted into a Memento-Unlock commit trailer by the pre-commit hook before the grant is cleared.
+
+Lifetime:
+  The grant covers all writes to the key until the next commit, when it is cleared. There is no TTL and no durable mode change; use write-mode to change a note's mode permanently.
+
+Stderr:
+  On success, stderr includes unlocked: <key> until next commit and justification: <reason>.
+
+For the deeper picture, run: memento orient
+`
+
 func parseSubcommandFlags(flags *flag.FlagSet, args []string, stdout, stderr io.Writer, verb, helpText string) (bool, int) {
 	flags.SetOutput(io.Discard)
 	if err := flags.Parse(args); err != nil {

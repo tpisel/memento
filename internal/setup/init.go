@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/tpisel/memento/internal/enforce"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/vault"
 )
@@ -384,6 +385,8 @@ func gitignoreBlock() string {
 		"**/.obsidian/cache",
 		"# Memento generated artifacts",
 		"**/" + vault.ToolDirName + "/" + vault.BriefFileName,
+		"# Memento unlock grants (manifest and config beside it stay tracked)",
+		"**/" + vault.MarkerDirName + "/" + enforce.GrantsFileName,
 		gitignoreEndSentinel,
 	}, "\n")
 }

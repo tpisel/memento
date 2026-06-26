@@ -506,6 +506,12 @@ func TestInitWritesBriefIgnoreEntriesForGreenfieldVault(t *testing.T) {
 	if hasSetupLine(gitignore, "memory/_memento/brief.md") || hasSetupLine(gitignore, "memory/_memento/") {
 		t.Fatalf(".gitignore = %q, want no folder-wide _memento ignore entry", gitignore)
 	}
+	if !hasSetupLine(gitignore, "**/.memento/unlock-grants.json") {
+		t.Fatalf(".gitignore = %q, want file-scoped unlock-grants sidecar ignore entry", gitignore)
+	}
+	if hasSetupLine(gitignore, "**/.memento/") || hasSetupLine(gitignore, "**/.memento/manifest.json") {
+		t.Fatalf(".gitignore = %q, want manifest/config under .memento to stay tracked", gitignore)
+	}
 
 	mementoignore := readSetupFile(t, repo, "memory/.mementoignore")
 	if !hasSetupLine(mementoignore, "_memento/") {
