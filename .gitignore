@@ -53,6 +53,10 @@ logs/*
 **/.obsidian/cache
 # Memento generated artifacts
 **/_memento/brief.md
+# Memento unlock grants (manifest and config beside it stay tracked)
+**/.memento/unlock-grants.json
+# Memento pending-write ledger (check-write↔compile drift handshake)
+**/.memento/pending-writes.json
 # Memento check-write decision log (enforcement audit)
 **/.memento/decision-log.jsonl
 # memento:gitignore:end
