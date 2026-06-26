@@ -83,6 +83,11 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		// Hook plumbing (ADR-0031), deliberately absent from help: the
 		// PreToolUse verdict engine, fed the raw payload on stdin.
 		return runCheckWrite(stdin, stdout, stderr)
+	case "lift-grants":
+		// Hook plumbing (ADR-0031), deliberately absent from help: the
+		// prepare-commit-msg step that lifts unlock justifications into a
+		// Memento-Unlock trailer and clears all grants. Arg is the message file.
+		return runLiftGrants(args[1:], stdout, stderr)
 	default:
 		printRootError(stderr, fmt.Errorf("%w %q", ErrUnknownCommand, args[0]))
 		return 2

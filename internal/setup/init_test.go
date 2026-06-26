@@ -1132,6 +1132,115 @@ func TestPreCommitHookSoftSkipsWhenMementoIsAbsentFromPath(t *testing.T) {
 	}
 }
 
+// TestPrepareCommitMsgHookLiftsUnlockTrailerAndClearsGrants exercises US7
+// end-to-end: an unlock reopens a ratified read-only note's window (recording a
+// grant), the next commit lifts that grant's justification into a Memento-Unlock
+// trailer, and the grant sidecar is cleared — the grant deletion is what re-locks
+// the read-only note.
+func TestPrepareCommitMsgHookLiftsUnlockTrailerAndClearsGrants(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("prepare-commit-msg hook is a POSIX shell script")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not found: %v", err)
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skipf("go not found: %v", err)
+	}
+
+	repo := t.TempDir()
+	runSetupGit(t, repo, "init")
+	binDir := t.TempDir()
+	buildSetupMementoBinary(t, binDir)
+	pathEnv := append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	// Ratify a read-only note so an unlock is the only way to reopen its window.
+	writeSetupFile(t, repo, "memory/note.md", "---\nmode: read-only\n---\n\n# Note\n\nFrozen body.\n")
+	runSetupGit(t, repo, "add", "AGENTS.md", ".gitignore", "memory")
+	commitWithMemento(t, repo, pathEnv, "ratify note")
+
+	// Unlock reopens the edit window and records the justification in the sidecar.
+	runMementoInRepo(t, repo, filepath.Join(binDir, "memento"), pathEnv, "unlock", "note.md", "--justification", "fix a typo")
+	grantsPath := filepath.Join(repo, "memory", ".memento", "unlock-grants.json")
+	if _, err := os.Stat(grantsPath); err != nil {
+		t.Fatalf("unlock-grants sidecar missing after unlock: %v", err)
+	}
+
+	// Any commit lifts the trailer and clears every grant.
+	commitWithMemento(t, repo, pathEnv, "ordinary work")
+
+	msg := runSetupGit(t, repo, "log", "-1", "--format=%B")
+	if !strings.Contains(msg, "Memento-Unlock: note.md: fix a typo") {
+		t.Fatalf("commit message = %q, want Memento-Unlock trailer", msg)
+	}
+	if _, err := os.Stat(grantsPath); !os.IsNotExist(err) {
+		t.Fatalf("unlock-grants sidecar still present after commit (want cleared); stat err = %v", err)
+	}
+}
+
+func TestPrepareCommitMsgHookLeavesMessageUntouchedWithoutGrants(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("prepare-commit-msg hook is a POSIX shell script")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not found: %v", err)
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skipf("go not found: %v", err)
+	}
+
+	repo := t.TempDir()
+	runSetupGit(t, repo, "init")
+	binDir := t.TempDir()
+	buildSetupMementoBinary(t, binDir)
+	pathEnv := append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+	runSetupGit(t, repo, "add", "AGENTS.md", ".gitignore", "memory")
+	commitWithMemento(t, repo, pathEnv, "steady-state commit")
+
+	msg := runSetupGit(t, repo, "log", "-1", "--format=%B")
+	if strings.Contains(msg, "Memento-Unlock") {
+		t.Fatalf("commit message = %q, want no Memento-Unlock trailer with no grants", msg)
+	}
+}
+
+func commitWithMemento(t *testing.T, repo string, pathEnv []string, message string) {
+	t.Helper()
+
+	cmd := exec.Command(
+		"git",
+		"-c", "user.name=Memento Test",
+		"-c", "user.email=memento@example.invalid",
+		"commit", "--no-gpg-sign", "--allow-empty", "-m", message,
+	)
+	cmd.Dir = repo
+	cmd.Env = pathEnv
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git commit failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+}
+
+func runMementoInRepo(t *testing.T, repo, mementoBin string, pathEnv []string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command(mementoBin, args...)
+	cmd.Dir = repo
+	cmd.Env = pathEnv
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("memento %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+}
+
 func assertHookCommandsInsideMementoGuard(t *testing.T, got string) {
 	t.Helper()
 

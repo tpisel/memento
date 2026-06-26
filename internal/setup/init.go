@@ -144,6 +144,9 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensurePreCommitHook(root, v); err != nil {
 		return vault.Vault{}, err
 	}
+	if err := ensurePrepareCommitMsgHook(root); err != nil {
+		return vault.Vault{}, err
+	}
 	if err := ensureClaudeAgentIntegration(root); err != nil {
 		return vault.Vault{}, err
 	}
@@ -398,6 +401,33 @@ func ensurePreCommitHook(repoRoot string, v vault.Vault) error {
 	}
 	if err := ensureExecutable(path); err != nil {
 		return fmt.Errorf("make pre-commit hook executable: %w", err)
+	}
+	return nil
+}
+
+func ensurePrepareCommitMsgHook(repoRoot string) error {
+	path := filepath.Join(repoRoot, ".git", "hooks", "prepare-commit-msg")
+	block := prepareCommitMsgHookBlock()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return writeNewFile(path, []byte("#!/bin/sh\nset -eu\n\n"+block+"\n"), 0o755)
+		}
+		return fmt.Errorf("read prepare-commit-msg hook: %w", err)
+	}
+
+	updated, err := insertOrReplaceHookBlock(string(data), block)
+	if err != nil {
+		return err
+	}
+	if updated != string(data) {
+		if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+			return fmt.Errorf("write prepare-commit-msg hook: %w", err)
+		}
+	}
+	if err := ensureExecutable(path); err != nil {
+		return fmt.Errorf("make prepare-commit-msg hook executable: %w", err)
 	}
 	return nil
 }
@@ -746,6 +776,23 @@ func preCommitHookBlock(repoRoot string, v vault.Vault) string {
 		"git add -- " + shellQuote(manifestPath),
 		"else",
 		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
+		"fi",
+		hookEndSentinel,
+	}, "\n")
+}
+
+// prepareCommitMsgHookBlock lifts pending unlock-grant justifications into
+// Memento-Unlock commit trailers and clears every grant (ADR-0031). This is a
+// prepare-commit-msg hook, not pre-commit: only this stage runs after pre-commit
+// succeeds *and* owns the commit message file ($1) a trailer must be written to.
+// See [[unlock-grant trailer lift runs in prepare-commit-msg]].
+func prepareCommitMsgHookBlock() string {
+	return strings.Join([]string{
+		hookStartSentinel,
+		"if command -v memento >/dev/null 2>&1; then",
+		`memento lift-grants "$1"`,
+		"else",
+		"echo 'warn: memento not on PATH; skipping unlock-grant trailer lift' >&2",
 		"fi",
 		hookEndSentinel,
 	}, "\n")

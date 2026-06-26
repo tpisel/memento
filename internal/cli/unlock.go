@@ -14,8 +14,8 @@ import (
 )
 
 // runUnlock records a temporary single-key unlock grant (ADR-0031): it re-opens
-// the edit window on a read-only note until the next commit, when the pre-commit
-// hook lifts the justification into a Memento-Unlock trailer and clears the
+// the edit window on a read-only note until the next commit, when the
+// prepare-commit-msg hook lifts the justification into a Memento-Unlock trailer and clears the
 // sidecar. --justification is required — an unlock with no recorded reason is
 // the audit hole the trailer exists to close. The grant is the only artifact;
 // no recompile is needed because the gitignored sidecar is not vault corpus.

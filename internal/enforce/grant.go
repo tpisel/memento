@@ -17,8 +17,8 @@ import (
 const GrantsFileName = "unlock-grants.json"
 
 // Grant is a single temporary read-only exception (ADR-0031): it re-opens the
-// edit window on one key until the next commit, when the pre-commit hook lifts
-// its justification into a Memento-Unlock trailer and clears the sidecar. There
+// edit window on one key until the next commit, when the prepare-commit-msg hook
+// lifts its justification into a Memento-Unlock trailer and clears the sidecar. There
 // is no TTL — the grant's lifetime is identical to ratification's edit window.
 type Grant struct {
 	Justification string    `json:"justification"`
@@ -34,7 +34,7 @@ func GrantsPath(v vault.Vault) string {
 // missing sidecar is not an error — it returns an empty, non-nil map (no grants
 // is the normal steady state). Malformed JSON is an error: a corrupt sidecar
 // must not be silently read as "no exceptions". This is the list helper the
-// pre-commit hook consumes to lift justifications before clearing.
+// prepare-commit-msg hook consumes to lift justifications before clearing.
 func LoadGrants(v vault.Vault) (map[string]Grant, error) {
 	data, err := os.ReadFile(GrantsPath(v))
 	if errors.Is(err, os.ErrNotExist) {
@@ -84,7 +84,7 @@ func AddGrant(v vault.Vault, key, justification string, grantedAt time.Time) err
 }
 
 // ClearGrants removes the entire sidecar, dropping every active grant at once.
-// It is the re-lock the pre-commit hook performs after lifting justifications.
+// It is the re-lock the prepare-commit-msg hook performs after lifting justifications.
 // A missing sidecar is a no-op: clearing is idempotent.
 func ClearGrants(v vault.Vault) error {
 	if err := os.Remove(GrantsPath(v)); err != nil && !errors.Is(err, os.ErrNotExist) {

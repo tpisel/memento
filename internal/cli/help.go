@@ -164,7 +164,7 @@ Key contract:
   key is a vault-relative .md path naming an existing note. Repo-relative paths and paths prefixed with the vault directory are invalid.
 
 Justification:
-  --justification <reason> is required. The reason is held in a gitignored .memento/unlock-grants.json sidecar and lifted into a Memento-Unlock commit trailer by the pre-commit hook before the grant is cleared.
+  --justification <reason> is required. The reason is held in a gitignored .memento/unlock-grants.json sidecar and lifted into a Memento-Unlock commit trailer by the prepare-commit-msg hook before the grant is cleared.
 
 Lifetime:
   The grant covers all writes to the key until the next commit, when it is cleared. There is no TTL and no durable mode change; use write-mode to change a note's mode permanently.
