@@ -328,7 +328,7 @@ var defaultConventionTemplates = []conventionTemplate{
 			"",
 			"Do not record transient task progress, guesses, or details the code already makes clear. If a fact only matters to the task in hand, keep it in your task store, not the vault.",
 			"",
-			"Write through `memento write` so the note's mode check applies; a native file edit can silently overwrite a read-only note.",
+			"Write notes with your normal file tools — there is no write verb. A pre-write hook enforces each note's mode, so an edit that would break a ratified `read-only` or `append-only` note is refused before it lands, and the denial names the one way forward.",
 			"",
 		}, "\n"),
 	},
@@ -685,7 +685,7 @@ func managedCodexHookEntry(matcher, command string, timeoutSec int) map[string]a
 // foreign-hooks notice already fired, so the trust line still applies once wired.
 func emitCodexTrustNotice(repoRoot string, notices io.Writer) {
 	fmt.Fprintf(notices, "memento: codex hooks staged in %s (untrusted).\n", displayPath(repoRoot, filepath.Join(repoRoot, filepath.FromSlash(codexHooksFile))))
-	fmt.Fprintln(notices, "codex trusts hooks by content hash and skips untrusted ones, so the memento write gate stays fail-open until you review and trust it.")
+	fmt.Fprintln(notices, "codex trusts hooks by content hash and skips untrusted ones, so the memento write-enforcement gate stays fail-open until you review and trust it.")
 	fmt.Fprintln(notices, "Trust it in codex (hooks browser), or pass --dangerously-bypass-hook-trust only for automation that already vets hook sources.")
 }
 

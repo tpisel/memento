@@ -45,3 +45,7 @@ date: 2026-06-26
 ## Shape
 
 Keep durable notes short enough to scan from `memento brief`. Summaries should lead with the load-bearing fact or decision. ADRs are for accepted architecture or workflow decisions; evolving reference notes are for material expected to keep changing.
+
+## How writes are enforced
+
+There is no write verb — author notes with your native file tools (Write/Edit/Bash on Claude, `apply_patch`/shell on codex). A PreToolUse `check-write` hook enforces the note's `mode` before the bytes land: a ratified `read-only` note is refused, and an `append-only` note rejects anything that is not a pure append. Modes bite only after a note's first commit, so first-draft authoring never walls, and new notes are created by a normal native write. To loosen a frozen note, route the change through `memento write-mode` (or `memento unlock` for a one-off) — and confirm with the user before thawing a `read-only` note, which is a deliberate freeze.
