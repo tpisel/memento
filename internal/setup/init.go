@@ -387,6 +387,8 @@ func gitignoreBlock() string {
 		"**/" + vault.ToolDirName + "/" + vault.BriefFileName,
 		"# Memento unlock grants (manifest and config beside it stay tracked)",
 		"**/" + vault.MarkerDirName + "/" + enforce.GrantsFileName,
+		"# Memento pending-write ledger (check-write↔compile drift handshake)",
+		"**/" + vault.MarkerDirName + "/" + enforce.PendingFileName,
 		gitignoreEndSentinel,
 	}, "\n")
 }

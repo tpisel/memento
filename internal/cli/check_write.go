@@ -145,7 +145,7 @@ func checkWriteFile(p preToolUse, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	return gateVaultWrite(v, key, p.ToolName, brokenPrefixReason(p.ToolName), stdout, stderr,
+	return gateVaultWrite(v, key, p.ToolName, brokenPrefixReason(p.ToolName), true, stdout, stderr,
 		func(old []byte, exists bool) ([]byte, error) { return deriveNewBytes(p, old, exists) })
 }
 
@@ -154,8 +154,11 @@ func checkWriteFile(p preToolUse, stdout, stderr io.Writer) int {
 // old-bytes + ratification + active grants, derives new-bytes via derive (whose
 // error fails the verdict closed), and emits the prefix-invariant verdict.
 // deriveLabel names the operation in the fail-closed message; brokenReason selects
-// the append-only denial flavour.
-func gateVaultWrite(v vault.Vault, key, deriveLabel, brokenReason string, stdout, stderr io.Writer, derive func(old []byte, exists bool) ([]byte, error)) int {
+// the append-only denial flavour. recordPending records the expected post-write
+// bytes-hash into the handshake ledger on an allow — true only when newBytes is
+// the exact bytes that will land (Write/Edit/MultiEdit); a Bash append models a
+// synthetic suffix, so it passes false and leaves no drift expectation.
+func gateVaultWrite(v vault.Vault, key, deriveLabel, brokenReason string, recordPending bool, stdout, stderr io.Writer, derive func(old []byte, exists bool) ([]byte, error)) int {
 	normKey, err := enforce.NormalizeWritableKey(v, key)
 	if err != nil {
 		emitVerdict(stdout, "deny", reasonUnwritablePath, fmt.Sprintf(
@@ -204,6 +207,16 @@ func gateVaultWrite(v vault.Vault, key, deriveLabel, brokenReason string, stdout
 
 	decision := enforce.EvaluateVaultWrite(normKey, effectiveMode(normKey, old), old, newBytes, exists, ratified, granted, brokenReason)
 	if decision.Allow {
+		// Record the bytes we expect to land so the PostToolUse compile can detect
+		// a replay/derivation divergence (ADR-0031: the detective backstop under the
+		// predictive gate). A ledger-write failure must not flip an allow into a
+		// deny — the gate's verdict stands; the handshake is best-effort detection,
+		// so it degrades to a missed drift check, surfaced on stderr.
+		if recordPending {
+			if err := enforce.RecordPending(v, normKey, enforce.HashBytes(newBytes)); err != nil {
+				fmt.Fprintf(stderr, "memento check-write: record pending write for %s: %v\n", normKey, err)
+			}
+		}
 		emitVerdict(stdout, "allow", "", "")
 		return 0
 	}

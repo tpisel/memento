@@ -63,7 +63,7 @@ func checkWriteBash(command string, stdout, stderr io.Writer) int {
 		// plus a non-empty suffix so the shared gate's prefix invariant allows it
 		// on append-only/living and denies it on read-only (where we cannot prove
 		// the appended bytes are empty), reusing the file-write messages.
-		return gateVaultWrite(v, key, "Bash", enforce.ReasonAppendOnlyOverwrite, stdout, stderr,
+		return gateVaultWrite(v, key, "Bash", enforce.ReasonAppendOnlyOverwrite, false, stdout, stderr,
 			func(old []byte, _ bool) ([]byte, error) {
 				return append(append([]byte{}, old...), '\n'), nil
 			})

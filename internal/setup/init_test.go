@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/tpisel/memento/internal/enforce"
 )
 
 func TestInitDerivesDefaultVaultDirFromGitRemote(t *testing.T) {
@@ -476,6 +478,7 @@ func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {
 		"**/.obsidian/workspace*",
 		"**/.obsidian/cache",
 		"**/_memento/brief.md",
+		"**/.memento/" + enforce.PendingFileName,
 		"# memento:gitignore:end",
 	} {
 		if !strings.Contains(second, want) {

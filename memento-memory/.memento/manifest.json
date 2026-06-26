@@ -1369,6 +1369,10 @@
           {
             "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
             "type": "wiki"
+          },
+          {
+            "source": "check-write compile drift handshake.md",
+            "type": "wiki"
           }
         ]
       }
@@ -2281,6 +2285,10 @@
         ],
         "in": [
           {
+            "source": "check-write compile drift handshake.md",
+            "type": "wiki"
+          },
+          {
             "source": "doctor-scoping.md",
             "type": "wiki"
           },
@@ -3141,6 +3149,47 @@
       }
     },
     {
+      "key": "check-write compile drift handshake.md",
+      "title": "check-write↔compile drift handshake",
+      "summary": "The PreToolUse gate and PostToolUse compile coordinate through a gitignored .memento/pending-writes.json ledger: check-write records the expected post-write bytes-hash per key on an allow; compile hashes what landed, raises a loud DRIFT ALARM on mismatch, then clears the ledger. Bash appends record nothing (landed bytes not derivable). compile stays exit-0 on drift; the PostToolUse hook turns the alarm token into exit 2 to surface it.",
+      "bytes": 3117,
+      "lines": 56,
+      "tags": [
+        "compile",
+        "enforcement",
+        "hooks",
+        "memento",
+        "write"
+      ],
+      "headings": [],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "f92f206f031ceb2b1e151f3273b52dfe5ffa687e6ae745057f4b7cd189f5d7b4",
+      "summary_sha": "b323edddc1c35fdf7a7d37fa2e8793fe909353683fd6257833954fd8c5a9110c",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0022-auto-compile-after-write.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write output contract.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
       "key": "check-write output contract.md",
       "title": "check-write output contract",
       "summary": "check-write emits the full PreToolUse harness verdict JSON on stdout itself (allow/deny/ask), not a bare {decision,reason_code,message} needing translation — so the PreToolUse hook is a true dumb pipe plus fail-closed-on-nonzero-exit. Resolves ADR-0031's ambiguous wording.",
@@ -3161,7 +3210,12 @@
       "summary_state": "current",
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "check-write compile drift handshake.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -3774,7 +3828,7 @@
     "bootloader": 2,
     "brief": 4,
     "cli": 2,
-    "compile": 5,
+    "compile": 6,
     "config": 1,
     "configuration": 1,
     "convention": 1,
@@ -3783,11 +3837,11 @@
     "distribution": 1,
     "doctor": 2,
     "draft": 1,
-    "enforcement": 2,
+    "enforcement": 3,
     "format": 1,
     "frontmatter": 4,
     "git": 1,
-    "hooks": 6,
+    "hooks": 7,
     "ignore": 1,
     "information-access": 1,
     "init": 4,
@@ -3798,7 +3852,7 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 40,
+    "memento": 41,
     "mode": 5,
     "namespace": 3,
     "obsidian": 4,
@@ -3828,7 +3882,7 @@
     "thought-bubble": 2,
     "unicode": 1,
     "vault": 3,
-    "write": 10,
+    "write": 11,
     "writing": 1
   }
 }
