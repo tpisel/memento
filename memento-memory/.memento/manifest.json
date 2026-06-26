@@ -157,7 +157,16 @@
       "summary_state": "current",
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -855,7 +864,15 @@
             "type": "wiki"
           },
           {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
             "source": "Note states.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
             "type": "wiki"
           }
         ]
@@ -985,6 +1002,10 @@
           },
           {
             "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
             "type": "wiki"
           },
           {
@@ -1344,6 +1365,10 @@
           {
             "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
           }
         ]
       }
@@ -1697,6 +1722,14 @@
           {
             "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
+            "type": "wiki"
           }
         ]
       }
@@ -1774,6 +1807,10 @@
           },
           {
             "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
             "type": "wiki"
           },
           {
@@ -2103,6 +2140,158 @@
       }
     },
     {
+      "key": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+      "title": "Remove the write verb — native writes under hook-based mode enforcement",
+      "summary": "Removes the memento write verb entirely. Agents write note bodies with their native tools (Write/Edit/MultiEdit/Bash on Claude; apply_patch/shell on codex); a PreToolUse check-write hook gives the allow/deny verdict pre-mutate and a PostToolUse compile keeps the manifest coherent and raises a drift alarm. Two verbs survive for the operations native tools can't do — write-mode (durable mode change) and unlock (temporary read-only exception) — plus check-write as hook plumbing. Mode is enforced by the prefix invariant evaluated in Go from the tool payload + disk. Decides the write-side-enforcement item deferred by ADR-0025 and retires its write skill; revisits ADR-0004. Enforcement is an explicit cooperative-agent guardrail, fail-closed on internal hook error but irreducibly fail-open on hook absence — drift detection, not the hook, is the integrity floor.",
+      "bytes": 19151,
+      "lines": 310,
+      "tags": [
+        "agents",
+        "enforcement",
+        "hooks",
+        "memento",
+        "mode",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "What this supersedes / amends",
+          "slug": "what-this-supersedes-amends"
+        },
+        {
+          "level": 2,
+          "text": "Enforcement model",
+          "slug": "enforcement-model"
+        },
+        {
+          "level": 3,
+          "text": "The prefix invariant (the generative rule)",
+          "slug": "the-prefix-invariant-the-generative-rule"
+        },
+        {
+          "level": 3,
+          "text": "check-write is pre-mutate, and reads disk itself",
+          "slug": "check-write-is-pre-mutate-and-reads-disk-itself"
+        },
+        {
+          "level": 3,
+          "text": "New-bytes derivation — and the replay caveat",
+          "slug": "new-bytes-derivation-and-the-replay-caveat"
+        },
+        {
+          "level": 3,
+          "text": "Bash: deny unless provably append — and honestly fail-open beyond that",
+          "slug": "bash-deny-unless-provably-append-and-honestly-fail-open-beyond-that"
+        },
+        {
+          "level": 3,
+          "text": "Drive-by mode-change defense",
+          "slug": "drive-by-mode-change-defense"
+        },
+        {
+          "level": 3,
+          "text": "The unlock grant and its audit trail",
+          "slug": "the-unlock-grant-and-its-audit-trail"
+        },
+        {
+          "level": 2,
+          "text": "Denial UX — the productive wall",
+          "slug": "denial-ux-the-productive-wall"
+        },
+        {
+          "level": 2,
+          "text": "Trust model and failure posture",
+          "slug": "trust-model-and-failure-posture"
+        },
+        {
+          "level": 2,
+          "text": "Multi-agent",
+          "slug": "multi-agent"
+        },
+        {
+          "level": 2,
+          "text": "Validation gate (owned by ADR-0026)",
+          "slug": "validation-gate-owned-by-adr-0026"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions / deferred",
+          "slug": "open-questions-deferred"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "455b684536a051be725f6e4ad326027aacfbc938fbaab498b0ddc9c86174b174",
+      "summary_sha": "10fdd4daa517fdc927f225b51505c0f07f7411132babc567ce7f272e255f971b",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0004-v0-write-scope.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0015-write-mode-taxonomy.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0022-auto-compile-after-write.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "doctor-scoping.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "doctor-scoping.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
       "key": "Configurability exploration.md",
       "title": "Configurability exploration",
       "summary": "A catalogue of memento behaviours that have surfaced as potentially configurable — deployment format, edit-window policy, and future axes — without committing to expose any of them as user-facing config. Each entry records the default, the alternative use cases, the exposure shape, the cost of exposing, and the trigger that would justify implementation.",
@@ -2361,8 +2550,8 @@
       "key": "OKF interop and external compatibility.md",
       "title": "OKF interop and external compatibility",
       "summary": "Working notes on aligning memento with Google Cloud's Open Knowledge Format (OKF) v0.1. Records what we can align without harming the Obsidian-as-human-interface commitment, what gap remains, whether to surface OKF support as an explicit mode, and where the OKF spec appears to be heading that we may already be on the path to.",
-      "bytes": 19305,
-      "lines": 157,
+      "bytes": 23983,
+      "lines": 186,
       "tags": [
         "distribution",
         "format",
@@ -2456,6 +2645,31 @@
         },
         {
           "level": 2,
+          "text": "Addendum 2026-06-26: reading the published example bundles",
+          "slug": "addendum-2026-06-26-reading-the-published-example-bundles"
+        },
+        {
+          "level": 3,
+          "text": "Correction: export emits RELATIVE links, not /-absolute",
+          "slug": "correction-export-emits-relative-links-not-absolute"
+        },
+        {
+          "level": 3,
+          "text": "Confirmed by the examples (no change, just now evidenced rather than assumed)",
+          "slug": "confirmed-by-the-examples-no-change-just-now-evidenced-rather-than-assumed"
+        },
+        {
+          "level": 3,
+          "text": "New evidence on \"where OKF is going\"",
+          "slug": "new-evidence-on-where-okf-is-going"
+        },
+        {
+          "level": 3,
+          "text": "Net",
+          "slug": "net"
+        },
+        {
+          "level": 2,
           "text": "Provenance",
           "slug": "provenance"
         }
@@ -2465,7 +2679,7 @@
       "updated": "",
       "body_sha": "ab00fe10efe821426a99726b1121badb252c97a3b63f1d6cc9a38dc5e422b1da",
       "summary_sha": "2ca9b3410ccd5e86f04c0fa082df02bca672b33baa6388e8baacaf4f15a5a889",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
@@ -3056,6 +3270,165 @@
       }
     },
     {
+      "key": "doctor-scoping.md",
+      "title": "Doctor — scoping list",
+      "summary": "Live, exploratory list of candidate checks for the future `memento doctor` verb, consolidated from the ADRs and dogfooding. Doctor owns mechanical plumbing/health (no content judgement, no agent); this note is the running inbox of candidate checks so the eventual doctor ADR doesn't re-derive them. Not a spec — see [[review-audit-doctor faculties]] for the verb-boundary carve.",
+      "bytes": 5693,
+      "lines": 63,
+      "tags": [
+        "doctor",
+        "memento",
+        "open-question",
+        "roadmap",
+        "scoping"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Plumbing / machine-state (doctor's core)",
+          "slug": "plumbing-machine-state-doctors-core"
+        },
+        {
+          "level": 2,
+          "text": "Write-enforcement liveness ([[adr-0031-remove-write-verb-hook-enforced-native-writes]])",
+          "slug": "write-enforcement-liveness-adr-0031-remove-write-verb-hook-enforced-native-writes"
+        },
+        {
+          "level": 2,
+          "text": "Discovery / onboarding (from 2026-06-26 second-cloner review)",
+          "slug": "discovery-onboarding-from-2026-06-26-second-cloner-review"
+        },
+        {
+          "level": 2,
+          "text": "Form checks (uncertain home)",
+          "slug": "form-checks-uncertain-home"
+        },
+        {
+          "level": 2,
+          "text": "Boundaries to keep in mind",
+          "slug": "boundaries-to-keep-in-mind"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "1e06e7fcf2aede50bec395be4ffe021611aaa75a171df8d03ad9cd74243c5f5e",
+      "summary_sha": "dd358bf9a65f88b8ba94f5048b446e1cf2e8b6fbf5892abdabc40416163f9084",
+      "summary_state": "stale",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "review-audit-doctor faculties.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "remove-write-agreed-points.md",
+      "title": "Remove `write` — agreed points",
+      "summary": "Working agreement, pre-ADR: the `write` verb is removed entirely. Native agent tools own body prose; hooks become the enforcement layer (`check-write` pre-verdict + recompile post); typed verbs survive only for frontmatter mode ops (`write-mode --justification`) and self-expiring exceptions (`unlock --justification`). Captures the settled core so the eventual ADR doesn't re-litigate it; ramifications still to explore.",
+      "bytes": 13338,
+      "lines": 231,
+      "tags": [
+        "hooks",
+        "memento",
+        "mode",
+        "open-question",
+        "roadmap",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Core decision",
+          "slug": "core-decision"
+        },
+        {
+          "level": 2,
+          "text": "Agreed points",
+          "slug": "agreed-points"
+        },
+        {
+          "level": 2,
+          "text": "Revised CLI surface",
+          "slug": "revised-cli-surface"
+        },
+        {
+          "level": 2,
+          "text": "Validation plan",
+          "slug": "validation-plan"
+        },
+        {
+          "level": 2,
+          "text": "Accepted trade-off (eyes open)",
+          "slug": "accepted-trade-off-eyes-open"
+        },
+        {
+          "level": 2,
+          "text": "Deferred — ramifications still to explore",
+          "slug": "deferred-ramifications-still-to-explore"
+        },
+        {
+          "level": 2,
+          "text": "Rejected alternatives",
+          "slug": "rejected-alternatives"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "02026304baaebb4fc17b250995eba8b0af874cf7496f8f24368b4b058f943739",
+      "summary_sha": "2b71248feb87a290a362ad7cb6d95c0e2e108fe701302428f9aa1d461daee5fb",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0004-v0-write-scope.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0015-write-mode-taxonomy.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "doctor-scoping.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
       "key": "review-audit-doctor faculties.md",
       "title": "Review / audit / doctor — faculty boundaries",
       "summary": "A carve for three maintenance-shaped verbs that have been blurring together. `doctor` is already assigned the machine/config-health role (ADR-0025), which frees `audit` from the machinery it was straddling. The remaining cut is between `review` (closed-world: judge the vault against itself + world-facts — form, structure, internal consistency) and `audit` (open-world: judge the vault against an external referent — the human's intent and an untampered ground truth). \"Is each note well-formed / is the corpus tidy / is it self-consistent\" is review; \"is this the memory you actually want, and has it been silently rewritten\" is audit. Not decided — records the dividing principle so the review/audit/doctor verb ADRs don't each re-derive it.",
@@ -3126,7 +3499,12 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "doctor-scoping.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -3391,7 +3769,7 @@
   "tags": {
     "_memento": 2,
     "a-uat": 3,
-    "agents": 14,
+    "agents": 15,
     "audit": 1,
     "beads": 2,
     "bootloader": 2,
@@ -3404,12 +3782,13 @@
     "conventions": 4,
     "design-philosophy": 1,
     "distribution": 1,
-    "doctor": 1,
+    "doctor": 2,
     "draft": 1,
+    "enforcement": 1,
     "format": 1,
     "frontmatter": 4,
     "git": 1,
-    "hooks": 3,
+    "hooks": 5,
     "ignore": 1,
     "information-access": 1,
     "init": 4,
@@ -3420,12 +3799,12 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 36,
-    "mode": 3,
+    "memento": 39,
+    "mode": 5,
     "namespace": 3,
     "obsidian": 4,
     "okf": 3,
-    "open-question": 4,
+    "open-question": 6,
     "orient": 7,
     "philosophy": 1,
     "portability": 2,
@@ -3434,10 +3813,11 @@
     "results": 1,
     "retrieval": 1,
     "review": 5,
-    "roadmap": 2,
+    "roadmap": 4,
     "roles": 1,
     "schema": 2,
     "scope": 1,
+    "scoping": 1,
     "skills": 5,
     "staleness": 2,
     "states": 1,
@@ -3449,7 +3829,7 @@
     "thought-bubble": 2,
     "unicode": 1,
     "vault": 3,
-    "write": 7,
+    "write": 9,
     "writing": 1
   }
 }
