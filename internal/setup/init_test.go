@@ -419,6 +419,29 @@ func TestInitScaffoldsDefaultWriteSkillSource(t *testing.T) {
 	}
 }
 
+func TestInitWriteSkillInstallIsIdempotent(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("first Init() error = %v, want nil", err)
+	}
+	firstSource := readSetupFile(t, repo, "memory/_memento/skills/write.md")
+	firstInstalled := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("second Init() error = %v, want nil", err)
+	}
+	secondSource := readSetupFile(t, repo, "memory/_memento/skills/write.md")
+	secondInstalled := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
+
+	if secondSource != firstSource {
+		t.Fatalf("_memento/skills/write.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstSource, secondSource)
+	}
+	if secondInstalled != firstInstalled {
+		t.Fatalf(".claude/skills/memento-write/SKILL.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstInstalled, secondInstalled)
+	}
+}
+
 func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {
 	repo := t.TempDir()
 	writeSetupFile(t, repo, ".gitignore", "build/\n")
