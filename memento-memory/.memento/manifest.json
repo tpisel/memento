@@ -3243,8 +3243,8 @@
       "key": "codex-cli lifecycle hooks contract.md",
       "title": "codex-cli lifecycle hooks contract",
       "summary": "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml/hooks.json schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences.",
-      "bytes": 10636,
-      "lines": 191,
+      "bytes": 14249,
+      "lines": 240,
       "tags": [
         "agents",
         "codex",
@@ -3296,6 +3296,11 @@
         },
         {
           "level": 2,
+          "text": "apply_patch envelope parsing in check-write (memento-ryr.9)",
+          "slug": "apply_patch-envelope-parsing-in-check-write-memento-ryr9"
+        },
+        {
+          "level": 2,
           "text": "Limits of this spike",
           "slug": "limits-of-this-spike"
         },
@@ -3315,7 +3320,7 @@
       "updated": "",
       "body_sha": "f9a62d13737dead3b5bc9d51616c68c26c514292a106b846e4de7a98e94303ae",
       "summary_sha": "7c8d709dde1e24da2f15c83bb7cd16c82fdd3faba3084353f2f19228e68c1e4e",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {

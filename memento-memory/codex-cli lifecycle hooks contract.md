@@ -134,6 +134,28 @@ permissionDecision:deny"). Other non-zero exits are not the block path.
   `hooks = "./hooks.json"` path form is the cleaner install target (per-agent-family
   branching then writes a codex `hooks.json` here vs a `.claude/settings.json` there,
   both JSON).
+- **b16 realized (memento-ryr.16).** `init` now branches per family: Claude is the
+  always-installed baseline; codex is additive, gated on a `.codex/` dir in the repo.
+  The codex install writes **project-local `.codex/`** — `config.toml` carries a
+  memento sentinel block declaring `hooks = "hooks.json"` (relative, resolved beside
+  the config), and `.codex/hooks.json` carries SessionStart/PreToolUse/PostToolUse
+  matcher groups pointing at `.codex/memento-*.sh` copies of the same dumb-pipe
+  scripts Claude uses (byte-identical, pinned by a drift test). PreToolUse/PostToolUse
+  matcher is the broad `apply_patch|Shell` (codex tool_name strings are unpinned —
+  over-firing is harmless). Each handler carries `timeout_sec` (gate 5, compile 30).
+  Two degradations preserve the additive invariant: a foreign top-level `hooks` key
+  already in `config.toml` is left untouched with a manual-wiring notice (no TOML dep,
+  so this is a line heuristic, not a parse); and the **hook-trust step is surfaced on
+  stdout** (`InitOptions.NoticeWriter`) — codex installs the hook untrusted, so the
+  gate is fail-open until the user trusts it by hash or passes
+  `--dangerously-bypass-hook-trust`.
+- **OPEN — does codex read project-local `.codex/config.toml`?** This spike only
+  confirmed the config.toml *schema* against a hand-written file via `codex doctor`,
+  never *where* codex loads it from (`CODEX_HOME` defaults to `~/.codex`). If codex
+  only reads the global `~/.codex/config.toml`, the b16 project-local install is a
+  silent fail-open — the gate never fires. Verify the load path at the A-UAT live-fire
+  (ADR-0026); if global-only, `init` must also wire (or instruct wiring of) the global
+  config, and `doctor` liveness must check it.
 - **Caveat — doctor does NOT deep-validate hooks.** With a hand-written
   `config.toml`, `codex doctor` reports `config.toml parse  ok` even for an unknown
   event name or an unknown handler field. "parse ok" = valid TOML, **not** valid hook

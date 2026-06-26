@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,12 +25,31 @@ const (
 	claudePostWriteHookScript = ".claude/memento-post-write-compile.sh"
 	claudeOrientHookMatcher   = "startup|resume|compact"
 	claudeWriteHookMatcher    = "Write|Edit|MultiEdit|Bash"
-	bootloaderStartSentinel   = "<!-- memento:start -->"
-	bootloaderEndSentinel     = "<!-- memento:end -->"
-	hookStartSentinel         = "# memento:start"
-	hookEndSentinel           = "# memento:end"
-	gitignoreStartSentinel    = "# memento:gitignore:start"
-	gitignoreEndSentinel      = "# memento:gitignore:end"
+
+	codexConfigDirName       = ".codex"
+	codexConfigFile          = ".codex/config.toml"
+	codexHooksFile           = ".codex/hooks.json"
+	codexOrientHookScript    = ".codex/memento-orient-session-start.sh"
+	codexPreWriteHookScript  = ".codex/memento-pre-write-vault-guard.sh"
+	codexPostWriteHookScript = ".codex/memento-post-write-compile.sh"
+	// codex's write surface is apply_patch (structured edits) + the shell tool
+	// (raw `>>` appends) — ADR-0031 "Multi-agent". The exact tool_name strings are
+	// unpinned by the b15 spike (tool_input is untyped), so this matcher is
+	// deliberately broad; over-firing is harmless because check-write is inert on
+	// non-vault targets and compile is idempotent. Confirmed at live-fire (A-UAT).
+	codexWriteHookMatcher  = "apply_patch|Shell"
+	codexOrientHookMatcher = claudeOrientHookMatcher
+	// PreToolUse is the latency-sensitive gate (the b15 spike used timeout_sec=5);
+	// the compile-backed hooks get a wider budget since compile is whole-vault.
+	codexGateTimeoutSec    = 5
+	codexCompileTimeoutSec = 30
+
+	bootloaderStartSentinel = "<!-- memento:start -->"
+	bootloaderEndSentinel   = "<!-- memento:end -->"
+	hookStartSentinel       = "# memento:start"
+	hookEndSentinel         = "# memento:end"
+	gitignoreStartSentinel  = "# memento:gitignore:start"
+	gitignoreEndSentinel    = "# memento:gitignore:end"
 )
 
 const defaultConfig = `# memento vault configuration
@@ -79,6 +99,10 @@ var defaultUsingMementoGuide = strings.Join([]string{
 
 type InitOptions struct {
 	AgentInstructionsPath string
+	// NoticeWriter receives user-facing post-install guidance that is not an error
+	// — chiefly the codex hook-trust step (codex installs hooks untrusted, so init
+	// cannot silently stand up a live gate). nil discards the notices.
+	NoticeWriter io.Writer
 }
 
 // Init creates or adopts a memory vault under repoRoot.
@@ -147,11 +171,40 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensurePrepareCommitMsgHook(root); err != nil {
 		return vault.Vault{}, err
 	}
-	if err := ensureClaudeAgentIntegration(root); err != nil {
+	if err := ensureAgentIntegrations(root, opts.NoticeWriter); err != nil {
 		return vault.Vault{}, err
 	}
 
 	return v, nil
+}
+
+// ensureAgentIntegrations installs the memento hooks for every agent family this
+// repo is set up for (ADR-0031 "Multi-agent"). Claude is the baseline family —
+// always installed, matching pre-ADR-0031 behavior and the bootloader that targets
+// AGENTS.md/CLAUDE.md. Codex is additive and detection-gated: it is wired only when
+// a codex config dir is present. A family we cannot detect or install degrades
+// discoverability (no gate fires) but never breaks the CLI — ADR-0025's additive
+// invariant, carried into ADR-0031's multi-agent scope.
+func ensureAgentIntegrations(repoRoot string, notices io.Writer) error {
+	if notices == nil {
+		notices = io.Discard
+	}
+	if err := ensureClaudeAgentIntegration(repoRoot); err != nil {
+		return err
+	}
+	if detectCodex(repoRoot) {
+		if err := ensureCodexAgentIntegration(repoRoot, notices); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// detectCodex reports whether this repo carries a codex config directory. Its
+// absence is not an error — it just means the codex gate is not installed here.
+func detectCodex(repoRoot string) bool {
+	info, err := os.Stat(filepath.Join(repoRoot, codexConfigDirName))
+	return err == nil && info.IsDir()
 }
 
 func resolveInitRoot(repoRoot, dir string) (string, error) {
@@ -439,13 +492,13 @@ func ensurePrepareCommitMsgHook(repoRoot string) error {
 // routed through. init stays additive-only; doctor --fix owns deleting orphaned
 // write-skill artifacts left by older vaults.
 func ensureClaudeAgentIntegration(repoRoot string) error {
-	if err := ensureClaudeHookScript(repoRoot, claudeOrientHookScript, claudeOrientHookScriptContents(repoRoot)); err != nil {
+	if err := ensureHookScript(repoRoot, claudeOrientHookScript, claudeOrientHookScriptContents(repoRoot)); err != nil {
 		return fmt.Errorf("install Claude orient hook script: %w", err)
 	}
-	if err := ensureClaudeHookScript(repoRoot, claudePreWriteHookScript, claudePreWriteHookScriptContents()); err != nil {
+	if err := ensureHookScript(repoRoot, claudePreWriteHookScript, claudePreWriteHookScriptContents()); err != nil {
 		return fmt.Errorf("install Claude PreToolUse check-write hook script: %w", err)
 	}
-	if err := ensureClaudeHookScript(repoRoot, claudePostWriteHookScript, claudePostWriteHookScriptContents()); err != nil {
+	if err := ensureHookScript(repoRoot, claudePostWriteHookScript, claudePostWriteHookScriptContents()); err != nil {
 		return fmt.Errorf("install Claude PostToolUse compile hook script: %w", err)
 	}
 	if err := ensureClaudeSettings(repoRoot); err != nil {
@@ -454,7 +507,194 @@ func ensureClaudeAgentIntegration(repoRoot string) error {
 	return nil
 }
 
-func ensureClaudeHookScript(repoRoot, relPath, script string) error {
+// ensureCodexAgentIntegration wires the same three memento hooks for codex
+// (ADR-0031 "Multi-agent"; schema from the b15 spike — see
+// [[codex-cli lifecycle hooks contract]]). The dumb-pipe scripts are reused
+// verbatim: check-write's PreToolUse verdict JSON is byte-identical-valid on codex,
+// so a codex-family copy of each script is installed under .codex/. Hooks are
+// declared via the path-indirection form (config.toml `hooks = "hooks.json"`),
+// which keeps the install a JSON file parallel to Claude's settings.json. codex
+// installs hooks UNTRUSTED (trust-by-hash), so this stages the gate and surfaces
+// the trust step — it cannot stand up a live gate non-interactively.
+func ensureCodexAgentIntegration(repoRoot string, notices io.Writer) error {
+	if err := ensureHookScript(repoRoot, codexOrientHookScript, claudeOrientHookScriptContents(repoRoot)); err != nil {
+		return fmt.Errorf("install codex orient hook script: %w", err)
+	}
+	if err := ensureHookScript(repoRoot, codexPreWriteHookScript, claudePreWriteHookScriptContents()); err != nil {
+		return fmt.Errorf("install codex PreToolUse check-write hook script: %w", err)
+	}
+	if err := ensureHookScript(repoRoot, codexPostWriteHookScript, claudePostWriteHookScriptContents()); err != nil {
+		return fmt.Errorf("install codex PostToolUse compile hook script: %w", err)
+	}
+	if err := ensureCodexConfigHooks(repoRoot, notices); err != nil {
+		return err
+	}
+	if err := ensureCodexHooksJSON(repoRoot); err != nil {
+		return err
+	}
+	emitCodexTrustNotice(repoRoot, notices)
+	return nil
+}
+
+// ensureCodexConfigHooks points codex at .codex/hooks.json via a memento-managed
+// sentinel block in config.toml (`hooks = "hooks.json"`, resolved beside the
+// config). If the user already declares a top-level hooks key of their own, memento
+// leaves config.toml untouched and degrades to a manual-wiring notice rather than
+// corrupting their config — the additive invariant (never break what exists).
+func ensureCodexConfigHooks(repoRoot string, notices io.Writer) error {
+	path := filepath.Join(repoRoot, filepath.FromSlash(codexConfigFile))
+	block := codexConfigBlock()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			if err := writeNewFile(path, []byte("# codex configuration\n\n"+block+"\n"), 0o644); err != nil {
+				return fmt.Errorf("create codex config.toml: %w", err)
+			}
+			return nil
+		}
+		return fmt.Errorf("read codex config.toml: %w", err)
+	}
+
+	contents := string(data)
+	if !strings.Contains(contents, hookStartSentinel) && codexConfigHasForeignHooks(contents) {
+		emitCodexForeignHooksNotice(notices)
+		return nil
+	}
+
+	updated, err := insertOrReplaceSentinelBlock(contents, block, hookStartSentinel, hookEndSentinel, "codex config.toml", "memento")
+	if err != nil {
+		return err
+	}
+	if updated == contents {
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("write codex config.toml: %w", err)
+	}
+	return nil
+}
+
+func codexConfigBlock() string {
+	return strings.Join([]string{
+		hookStartSentinel,
+		"# memento points codex lifecycle hooks at hooks.json beside this config (ADR-0031).",
+		`hooks = "hooks.json"`,
+		hookEndSentinel,
+	}, "\n")
+}
+
+// codexConfigHasForeignHooks reports whether config.toml already declares a
+// top-level hooks key (assignment, table, or array-of-tables) that memento did not
+// write. It is a line heuristic, not a TOML parse — memento has no TOML dependency —
+// so it errs toward leaving a user's config alone.
+func codexConfigHasForeignHooks(contents string) bool {
+	for _, line := range strings.Split(contents, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[hooks") || strings.HasPrefix(trimmed, "[[hooks") {
+			return true
+		}
+		if key, _, ok := strings.Cut(trimmed, "="); ok && strings.TrimSpace(key) == "hooks" {
+			return true
+		}
+	}
+	return false
+}
+
+// ensureCodexHooksJSON writes the codex hooks file: a JSON object keyed by event
+// name (SessionStart/PreToolUse/PostToolUse), each a matcher-group array whose
+// command is a memento hook script. The upsert is idempotent and preserves any
+// unrelated hooks the user added, mirroring the Claude settings install.
+func ensureCodexHooksJSON(repoRoot string) error {
+	path := filepath.Join(repoRoot, filepath.FromSlash(codexHooksFile))
+
+	root := map[string]any{}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read codex hooks.json: %w", err)
+		}
+	} else if len(strings.TrimSpace(string(data))) > 0 {
+		if err := json.Unmarshal(data, &root); err != nil {
+			return fmt.Errorf("parse codex hooks.json: %w", err)
+		}
+	}
+
+	type managedHook struct {
+		event      string
+		matcher    string
+		command    string
+		timeoutSec int
+		isManaged  func(any) bool
+	}
+	managed := []managedHook{
+		{"SessionStart", codexOrientHookMatcher, codexOrientHookScript, codexCompileTimeoutSec, isMementoOrientHook},
+		{"PreToolUse", codexWriteHookMatcher, codexPreWriteHookScript, codexGateTimeoutSec, isMementoPreWriteHook},
+		{"PostToolUse", codexWriteHookMatcher, codexPostWriteHookScript, codexCompileTimeoutSec, isMementoPostWriteHook},
+	}
+	for _, m := range managed {
+		entries, err := codexHookArray(root, m.event)
+		if err != nil {
+			return err
+		}
+		command := filepath.Join(repoRoot, filepath.FromSlash(m.command))
+		root[m.event] = replaceManagedHook(entries, m.isManaged, managedCodexHookEntry(m.matcher, command, m.timeoutSec))
+	}
+
+	updated, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return fmt.Errorf("render codex hooks.json: %w", err)
+	}
+	updated = append(updated, '\n')
+	return writeFileIfChanged(path, updated, 0o644)
+}
+
+func codexHookArray(root map[string]any, event string) ([]any, error) {
+	if raw, ok := root[event]; ok {
+		array, ok := raw.([]any)
+		if !ok {
+			return nil, fmt.Errorf("codex hooks.json %s must be an array", event)
+		}
+		return array, nil
+	}
+	array := []any{}
+	root[event] = array
+	return array, nil
+}
+
+func managedCodexHookEntry(matcher, command string, timeoutSec int) map[string]any {
+	return map[string]any{
+		"matcher": matcher,
+		"hooks": []any{
+			map[string]any{
+				"type":        "command",
+				"command":     command,
+				"timeout_sec": timeoutSec,
+			},
+		},
+	}
+}
+
+// emitCodexTrustNotice surfaces the codex hook-trust step (b15 spike). codex
+// records trust per content hash and skips untrusted hooks, so the gate this
+// staged is fail-open until the user reviews and trusts it — init cannot make it
+// live non-interactively. When config wiring was skipped (foreign hooks key) the
+// foreign-hooks notice already fired, so the trust line still applies once wired.
+func emitCodexTrustNotice(repoRoot string, notices io.Writer) {
+	fmt.Fprintf(notices, "memento: codex hooks staged in %s (untrusted).\n", displayPath(repoRoot, filepath.Join(repoRoot, filepath.FromSlash(codexHooksFile))))
+	fmt.Fprintln(notices, "codex trusts hooks by content hash and skips untrusted ones, so the memento write gate stays fail-open until you review and trust it.")
+	fmt.Fprintln(notices, "Trust it in codex (hooks browser), or pass --dangerously-bypass-hook-trust only for automation that already vets hook sources.")
+}
+
+func emitCodexForeignHooksNotice(notices io.Writer) {
+	fmt.Fprintln(notices, "memento: .codex/config.toml already declares hooks; left unchanged.")
+	fmt.Fprintln(notices, `Wire the gate yourself: set hooks = "hooks.json", or merge .codex/hooks.json into your existing hooks table.`)
+}
+
+func ensureHookScript(repoRoot, relPath, script string) error {
 	path := filepath.Join(repoRoot, filepath.FromSlash(relPath))
 	if err := writeFileIfChanged(path, []byte(script), 0o755); err != nil {
 		return err
@@ -687,6 +927,15 @@ func arraySetting(parent map[string]any, key string) ([]any, error) {
 // entries, preserving every unrelated hook, then appends one fresh entry with the
 // given matcher and command.
 func upsertManagedHook(entries []any, matcher, command string, isManaged func(any) bool) []any {
+	return replaceManagedHook(entries, isManaged, managedHookEntry(matcher, command))
+}
+
+// replaceManagedHook strips any prior memento hook (matched by isManaged, which
+// also catches legacy script names so a rerun re-homes them) from existing entries,
+// preserving every unrelated hook, then appends newEntry. It is the family-neutral
+// core of upsertManagedHook, shared by the Claude settings and codex hooks.json
+// installs.
+func replaceManagedHook(entries []any, isManaged func(any) bool, newEntry map[string]any) []any {
 	cleaned := make([]any, 0, len(entries)+1)
 	for _, entry := range entries {
 		object, ok := entry.(map[string]any)
@@ -717,7 +966,7 @@ func upsertManagedHook(entries []any, matcher, command string, isManaged func(an
 		object["hooks"] = filtered
 		cleaned = append(cleaned, object)
 	}
-	cleaned = append(cleaned, managedHookEntry(matcher, command))
+	cleaned = append(cleaned, newEntry)
 	return cleaned
 }
 
