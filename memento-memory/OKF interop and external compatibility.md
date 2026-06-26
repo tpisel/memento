@@ -152,6 +152,35 @@ The earlier position — "Option A: OKF as export target, not native mode" — s
 
 Trigger for actual implementation work: a concrete user with a non-Obsidian deployment intent, *or* a credible OKF consumer ecosystem where bidirectional editing (not just export) is the natural shape.
 
+## Addendum 2026-06-26: reading the published example bundles
+
+The original note (and its first addendum) was written from the SPEC alone, before Google published worked examples. The `knowledge-catalog` repo now ships three ready-to-browse bundles (`bundles/ga4`, `bundles/stackoverflow`, `bundles/crypto_bitcoin`), each produced by the POC enrichment agent, plus a per-bundle `viz.html` graph viewer. Reading them changes one concrete export decision and adds evidence to two open questions. The strategic posture (Option A default, Option B deferred-and-pre-positioned) is **unchanged**.
+
+### Correction: export emits RELATIVE links, not `/`-absolute
+
+This supersedes the export prescription in the "Wikilinks vs. markdown links" section above (the line stating wikilinks resolve "to standard markdown links with `/`-prefixed absolute paths"). That was inferred from SPEC §5.1, which *recommends* the absolute bundle-relative form (`[x](/tables/customers.md)`) "because it is stable when documents are moved." Two findings overturn it:
+
+1. **None of the published bundles use the `/`-absolute form.** Grep across all three: zero leading-slash links. They use relative links exclusively — `[blocks](blocks.md)`, `[crypto_bitcoin](../datasets/crypto_bitcoin.md)`. Google's own tooling does not follow its own spec's recommendation.
+2. **The `/`-absolute form breaks Obsidian.** A leading-slash path is *not* Obsidian's native "absolute path in vault" format (Obsidian's absolute form has no leading slash); Obsidian's resolver does not reliably bind it, so backlinks and click-through fail. Since the whole point of staying markdown-link-clean is to keep the Obsidian surface working, emitting `/`-absolute would defeat the goal.
+
+**Pin for the export shim whenever it is built: emit relative links.** They are what the real bundles use *and* what Obsidian resolves. Follow the bundles, not the spec prose — the divergence between them is itself a signal that v0.1's written recommendations are aspirational and under-tested.
+
+### Confirmed by the examples (no change, just now evidenced rather than assumed)
+
+- **No wikilinks, no transclusion anywhere** in the bundles. Relationships are bare inline markdown links, untyped, relationship conveyed by surrounding prose — exactly as SPEC §5.3 states and as our typed-links-in-frontmatter constraint anticipated.
+- **`type:` values are domain-qualified**, e.g. `BigQuery Table`, `BigQuery Dataset` — not bare `Table`. Our export-side `type:` synthesis default (folder-name → type) is roughly right but should lean toward a descriptive/qualified value, not a single-word folder name.
+- **Filenames are `snake_case`, no spaces** — so the markdown-link space-encoding gotcha is moot for OKF-origin content. Worth preserving on our export side too (our slugs already are filename-safe, so wikilink→markdown-link is mechanical).
+- **`index.md` is exactly the §6 shape** — a flat bulleted list of `[Title](url) - description` per section. Confirms it is a hand/tool-generated TOC, not a scannable whole-bundle surface.
+
+### New evidence on "where OKF is going"
+
+- **The compiled-index hypothesis (line ~80) is partially borne out, but the form differs.** Google felt the "single scannable surface" need and answered it with a per-bundle `viz.html` *graph viewer artifact* shipped alongside the markdown — not a `/.okf/index.json`. So the pressure toward a compiled consumption surface is real (good for the manifest-as-prior-art claim), but the ecosystem's first instinct was a human-facing viewer, not a machine-readable index. Our manifest still has no published OKF counterpart; the opening to propose one remains.
+- **Spec-vs-practice divergence is a usable signal in any future standards discussion.** The tooling diverging from the spec on link form (and the spec being a v0.1 draft generally) means dogfooding evidence will carry weight — concrete "here is what the generator actually emits vs. what §5.1 says" observations are exactly the prior-art contributions point 4 of the early-posture list anticipated.
+
+### Net
+
+Only one prescription changes (relative links on export). Everything else the original note pinned — typed-links-in-frontmatter-only, namespace prefixes, manifest versioning, Option A as default — is reinforced, not revised, by the examples. No roadmap change. The clone reviewed lives at `/Users/tom/dev/personal/knowledge-catalog` (transient; not part of memento).
+
 ## Provenance
 
-Originated in a 2026-06-14 conversation immediately after the Google Cloud OKF v0.1 announcement. Recorded to capture the alignment analysis while both formats are young and the cost of preserving compatibility is minimal. Addendum same day after the user pushed back on the "Obsidian as universal commitment" framing and surfaced the dual-mode deployment question.
+Originated in a 2026-06-14 conversation immediately after the Google Cloud OKF v0.1 announcement. Recorded to capture the alignment analysis while both formats are young and the cost of preserving compatibility is minimal. Addendum same day after the user pushed back on the "Obsidian as universal commitment" framing and surfaced the dual-mode deployment question. Second addendum 2026-06-26 after reviewing the published example bundles (`knowledge-catalog/okf/bundles/`), which corrected the link-form export prescription and added evidence on the compiled-index direction.
