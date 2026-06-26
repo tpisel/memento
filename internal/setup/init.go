@@ -35,11 +35,8 @@ const defaultIgnore = `# memento operational files
 .memento/
 .mementoignore
 
-# memento generated artifacts
-_memento/brief.md
-
-# memento human onboarding artifacts
-_memento/Using Memento.md
+# memento operational namespace (conventions, skills, generated brief, onboarding)
+_memento/
 
 # macOS Finder metadata
 .DS_Store
@@ -146,6 +143,9 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensureUsingMementoGuide(v); err != nil {
 		return vault.Vault{}, err
 	}
+	if err := ensureConventionTemplates(v); err != nil {
+		return vault.Vault{}, err
+	}
 	if err := ensureMementoIgnore(v); err != nil {
 		return vault.Vault{}, err
 	}
@@ -239,21 +239,12 @@ func ensureMementoIgnore(v vault.Vault) error {
 		return fmt.Errorf("read %s: %w", vault.IgnoreFileName, err)
 	}
 
-	requiredEntries := []string{
-		vault.ToolDirName + "/" + vault.BriefFileName,
-		vault.ToolDirName + "/Using Memento.md",
-	}
-	var missingEntries []string
-	for _, entry := range requiredEntries {
-		if !hasLine(string(data), entry) {
-			missingEntries = append(missingEntries, entry)
-		}
-	}
-	if len(missingEntries) == 0 {
+	namespaceEntry := vault.ToolDirName + "/"
+	if hasLine(string(data), namespaceEntry) {
 		return nil
 	}
 
-	entryLines := append([]string{"# memento ignored artifacts"}, missingEntries...)
+	entryLines := []string{"# memento operational namespace", namespaceEntry}
 	updated := appendMementoIgnoreEntry(string(data), strings.Join(entryLines, "\n"))
 	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", vault.IgnoreFileName, err)
@@ -297,6 +288,91 @@ func ensureWritingGuide(v vault.Vault) error {
 	path := filepath.Join(v.Root, vault.ToolDirName, "writing.md")
 	if err := writeNewFile(path, []byte(defaultWritingGuide), 0o644); err != nil {
 		return fmt.Errorf("create _memento writing guide: %w", err)
+	}
+	return nil
+}
+
+// conventionTemplate is a default convention file installed under
+// _memento/conventions/. Templates carry only title and when_to_read
+// frontmatter (ADR-0029) and stay project-neutral (ADR-0030).
+type conventionTemplate struct {
+	stem    string
+	content string
+}
+
+var defaultConventionTemplates = []conventionTemplate{
+	{
+		stem: "writing",
+		content: strings.Join([]string{
+			"---",
+			"title: Writing guide",
+			"when_to_read: before authoring a memento vault write",
+			"---",
+			"",
+			"# Writing guide",
+			"",
+			"Write durable project knowledge that should survive a task: decisions, the paths you ruled out and why, and constraints that are not visible in the code itself.",
+			"",
+			"Do not record transient task progress, guesses, or details the code already makes clear. If a fact only matters to the task in hand, keep it in your task store, not the vault.",
+			"",
+			"Write through `memento write` so the note's mode check applies; a native file edit can silently overwrite a read-only note.",
+			"",
+		}, "\n"),
+	},
+	{
+		stem: "summarising",
+		content: strings.Join([]string{
+			"---",
+			"title: Summarising guide",
+			"when_to_read: when writing or revising a note summary",
+			"---",
+			"",
+			"# Summarising guide",
+			"",
+			"A summary is read from `memento brief` to decide whether to open the note. Lead with the load-bearing fact or decision, not a description of the topic.",
+			"",
+			"Prefer one or two dense sentences that state the conclusion. Do not restate the title, and avoid \"this note covers ...\" framing.",
+			"",
+		}, "\n"),
+	},
+	{
+		stem: "conventions",
+		content: strings.Join([]string{
+			"---",
+			"title: Conventions guide",
+			"when_to_read: before adding or editing a convention file",
+			"---",
+			"",
+			"# Conventions guide",
+			"",
+			"Conventions are operational guides under `_memento/conventions/`. Each declares `title:` and a non-empty `when_to_read:` in frontmatter; the workflow instructions live in the body.",
+			"",
+			"- Use a short lowercase filename stem with no spaces, such as `writing.md` or `summarising.md`. Use hyphens only when a single word is unclear.",
+			"- Make `when_to_read:` complete the sentence \"Read this convention ...\".",
+			"- Keep frontmatter to `title:` and `when_to_read:`; do not add `mode`, `summary`, or `tags`.",
+			"- Put workflow instructions in the body, not in frontmatter.",
+			"",
+			"A convention without `when_to_read:` is invalid and will not be offered. Conventions are operational guidance, not project knowledge, so they stay out of the normal brief corpus.",
+			"",
+		}, "\n"),
+	},
+}
+
+func ensureConventionTemplates(v vault.Vault) error {
+	dir := filepath.Join(v.Root, vault.ToolDirName, "conventions")
+	for _, template := range defaultConventionTemplates {
+		path := filepath.Join(dir, template.stem+".md")
+		if info, err := os.Stat(path); err == nil {
+			if info.IsDir() {
+				return fmt.Errorf("%s already exists as a directory", path)
+			}
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("stat _memento convention %s: %w", template.stem, err)
+		}
+		if err := writeNewFile(path, []byte(template.content), 0o644); err != nil {
+			return fmt.Errorf("create _memento convention %s: %w", template.stem, err)
+		}
 	}
 	return nil
 }

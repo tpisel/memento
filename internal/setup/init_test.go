@@ -414,8 +414,8 @@ func TestInitScaffoldsDefaultWriteSkillSource(t *testing.T) {
 		}
 	}
 	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
-	if !strings.Contains(manifest, `"key": "_memento/skills/write.md"`) {
-		t.Fatalf("manifest = %q, want scaffolded write skill source indexed", manifest)
+	if strings.Contains(manifest, `_memento/skills/write.md`) {
+		t.Fatalf("manifest = %q, want write skill source excluded from the normal manifest", manifest)
 	}
 }
 
@@ -476,14 +476,8 @@ func TestInitWritesBriefIgnoreEntriesForGreenfieldVault(t *testing.T) {
 	}
 
 	mementoignore := readSetupFile(t, repo, "memory/.mementoignore")
-	if !hasSetupLine(mementoignore, "_memento/brief.md") {
-		t.Fatalf(".mementoignore = %q, want file-specific brief ignore entry", mementoignore)
-	}
-	if !hasSetupLine(mementoignore, "_memento/Using Memento.md") {
-		t.Fatalf(".mementoignore = %q, want file-specific Using Memento guide ignore entry", mementoignore)
-	}
-	if hasSetupLine(mementoignore, "_memento/") || hasSetupLine(mementoignore, "/_memento/") {
-		t.Fatalf(".mementoignore = %q, want no folder-wide _memento ignore entry", mementoignore)
+	if !hasSetupLine(mementoignore, "_memento/") {
+		t.Fatalf(".mementoignore = %q, want structural _memento/ namespace ignore entry", mementoignore)
 	}
 }
 
@@ -512,14 +506,8 @@ func TestInitAddsBriefIgnoreEntriesWhenAdoptingExistingVault(t *testing.T) {
 	if !strings.HasPrefix(mementoignore, "drafts/\n") {
 		t.Fatalf(".mementoignore = %q, want existing content preserved at start", mementoignore)
 	}
-	if !hasSetupLine(mementoignore, "_memento/brief.md") {
-		t.Fatalf(".mementoignore = %q, want file-specific brief ignore entry", mementoignore)
-	}
-	if !hasSetupLine(mementoignore, "_memento/Using Memento.md") {
-		t.Fatalf(".mementoignore = %q, want file-specific Using Memento guide ignore entry", mementoignore)
-	}
-	if hasSetupLine(mementoignore, "_memento/") || hasSetupLine(mementoignore, "/_memento/") {
-		t.Fatalf(".mementoignore = %q, want no folder-wide _memento ignore entry", mementoignore)
+	if !hasSetupLine(mementoignore, "_memento/") {
+		t.Fatalf(".mementoignore = %q, want structural _memento/ namespace ignore entry", mementoignore)
 	}
 }
 
@@ -538,7 +526,7 @@ func TestInitBriefIgnoreEntriesAreIdempotentWhenPresent(t *testing.T) {
 		"",
 	}, "\n"))
 	writeSetupFile(t, repo, "memory/note.md", "# Existing note\n\nKeep this.\n")
-	writeSetupFile(t, repo, "memory/.mementoignore", "drafts/\n\n_memento/brief.md\n_memento/Using Memento.md\n")
+	writeSetupFile(t, repo, "memory/.mementoignore", "drafts/\n\n_memento/\n")
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("first Init() error = %v, want nil", err)
@@ -561,11 +549,8 @@ func TestInitBriefIgnoreEntriesAreIdempotentWhenPresent(t *testing.T) {
 	if count := countSetupLine(secondGitignore, "**/_memento/brief.md"); count != 1 {
 		t.Fatalf(".gitignore brief entry count = %d, want 1; contents = %q", count, secondGitignore)
 	}
-	if count := countSetupLine(secondMementoignore, "_memento/brief.md"); count != 1 {
-		t.Fatalf(".mementoignore brief entry count = %d, want 1; contents = %q", count, secondMementoignore)
-	}
-	if count := countSetupLine(secondMementoignore, "_memento/Using Memento.md"); count != 1 {
-		t.Fatalf(".mementoignore Using Memento guide entry count = %d, want 1; contents = %q", count, secondMementoignore)
+	if count := countSetupLine(secondMementoignore, "_memento/"); count != 1 {
+		t.Fatalf(".mementoignore namespace entry count = %d, want 1; contents = %q", count, secondMementoignore)
 	}
 }
 
@@ -616,6 +601,108 @@ func TestInitCreatesWritingGuideForGreenfieldVault(t *testing.T) {
 	_, body, ok := strings.Cut(got, "---\n\n")
 	if !ok || strings.TrimSpace(body) == "" {
 		t.Fatalf("_memento/writing.md = %q, want non-empty body", got)
+	}
+}
+
+func TestInitCreatesDefaultConventionTemplatesForGreenfieldVault(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	cases := map[string]string{
+		"writing":     "when_to_read: before authoring a memento vault write",
+		"summarising": "when_to_read: when writing or revising a note summary",
+		"conventions": "when_to_read: before adding or editing a convention file",
+	}
+	for stem, wantWhen := range cases {
+		got := readSetupFile(t, repo, "memory/_memento/conventions/"+stem+".md")
+		front, body, ok := strings.Cut(got, "---\n\n")
+		if !ok {
+			t.Fatalf("%s.md = %q, want frontmatter terminated before body", stem, got)
+		}
+		if !strings.Contains(front, "title:") {
+			t.Fatalf("%s.md = %q, want a title field", stem, got)
+		}
+		if !strings.Contains(front, wantWhen) {
+			t.Fatalf("%s.md = %q, want %q", stem, got, wantWhen)
+		}
+		for _, forbidden := range []string{"mode:", "summary:", "tags:"} {
+			if strings.Contains(front, forbidden) {
+				t.Fatalf("%s.md frontmatter = %q, want no %q (title and when_to_read only)", stem, front, forbidden)
+			}
+		}
+		if strings.TrimSpace(body) == "" {
+			t.Fatalf("%s.md = %q, want a non-empty body", stem, got)
+		}
+	}
+}
+
+func TestInitConventionTemplatesAreProjectNeutral(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	for _, stem := range []string{"writing", "summarising", "conventions"} {
+		got := readSetupFile(t, repo, "memory/_memento/conventions/"+stem+".md")
+		for _, forbidden := range []string{"beads", "bd ", "ralph", "Ralph"} {
+			if strings.Contains(got, forbidden) {
+				t.Fatalf("%s.md = %q, want project-neutral template free of %q", stem, got, forbidden)
+			}
+		}
+	}
+}
+
+func TestInitPreservesExistingConventionFilesWhenAdopting(t *testing.T) {
+	repo := t.TempDir()
+	existing := "---\ntitle: My writing convention\nwhen_to_read: whenever I say so\n---\n\n# Mine\n\nKeep this exactly.\n"
+	writeSetupFile(t, repo, "memory/note.md", "# Existing note\n\nKeep this.\n")
+	writeSetupFile(t, repo, "memory/_memento/conventions/writing.md", existing)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	if got := readSetupFile(t, repo, "memory/_memento/conventions/writing.md"); got != existing {
+		t.Fatalf("_memento/conventions/writing.md changed to %q, want %q", got, existing)
+	}
+	// Missing default conventions are still scaffolded alongside the preserved one.
+	if got := readSetupFile(t, repo, "memory/_memento/conventions/summarising.md"); !strings.Contains(got, "when_to_read:") {
+		t.Fatalf("_memento/conventions/summarising.md = %q, want default scaffolded", got)
+	}
+}
+
+func TestInitConventionTemplatesAreIdempotent(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("first Init() error = %v, want nil", err)
+	}
+	first := readSetupFile(t, repo, "memory/_memento/conventions/writing.md")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("second Init() error = %v, want nil", err)
+	}
+	second := readSetupFile(t, repo, "memory/_memento/conventions/writing.md")
+
+	if second != first {
+		t.Fatalf("_memento/conventions/writing.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+}
+
+func TestInitConventionFilesDoNotAppearInManifest(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
+	if strings.Contains(manifest, "_memento/conventions/") {
+		t.Fatalf("manifest = %q, want convention files excluded from the normal manifest", manifest)
 	}
 }
 
@@ -722,8 +809,8 @@ func TestInitDoesNotIndexUsingMementoGuideWhenAdoptingExistingIgnore(t *testing.
 	}
 
 	mementoignore := readSetupFile(t, repo, "memory/.mementoignore")
-	if !hasSetupLine(mementoignore, "_memento/Using Memento.md") {
-		t.Fatalf(".mementoignore = %q, want Using Memento guide ignore entry", mementoignore)
+	if !hasSetupLine(mementoignore, "_memento/") {
+		t.Fatalf(".mementoignore = %q, want structural _memento/ namespace ignore entry", mementoignore)
 	}
 
 	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
