@@ -2358,8 +2358,8 @@
       "key": "a-uat/run-report.md",
       "title": "A-UAT run report",
       "summary": "Append-only-in-practice results log from the A-UAT runner against the ADR-0026 test matrix. One row per model x arm x behavior x trial cell, with tool-log evidence and a provisional result. Resumable - the batch driver skips cells already recorded for the current frozen_at. Rows flagged review=yes need human adjudication. (Mode is living so the header can be restructured during the run; harden to append-only once the run set is complete.)",
-      "bytes": 25170,
-      "lines": 125,
+      "bytes": 27120,
+      "lines": 132,
       "tags": [
         "a-uat",
         "results",
