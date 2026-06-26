@@ -127,6 +127,32 @@ Stderr:
 For the deeper picture, run: memento orient
 `
 
+const writeModeHelpText = `memento write-mode
+
+Usage:
+  memento write-mode <key> <append-only|living|read-only> [--justification <reason>]
+
+Durably rewrite a note's frontmatter mode: line, then recompile the vault. This is the only path that changes an existing note's mode.
+
+Key contract:
+  key is a vault-relative .md path. Repo-relative paths and paths prefixed with the vault directory are invalid.
+
+Modes:
+  append-only  accepts appends, rejects overwrites once ratified.
+  living       accepts appends and overwrites.
+  read-only    rejects writes once ratified.
+  An unknown mode value is rejected, not defaulted.
+
+Justification:
+  Loosening toward living requires --justification <reason>.
+  Tightening toward read-only accepts --justification as optional self-documentation.
+
+Stderr:
+  On success, stderr includes mode: <key> <old> -> <new> before the compile result.
+
+For the deeper picture, run: memento orient
+`
+
 func parseSubcommandFlags(flags *flag.FlagSet, args []string, stdout, stderr io.Writer, verb, helpText string) (bool, int) {
 	flags.SetOutput(io.Discard)
 	if err := flags.Parse(args); err != nil {

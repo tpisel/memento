@@ -25,6 +25,7 @@ Usage:
   memento read <key|@N>
   memento convention <name>
   memento write [--overwrite] <key>
+  memento write-mode <key> <append-only|living|read-only> [--justification <reason>]
 
 Commands:
   help        Show this help text.
@@ -36,6 +37,7 @@ Commands:
   read        Read a memory note by key or @N entry reference.
   convention  Read an operational convention by name from _memento/conventions.
   write       Create, append to, or overwrite a memory note from stdin, then compile.
+  write-mode  Durably change a note's frontmatter mode, then compile.
 `
 
 // Run dispatches the CLI and returns a process-style exit code.
@@ -71,6 +73,8 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		return runConvention(args[1:], stdout, stderr)
 	case "write":
 		return runWrite(args[1:], stdin, stdout, stderr)
+	case "write-mode":
+		return runWriteMode(args[1:], stdout, stderr)
 	default:
 		printRootError(stderr, fmt.Errorf("%w %q", ErrUnknownCommand, args[0]))
 		return 2
