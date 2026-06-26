@@ -73,6 +73,7 @@ These templates should stay project-neutral. More opinionated convention sets, s
 - `memento orient` lists valid conventions and warns about invalid convention files.
 - `memento convention <name>` fails with a convention-specific not-found error when `_memento/conventions/<name>.md` does not exist.
 - `memento convention <name>` fails with an invalid-convention error when the file exists but has missing or empty `when_to_read:`.
+- `when_to_read:` must be a single-line scalar. A YAML block scalar (`when_to_read: |` or `>` with an indented body) is unsupported: the single-line frontmatter reader does not gather the indented body, so a block-scalar `when_to_read:` is treated as empty and the convention is invalid. This keeps `when_to_read` a short prompt rather than a multi-line workflow body, which belongs in the convention body.
 - Compile may warn about invalid conventions, but should not fail the normal memory manifest solely because a convention file is malformed.
 - The future `doctor` verb should report malformed conventions as operational health issues. `doctor` will have its own ADR; this ADR only records that malformed conventions belong in its remit.
 

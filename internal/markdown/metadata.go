@@ -173,6 +173,13 @@ func SplitFrontmatter(source []byte) (front []byte, body []byte, ok bool) {
 // the field is absent or empty. It shares the comment-skipping line scan and
 // scalar cleaning used by the metadata parser, so callers reading ad-hoc keys
 // (e.g. the convention package) need not reimplement either.
+//
+// Only single-line scalars are read. A YAML block scalar header (a lone "|" or
+// ">" indicator, with optional chomping/indentation modifiers) carries its value
+// on indented lines this reader does not gather, so it is reported absent (""):
+// returning the bare indicator would bind the field to "|"/">", which no caller
+// wants. Convention files depend on this so a block-scalar when_to_read is
+// rejected as invalid (ADR-0029) rather than silently accepted.
 func FrontmatterScalar(front []byte, key string) string {
 	for _, line := range strings.Split(string(front), "\n") {
 		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
@@ -183,9 +190,29 @@ func FrontmatterScalar(front []byte, key string) string {
 		if !ok || strings.TrimSpace(k) != key {
 			continue
 		}
-		return cleanScalar(v)
+		v = cleanScalar(v)
+		if isBlockScalarHeader(v) {
+			return ""
+		}
+		return v
 	}
 	return ""
+}
+
+// isBlockScalarHeader reports whether value is a lone YAML block scalar
+// indicator: a leading "|" or ">" followed only by chomping ("+"/"-") or
+// explicit-indentation (1-9) modifiers. Such a header introduces a multi-line
+// block body that the single-line scalar reader cannot capture.
+func isBlockScalarHeader(value string) bool {
+	if value == "" || (value[0] != '|' && value[0] != '>') {
+		return false
+	}
+	for _, r := range value[1:] {
+		if r != '+' && r != '-' && !(r >= '1' && r <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 func splitFrontmatterBlock(source []byte) ([]byte, []byte, bool) {

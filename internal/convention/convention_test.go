@@ -95,6 +95,21 @@ func TestReadEmptyWhenToRead(t *testing.T) {
 	}
 }
 
+func TestReadBlockScalarWhenToReadIsInvalid(t *testing.T) {
+	// A YAML block scalar (when_to_read: | or >, then an indented body) is not
+	// supported: the single-line scalar reader cannot capture the block body, so
+	// the convention is rejected rather than silently bound to the bare "|"/">"
+	// indicator. This pins ADR-0029's single-line-scalar intent.
+	for _, indicator := range []string{"|", ">", "|-", ">+", "|2"} {
+		contents := "---\ntitle: Writing guide\nwhen_to_read: " + indicator + "\n  read me before a write\n---\nbody\n"
+		v := newVault(t)
+		writeConvention(t, v, "writing", contents)
+		if _, err := Read(v, "writing"); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("Read with when_to_read: %q error = %v, want ErrInvalid", indicator, err)
+		}
+	}
+}
+
 func TestReadNoFrontmatterIsInvalid(t *testing.T) {
 	v := newVault(t)
 	writeConvention(t, v, "writing", "# Writing guide\n\nbody\n")

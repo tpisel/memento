@@ -513,3 +513,21 @@ func TestFrontmatterScalar(t *testing.T) {
 		t.Errorf("FrontmatterScalar(nil) = %q, want empty", got)
 	}
 }
+
+func TestFrontmatterScalarRejectsBlockScalar(t *testing.T) {
+	// A block scalar header (| or >, with optional chomping/indentation
+	// indicators) has no inline value; the single-line reader reports it absent
+	// rather than returning the bare indicator as the value.
+	for _, indicator := range []string{"|", ">", "|-", "|+", ">-", "|2", "|2-"} {
+		front := []byte("key: " + indicator + "\n  body line\n")
+		if got := FrontmatterScalar(front, "key"); got != "" {
+			t.Errorf("FrontmatterScalar(key: %q) = %q, want empty", indicator, got)
+		}
+	}
+
+	// A plain value that merely starts with | or > but carries real text stays a
+	// value; only a lone indicator is treated as a block-scalar header.
+	if got := FrontmatterScalar([]byte("key: > redirect\n"), "key"); got != "> redirect" {
+		t.Errorf("FrontmatterScalar(key: > redirect) = %q, want %q", got, "> redirect")
+	}
+}
