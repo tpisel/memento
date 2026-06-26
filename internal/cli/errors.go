@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/tpisel/memento/internal/convention"
 	"github.com/tpisel/memento/internal/ignore"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/markdown"
@@ -66,6 +67,12 @@ func errorToken(err error) string {
 		return "section-not-found"
 	case errors.Is(err, note.ErrNotFound):
 		return "key-not-found"
+	case errors.Is(err, convention.ErrInvalidName):
+		return "invalid-convention-name"
+	case errors.Is(err, convention.ErrNotFound):
+		return "convention-not-found"
+	case errors.Is(err, convention.ErrInvalid):
+		return "invalid-convention"
 	case errors.Is(err, note.ErrUnsupportedWriteOperation):
 		return "unsupported-write-operation"
 	case errors.Is(err, note.ErrReadOnly):

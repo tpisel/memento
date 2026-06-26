@@ -23,17 +23,19 @@ Usage:
   memento brief
   memento orient
   memento read <key|@N>
+  memento convention <name>
   memento write [--overwrite] <key>
 
 Commands:
-  help      Show this help text.
-  version   Print the memento version.
-  init      Adopt or create a memory vault.
-  compile   Compile a memory vault manifest.
-  brief     Print the agent-facing manifest projection.
-  orient    Print tool-usage orientation and project overlays.
-  read      Read a memory note by key or @N entry reference.
-  write     Create, append to, or overwrite a memory note from stdin, then compile.
+  help        Show this help text.
+  version     Print the memento version.
+  init        Adopt or create a memory vault.
+  compile     Compile a memory vault manifest.
+  brief       Print the agent-facing manifest projection.
+  orient      Print tool-usage orientation and project overlays.
+  read        Read a memory note by key or @N entry reference.
+  convention  Read an operational convention by name from _memento/conventions.
+  write       Create, append to, or overwrite a memory note from stdin, then compile.
 `
 
 // Run dispatches the CLI and returns a process-style exit code.
@@ -65,6 +67,8 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		return runOrient(args[1:], stdout, stderr)
 	case "read":
 		return runRead(args[1:], stdout, stderr)
+	case "convention":
+		return runConvention(args[1:], stdout, stderr)
 	case "write":
 		return runWrite(args[1:], stdin, stdout, stderr)
 	default:

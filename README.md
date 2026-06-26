@@ -70,6 +70,7 @@ Open the vault directory itself (e.g. `my-project-memory/`) as an Obsidian vault
 - `memento brief` — print the agent-facing markdown projection of the manifest.
 - `memento orient` — print tool-usage orientation plus any project overlays.
 - `memento read <key|@N>` — read a note by vault-relative key, or by the `@N` index from the brief. Supports `<key>#<heading>` for section reads. Stdout is the raw body; stderr carries `binding:` plus role-flattened link lines.
+- `memento convention <name>` — read an operational convention from `_memento/conventions/<name>.md`, printing its body without frontmatter. Conventions are surfaced by `memento orient`, not the brief.
 - `memento write [--overwrite] <key>` — create, append to, or overwrite a note from stdin, then auto-recompile.
 
 CLI errors start with stable tokens (`unknown-command`, `invalid-arguments`, `manifest-not-found`, `manifest-schema-unsupported`, …); see `memento-memory/spec.md` for the full contract.

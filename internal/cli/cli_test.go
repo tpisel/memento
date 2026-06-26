@@ -107,6 +107,19 @@ func TestSubcommandHelp(t *testing.T) {
 			},
 		},
 		{
+			verb: "convention",
+			want: []string{
+				"Usage:",
+				"memento convention <name>",
+				"_memento/conventions/<name>.md",
+				"bare lowercase filename stem",
+				"when_to_read:",
+				"convention-not-found",
+				"invalid-convention",
+				"memento orient",
+			},
+		},
+		{
 			verb: "write",
 			want: []string{
 				"Usage:",
@@ -2510,6 +2523,115 @@ func makeCLIVault(t *testing.T) string {
 	}
 	chdirCLI(t, root)
 	return root
+}
+
+func setupConventionVault(t *testing.T) (repo, root string) {
+	t.Helper()
+	repo = t.TempDir()
+	root = filepath.Join(repo, "project-memory")
+	if err := os.MkdirAll(filepath.Join(root, ".memento"), 0o755); err != nil {
+		t.Fatalf("mkdir marker: %v", err)
+	}
+	chdirCLI(t, repo)
+	return repo, root
+}
+
+func TestConventionPrintsBodyWithoutFrontmatter(t *testing.T) {
+	_, root := setupConventionVault(t)
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\ntitle: Writing guide\nwhen_to_read: before authoring a memento vault write\n---\n\n# Writing guide\n\nWrite durable knowledge.\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"convention", "writing"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(convention writing) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(convention writing) stderr = %q, want empty", stderr.String())
+	}
+	want := "\n# Writing guide\n\nWrite durable knowledge.\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("Run(convention writing) stdout = %q, want %q", got, want)
+	}
+}
+
+func TestConventionRejectsInvalidName(t *testing.T) {
+	_, root := setupConventionVault(t)
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\nwhen_to_read: x\n---\nbody\n")
+
+	for _, name := range []string{"writing.md", "sub/writing", "Writing"} {
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"convention", name}, &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("Run(convention %q) exit code = %d, want 1", name, code)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("Run(convention %q) stdout = %q, want empty", name, stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "invalid-convention-name") {
+			t.Fatalf("Run(convention %q) stderr = %q, want invalid-convention-name", name, stderr.String())
+		}
+	}
+}
+
+func TestConventionMissingFile(t *testing.T) {
+	setupConventionVault(t)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"convention", "absent"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(convention absent) exit code = %d, want 1; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "convention-not-found") ||
+		!strings.Contains(stderr.String(), "_memento/conventions/absent.md") {
+		t.Fatalf("Run(convention absent) stderr = %q, want convention-not-found naming the path", stderr.String())
+	}
+}
+
+func TestConventionMissingWhenToRead(t *testing.T) {
+	_, root := setupConventionVault(t)
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\ntitle: Writing guide\n---\nbody\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"convention", "writing"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(convention writing) exit code = %d, want 1; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid-convention") {
+		t.Fatalf("Run(convention writing) stderr = %q, want invalid-convention", stderr.String())
+	}
+}
+
+func TestConventionEmptyWhenToRead(t *testing.T) {
+	_, root := setupConventionVault(t)
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\ntitle: Writing guide\nwhen_to_read:   \n---\nbody\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"convention", "writing"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("Run(convention writing) exit code = %d, want 1; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid-convention") {
+		t.Fatalf("Run(convention writing) stderr = %q, want invalid-convention", stderr.String())
+	}
+}
+
+func TestConventionRequiresExactlyOneName(t *testing.T) {
+	setupConventionVault(t)
+
+	for _, args := range [][]string{{"convention"}, {"convention", "a", "b"}} {
+		var stdout, stderr bytes.Buffer
+		code := Run(args, &stdout, &stderr)
+		if code != 2 {
+			t.Fatalf("Run(%v) exit code = %d, want 2; stderr = %q", args, code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "invalid-arguments") {
+			t.Fatalf("Run(%v) stderr = %q, want invalid-arguments", args, stderr.String())
+		}
+	}
 }
 
 func writeCLIFile(t *testing.T, root, relPath, content string) {

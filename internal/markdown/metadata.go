@@ -157,6 +157,17 @@ func splitAndParseFrontmatter(source []byte) (frontmatter, []byte, error) {
 	return fm, body, nil
 }
 
+// SplitFrontmatter separates a leading YAML frontmatter block from the body.
+// It reports whether a well-formed frontmatter fence was found; when false the
+// full source is returned as the body and the frontmatter slice is nil.
+func SplitFrontmatter(source []byte) (front []byte, body []byte, ok bool) {
+	front, body, ok = splitFrontmatterBlock(source)
+	if !ok {
+		return nil, source, false
+	}
+	return front, body, true
+}
+
 func splitFrontmatterBlock(source []byte) ([]byte, []byte, bool) {
 	if !hasOpeningFrontmatterFence(source) {
 		return nil, nil, false

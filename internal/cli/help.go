@@ -79,6 +79,27 @@ Stderr metadata:
 For the deeper picture, run: memento orient
 `
 
+const conventionHelpText = `memento convention
+
+Usage:
+  memento convention <name>
+
+Read an operational convention from _memento/conventions/<name>.md and print its body without frontmatter.
+
+Name contract:
+  name is a bare lowercase filename stem: no slash, extension, spaces, or path traversal. For example writing, not writing.md.
+
+Conventions:
+  Conventions are operational guidance declared by a non-empty when_to_read: in frontmatter; they are not part of the normal brief corpus.
+  memento orient lists the conventions worth reading and when to read each.
+
+Errors:
+  convention-not-found    no _memento/conventions/<name>.md.
+  invalid-convention      the file exists but has no non-empty when_to_read.
+
+For the deeper picture, run: memento orient
+`
+
 const writeHelpText = `memento write
 
 Usage:
