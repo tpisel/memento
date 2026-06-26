@@ -720,6 +720,10 @@ func TestInitPreservesForeignCodexHooksDeclaration(t *testing.T) {
 func TestInitPreservesUnrelatedCodexConfig(t *testing.T) {
 	repo := t.TempDir()
 	markCodexRepo(t, repo)
+	// A real config opens with a [model] table; appending the bare hooks key at
+	// the end of the file would scope it under [model] (model.hooks), so the
+	// top-level hooks pointer codex needs would never exist. The block must land
+	// above the first table header.
 	existing := "[model]\nname = \"gpt\"\n"
 	writeSetupFile(t, repo, ".codex/config.toml", existing)
 
@@ -728,12 +732,59 @@ func TestInitPreservesUnrelatedCodexConfig(t *testing.T) {
 	}
 
 	got := readSetupFile(t, repo, ".codex/config.toml")
-	if !strings.HasPrefix(got, existing) {
-		t.Fatalf(".codex/config.toml = %q, want existing content preserved at start", got)
+	if !strings.Contains(got, "[model]\nname = \"gpt\"") {
+		t.Fatalf(".codex/config.toml = %q, want existing table preserved", got)
 	}
 	if !strings.Contains(got, `hooks = "hooks.json"`) {
-		t.Fatalf(".codex/config.toml = %q, want memento hooks wiring appended", got)
+		t.Fatalf(".codex/config.toml = %q, want memento hooks wiring written", got)
 	}
+	assertCodexHooksTopLevel(t, got)
+}
+
+// assertCodexHooksTopLevel fails unless the memento `hooks = "hooks.json"` key
+// sits before the first TOML table header, where it binds at top level rather
+// than to a preceding [table]. memento has no TOML parser dependency, so this is
+// a positional check over the written file.
+func assertCodexHooksTopLevel(t *testing.T, contents string) {
+	t.Helper()
+	hooksAt := strings.Index(contents, `hooks = "hooks.json"`)
+	if hooksAt == -1 {
+		t.Fatalf(".codex/config.toml = %q, want a hooks key", contents)
+	}
+	firstTableAt := -1
+	offset := 0
+	for _, line := range strings.Split(contents, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "[") {
+			firstTableAt = offset
+			break
+		}
+		offset += len(line) + 1
+	}
+	if firstTableAt != -1 && hooksAt > firstTableAt {
+		t.Fatalf(".codex/config.toml = %q, want hooks key before the first table header so it stays top-level", contents)
+	}
+}
+
+func TestInitPlacesCodexHooksAboveLeadingCommentedTable(t *testing.T) {
+	repo := t.TempDir()
+	markCodexRepo(t, repo)
+	// Leading comments and blank lines must stay above the block, but the hooks
+	// key must still precede the first table header.
+	existing := "# my codex config\n\n[model]\nname = \"gpt-5\"\n\n[tools]\nshell = true\n"
+	writeSetupFile(t, repo, ".codex/config.toml", existing)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, ".codex/config.toml")
+	if !strings.HasPrefix(got, "# my codex config") {
+		t.Fatalf(".codex/config.toml = %q, want leading comment preserved at start", got)
+	}
+	if !strings.Contains(got, "[tools]\nshell = true") {
+		t.Fatalf(".codex/config.toml = %q, want unrelated tables preserved", got)
+	}
+	assertCodexHooksTopLevel(t, got)
 }
 
 func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {

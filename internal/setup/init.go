@@ -564,7 +564,7 @@ func ensureCodexConfigHooks(repoRoot string, notices io.Writer) error {
 		return nil
 	}
 
-	updated, err := insertOrReplaceSentinelBlock(contents, block, hookStartSentinel, hookEndSentinel, "codex config.toml", "memento")
+	updated, err := insertOrReplaceSentinelBlockWith(contents, block, hookStartSentinel, hookEndSentinel, "codex config.toml", "memento", insertSentinelBlockAtTop)
 	if err != nil {
 		return err
 	}
@@ -1180,6 +1180,13 @@ func insertOrReplaceGitignoreBlock(contents, block string) (string, error) {
 }
 
 func insertOrReplaceSentinelBlock(contents, block, startSentinel, endSentinel, target, blockName string) (string, error) {
+	return insertOrReplaceSentinelBlockWith(contents, block, startSentinel, endSentinel, target, blockName, appendSentinelBlock)
+}
+
+// insertOrReplaceSentinelBlockWith replaces an existing in-place block where it
+// sits and otherwise delegates first insertion to insert, letting callers control
+// where a fresh block lands (append at end vs. before the first TOML table header).
+func insertOrReplaceSentinelBlockWith(contents, block, startSentinel, endSentinel, target, blockName string, insert func(string, string) string) (string, error) {
 	start := strings.Index(contents, startSentinel)
 	end := strings.Index(contents, endSentinel)
 	startCount := strings.Count(contents, startSentinel)
@@ -1187,7 +1194,7 @@ func insertOrReplaceSentinelBlock(contents, block, startSentinel, endSentinel, t
 
 	switch {
 	case start == -1 && end == -1:
-		return appendSentinelBlock(contents, block), nil
+		return insert(contents, block), nil
 	case start == -1 || end == -1 || end < start:
 		return "", fmt.Errorf("%s contains an incomplete %s block", target, blockName)
 	case startCount != 1 || endCount != 1:
@@ -1196,6 +1203,37 @@ func insertOrReplaceSentinelBlock(contents, block, startSentinel, endSentinel, t
 
 	end += len(endSentinel)
 	return contents[:start] + block + contents[end:], nil
+}
+
+// insertSentinelBlockAtTop places block before the first TOML table header so a
+// bare top-level key inside it (codex `hooks = "hooks.json"`) cannot bind to a
+// preceding [table] and silently become e.g. `model.hooks`. Leading comments,
+// blank lines, and any pre-table top-level keys stay above the block; with no
+// table header there is no table scope to escape, so the block is appended.
+func insertSentinelBlockAtTop(contents, block string) string {
+	lines := strings.Split(contents, "\n")
+	insertAt := -1
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "[") {
+			insertAt = i
+			break
+		}
+	}
+	if insertAt == -1 {
+		return appendSentinelBlock(contents, block)
+	}
+
+	before := strings.TrimRight(strings.Join(lines[:insertAt], "\n"), "\n")
+	after := strings.Join(lines[insertAt:], "\n")
+	var b strings.Builder
+	if before != "" {
+		b.WriteString(before)
+		b.WriteString("\n\n")
+	}
+	b.WriteString(block)
+	b.WriteString("\n\n")
+	b.WriteString(after)
+	return b.String()
 }
 
 func appendSentinelBlock(contents, block string) string {
