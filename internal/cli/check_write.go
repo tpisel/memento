@@ -194,6 +194,14 @@ func gateVaultWrite(v vault.Vault, key, deriveLabel, brokenReason string, stdout
 		return 1
 	}
 
+	// The drive-by mode-change defense runs first and ignores the grant: a
+	// temporary unlock re-opens the body, never the mode: field (ADR-0031). Only
+	// then is the body held to the prefix invariant the grant can waive.
+	if d := enforce.EvaluateDriveByModeChange(normKey, old, newBytes, exists, ratified); !d.Allow {
+		emitVerdict(stdout, "deny", d.ReasonCode, d.Message)
+		return 0
+	}
+
 	decision := enforce.EvaluateVaultWrite(normKey, effectiveMode(normKey, old), old, newBytes, exists, ratified, granted, brokenReason)
 	if decision.Allow {
 		emitVerdict(stdout, "allow", "", "")

@@ -178,6 +178,65 @@ func TestCheckWriteActiveGrantReopensReadOnly(t *testing.T) {
 	}
 }
 
+func TestCheckWriteDriveByModeChangeDeniedUnderGrant(t *testing.T) { // US4
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "frozen.md", "---\nmode: read-only\n---\n# Frozen\n\nOriginal.\n")
+	commitCLIGit(t, root)
+
+	// Unlock re-opens the body, but the mode: field is never in scope.
+	var ustdout, ustderr bytes.Buffer
+	if c := Run([]string{"unlock", "frozen.md", "--justification", "fix typo"}, &ustdout, &ustderr); c != 0 {
+		t.Fatalf("unlock exit code = %d, want 0; stderr = %q", c, ustderr.String())
+	}
+
+	target := filepath.Join(root, "frozen.md")
+	// Same write smuggles a permanent mode: read-only → living under the grant.
+	decision, reasonCode, reason, _, stderr, code := invokeCheckWrite(t,
+		checkWritePayload(t, "Write", target, "---\nmode: living\n---\n# Frozen\n\nFixed.\n"))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "deny" || reasonCode != "drive_by_mode_change" {
+		t.Fatalf("verdict = (%q,%q), want (deny, drive_by_mode_change)", decision, reasonCode)
+	}
+	for _, want := range []string{"frozen.md", "denied again", "write-mode"} {
+		if !strings.Contains(reason, want) {
+			t.Fatalf("reason = %q, want it to contain %q", reason, want)
+		}
+	}
+
+	// A body-only edit under the same grant (mode line untouched) is allowed:
+	// the defense gates the mode field, not the unlock.
+	decision, _, _, _, stderr, code = invokeCheckWrite(t,
+		checkWritePayload(t, "Write", target, "---\nmode: read-only\n---\n# Frozen\n\nFixed.\n"))
+	if code != 0 {
+		t.Fatalf("body-only exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "allow" {
+		t.Fatalf("body-only decision = %q, want allow under an active grant", decision)
+	}
+}
+
+func TestCheckWriteUnparseableFrontmatterDenied(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "note.md", "---\nmode: append-only\n---\n# Note\n\nBody.\n")
+	commitCLIGit(t, root)
+
+	target := filepath.Join(root, "note.md")
+	// New bytes whose frontmatter block no longer parses (a line with no colon)
+	// mean mode safety cannot be verified for a ratified note: denied.
+	decision, reasonCode, _, _, stderr, code := invokeCheckWrite(t,
+		checkWritePayload(t, "Write", target, "---\nmode: append-only\nthis frontmatter line has no colon\n---\n# Note\n\nBody.\n"))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "deny" || reasonCode != "drive_by_mode_change" {
+		t.Fatalf("verdict = (%q,%q), want (deny, drive_by_mode_change)", decision, reasonCode)
+	}
+}
+
 func TestCheckWriteUnwritablePathDenied(t *testing.T) {
 	root := makeCLIVault(t)
 	target := filepath.Join(root, "_memento", "writing.md")
