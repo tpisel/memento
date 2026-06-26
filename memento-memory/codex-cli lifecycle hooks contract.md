@@ -157,6 +157,33 @@ only stage the config and must tell the user to trust it (or the run must opt in
 the dangerous bypass). This is the codex analogue of the fail-open-on-absence honesty
 in ADR-0031: on codex the gate is additionally fail-open-until-trusted.
 
+## apply_patch envelope parsing in check-write (memento-ryr.9)
+
+How `check-write` consumes a codex `apply_patch` PreToolUse call, given this spike
+left `tool_input`'s exact shape unpinned (it is untyped — schema `true`):
+
+- **Envelope recovery is key-agnostic.** `check-write` does not bet on a key name
+  (`input`? `patch`?) or even on `tool_input` being an object — it scans the raw
+  `tool_input` for the first string value, at any depth or as a bare string, that
+  contains the `*** Begin Patch` marker. An `apply_patch` call whose payload yields
+  no recognisable envelope **fails closed** (exit non-zero), since its targets
+  cannot be determined. This is the safe resolution of the "exact key" live-fire
+  unknown; confirm the real key on first live-fire but no code change is needed if
+  it differs.
+- **Multi-section patches gate per file, deny-on-first.** An envelope may carry
+  several file sections; each that resolves into the vault is gated against the same
+  invariant/drive-by/verdict path as a Claude write, and the **whole call is denied
+  on the first violation** (the tool call is atomic). A patch touching no vault note
+  is inert. Only `Update` sections seed the drift ledger (hunks applied to known
+  disk bytes are exact); an `Add` is allowed as creation regardless of exact bytes,
+  so it is not recorded, to avoid a false drift alarm.
+- **Update/Add derive bytes; Delete and rename are deferred.** `Update File` replays
+  hunks against disk-old (`enforce.ApplyHunks`); `Add File` yields the added lines.
+  A `Delete File` or an `Update File` with `*** Move to:` that touches a vault note
+  is **denied** (`reason_code: apply_patch_unsupported_op`) — these change a note's
+  existence/identity, not its body, so they are held back fail-closed until a verb
+  owns that operation rather than gated on bytes we cannot model.
+
 ## Limits of this spike
 
 - The PreToolUse **deny was confirmed against codex's own embedded schema**, not by a

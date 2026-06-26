@@ -23,30 +23,37 @@ const (
 	reasonVaultDiscoveryAmbiguous = "vault_discovery_ambiguous"
 )
 
-// errUnsupportedDerivation marks a tool whose new-bytes derivation this build
-// cannot compute yet (Bash redirects / codex apply_patch land in later beads).
-// For an in-vault target it surfaces as an internal error so the dumb-pipe
-// wrapper fails closed (ADR-0031) rather than silently allowing an ungated write.
+// errUnsupportedDerivation marks a write tool whose new-bytes deriveNewBytes does
+// not handle — a guard against a future dispatch wiring a tool here without a
+// derivation. For an in-vault target it surfaces as an internal error so the
+// dumb-pipe wrapper fails closed (ADR-0031) rather than allowing an ungated write.
 var errUnsupportedDerivation = errors.New("unsupported write derivation")
 
 // preToolUse is the slice of the raw PreToolUse payload check-write consumes.
-// Unknown fields are ignored; only the tool name and the file-write inputs the
-// Write/Edit/MultiEdit derivations need (plus Bash's command) are read.
+// tool_input is kept raw so each tool can decode the shape it needs: codex's
+// apply_patch carries the envelope under an untyped key (and may even be a bare
+// string), which a fixed struct could not unmarshal without erroring the whole
+// payload (codex hooks contract / ADR-0031).
 type preToolUse struct {
-	ToolName  string `json:"tool_name"`
-	ToolInput struct {
-		FilePath string `json:"file_path"`
-		// Write derivation.
-		Content string `json:"content"`
-		// Edit derivation (a single-edit MultiEdit).
-		OldString  string `json:"old_string"`
-		NewString  string `json:"new_string"`
-		ReplaceAll bool   `json:"replace_all"`
-		// MultiEdit derivation: edits applied in order.
-		Edits []editInput `json:"edits"`
-		// Bash classifier: the shell command, not a file_path.
-		Command string `json:"command"`
-	} `json:"tool_input"`
+	ToolName  string          `json:"tool_name"`
+	ToolInput json.RawMessage `json:"tool_input"`
+}
+
+// fileToolInput is the file-write slice of tool_input: the inputs the
+// Write/Edit/MultiEdit derivations need, plus Bash's command. Unknown fields are
+// ignored.
+type fileToolInput struct {
+	FilePath string `json:"file_path"`
+	// Write derivation.
+	Content string `json:"content"`
+	// Edit derivation (a single-edit MultiEdit).
+	OldString  string `json:"old_string"`
+	NewString  string `json:"new_string"`
+	ReplaceAll bool   `json:"replace_all"`
+	// MultiEdit derivation: edits applied in order.
+	Edits []editInput `json:"edits"`
+	// Bash classifier: the shell command, not a file_path.
+	Command string `json:"command"`
 }
 
 // editInput is one element of a MultiEdit payload's edits array.
@@ -87,15 +94,27 @@ func runCheckWrite(stdin io.Reader, stdout, stderr io.Writer) int {
 
 	switch p.ToolName {
 	case "Write", "Edit", "MultiEdit":
-		if p.ToolInput.FilePath == "" {
+		var ti fileToolInput
+		if err := json.Unmarshal(p.ToolInput, &ti); err != nil || ti.FilePath == "" {
 			return 0
 		}
-		return checkWriteFile(p, stdout, stderr)
+		return checkWriteFile(p.ToolName, ti, stdout, stderr)
 	case "Bash":
-		if p.ToolInput.Command == "" {
+		var ti fileToolInput
+		if err := json.Unmarshal(p.ToolInput, &ti); err != nil || ti.Command == "" {
 			return 0
 		}
-		return checkWriteBash(p.ToolInput.Command, stdout, stderr)
+		return checkWriteBash(ti.Command, stdout, stderr)
+	case "apply_patch":
+		patchText, ok := findPatchEnvelope(p.ToolInput)
+		if !ok {
+			// An apply_patch call whose payload carries no recognisable envelope is
+			// anomalous: we cannot derive its targets, so fail closed (ADR-0031)
+			// rather than wave through a write we cannot see.
+			fmt.Fprintf(stderr, "memento check-write: apply_patch payload carried no recognisable patch envelope\n")
+			return 1
+		}
+		return checkWriteApplyPatch(patchText, stdout, stderr)
 	default:
 		return 0
 	}
@@ -130,13 +149,13 @@ func resolveVaultForCheck(stdout, stderr io.Writer, target string) (vault.Vault,
 // from disk + ratification from git + active unlock grants itself, derives
 // new-bytes, evaluates the prefix invariant, and emits the harness verdict.
 // Writes outside the vault are inert.
-func checkWriteFile(p preToolUse, stdout, stderr io.Writer) int {
-	v, ok, code := resolveVaultForCheck(stdout, stderr, fmt.Sprintf("%q", p.ToolInput.FilePath))
+func checkWriteFile(toolName string, ti fileToolInput, stdout, stderr io.Writer) int {
+	v, ok, code := resolveVaultForCheck(stdout, stderr, fmt.Sprintf("%q", ti.FilePath))
 	if !ok {
 		return code
 	}
 
-	key, inVault, err := vaultRelativeKey(v, p.ToolInput.FilePath)
+	key, inVault, err := vaultRelativeKey(v, ti.FilePath)
 	if err != nil {
 		fmt.Fprintf(stderr, "memento check-write: resolve target: %v\n", err)
 		return 1
@@ -145,8 +164,8 @@ func checkWriteFile(p preToolUse, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	return gateVaultWrite(v, key, p.ToolName, brokenPrefixReason(p.ToolName), true, stdout, stderr,
-		func(old []byte, exists bool) ([]byte, error) { return deriveNewBytes(p, old, exists) })
+	return gateVaultWrite(v, key, toolName, brokenPrefixReason(toolName), true, stdout, stderr,
+		func(old []byte, exists bool) ([]byte, error) { return deriveNewBytes(toolName, ti, old, exists) })
 }
 
 // gateVaultWrite is the shared in-vault mode gate for a write already resolved to
@@ -159,69 +178,92 @@ func checkWriteFile(p preToolUse, stdout, stderr io.Writer) int {
 // the exact bytes that will land (Write/Edit/MultiEdit); a Bash append models a
 // synthetic suffix, so it passes false and leaves no drift expectation.
 func gateVaultWrite(v vault.Vault, key, deriveLabel, brokenReason string, recordPending bool, stdout, stderr io.Writer, derive func(old []byte, exists bool) ([]byte, error)) int {
+	verdict, err := computeVaultWriteVerdict(v, key, deriveLabel, brokenReason, derive, stderr)
+	if err != nil {
+		return 1 // fail-closed; computeVaultWriteVerdict already wrote stderr
+	}
+	if verdict.decision == "allow" && recordPending {
+		// Record the bytes we expect to land so the PostToolUse compile can detect
+		// a replay/derivation divergence (ADR-0031: the detective backstop under the
+		// predictive gate). A ledger-write failure must not flip an allow into a
+		// deny — the gate's verdict stands; the handshake is best-effort detection,
+		// so it degrades to a missed drift check, surfaced on stderr.
+		if err := enforce.RecordPending(v, verdict.normKey, enforce.HashBytes(verdict.newBytes)); err != nil {
+			fmt.Fprintf(stderr, "memento check-write: record pending write for %s: %v\n", verdict.normKey, err)
+		}
+	}
+	emitVerdict(stdout, verdict.decision, verdict.reasonCode, verdict.message)
+	return 0
+}
+
+// vaultWriteVerdict is the outcome of evaluating one resolved in-vault write:
+// the harness decision and, on an allow, the normalized key and derived bytes the
+// caller may record into the drift-detection ledger.
+type vaultWriteVerdict struct {
+	decision   string
+	reasonCode string
+	message    string
+	normKey    string
+	newBytes   []byte
+}
+
+// computeVaultWriteVerdict evaluates a write already resolved to a vault-relative
+// key without emitting or recording anything, so callers that gate several writes
+// in one tool call (codex apply_patch) can stop on the first denial. It rejects
+// non-writable keys (unwritable_path), reads old-bytes + ratification + active
+// grants, derives new-bytes via derive (whose error fails closed via a returned
+// error), and applies the drive-by then prefix-invariant verdict. deriveLabel
+// names the operation in the fail-closed stderr message; brokenReason selects the
+// append-only denial flavour.
+func computeVaultWriteVerdict(v vault.Vault, key, deriveLabel, brokenReason string, derive func(old []byte, exists bool) ([]byte, error), stderr io.Writer) (vaultWriteVerdict, error) {
 	normKey, err := enforce.NormalizeWritableKey(v, key)
 	if err != nil {
-		emitVerdict(stdout, "deny", reasonUnwritablePath, fmt.Sprintf(
+		return vaultWriteVerdict{decision: "deny", reasonCode: reasonUnwritablePath, message: fmt.Sprintf(
 			"%s is not a writable memento note — it is git-ignored, operational, or not a .md file — so this write is denied and the identical write will be denied again. "+
-				"Pick a different .md key under the vault.", key))
-		return 0
+				"Pick a different .md key under the vault.", key)}, nil
 	}
 	path, err := enforce.ResolveWritablePath(v, normKey)
 	if err != nil {
-		emitVerdict(stdout, "deny", reasonUnwritablePath, fmt.Sprintf(
+		return vaultWriteVerdict{decision: "deny", reasonCode: reasonUnwritablePath, message: fmt.Sprintf(
 			"%s does not name a writable memento note (it resolves to a directory, a symlink, or outside the vault), so this write is denied and the identical write will be denied again. "+
-				"Pick a different .md key under the vault.", normKey))
-		return 0
+				"Pick a different .md key under the vault.", normKey)}, nil
 	}
 
 	old, exists, err := readOldBytes(path)
 	if err != nil {
 		fmt.Fprintf(stderr, "memento check-write: read %s: %v\n", normKey, err)
-		return 1
+		return vaultWriteVerdict{}, err
 	}
 
 	newBytes, err := derive(old, exists)
 	if err != nil {
 		fmt.Fprintf(stderr, "memento check-write: cannot derive new bytes for %s: %v\n", deriveLabel, err)
-		return 1
+		return vaultWriteVerdict{}, err
 	}
 
 	ratified, err := enforce.IsRatified(v, normKey)
 	if err != nil {
 		fmt.Fprintf(stderr, "memento check-write: ratification for %s: %v\n", normKey, err)
-		return 1
+		return vaultWriteVerdict{}, err
 	}
 	_, granted, err := enforce.LookupGrant(v, normKey)
 	if err != nil {
 		fmt.Fprintf(stderr, "memento check-write: unlock grants for %s: %v\n", normKey, err)
-		return 1
+		return vaultWriteVerdict{}, err
 	}
 
 	// The drive-by mode-change defense runs first and ignores the grant: a
 	// temporary unlock re-opens the body, never the mode: field (ADR-0031). Only
 	// then is the body held to the prefix invariant the grant can waive.
 	if d := enforce.EvaluateDriveByModeChange(normKey, old, newBytes, exists, ratified); !d.Allow {
-		emitVerdict(stdout, "deny", d.ReasonCode, d.Message)
-		return 0
+		return vaultWriteVerdict{decision: "deny", reasonCode: d.ReasonCode, message: d.Message}, nil
 	}
 
 	decision := enforce.EvaluateVaultWrite(normKey, effectiveMode(normKey, old), old, newBytes, exists, ratified, granted, brokenReason)
 	if decision.Allow {
-		// Record the bytes we expect to land so the PostToolUse compile can detect
-		// a replay/derivation divergence (ADR-0031: the detective backstop under the
-		// predictive gate). A ledger-write failure must not flip an allow into a
-		// deny — the gate's verdict stands; the handshake is best-effort detection,
-		// so it degrades to a missed drift check, surfaced on stderr.
-		if recordPending {
-			if err := enforce.RecordPending(v, normKey, enforce.HashBytes(newBytes)); err != nil {
-				fmt.Fprintf(stderr, "memento check-write: record pending write for %s: %v\n", normKey, err)
-			}
-		}
-		emitVerdict(stdout, "allow", "", "")
-		return 0
+		return vaultWriteVerdict{decision: "allow", normKey: normKey, newBytes: newBytes}, nil
 	}
-	emitVerdict(stdout, "deny", decision.ReasonCode, decision.Message)
-	return 0
+	return vaultWriteVerdict{decision: "deny", reasonCode: decision.ReasonCode, message: decision.Message}, nil
 }
 
 // deriveNewBytes computes the bytes a tool would land on disk. Per ADR-0031 the
@@ -229,24 +271,24 @@ func gateVaultWrite(v vault.Vault, key, deriveLabel, brokenReason string, record
 // MultiEdit replay Claude's apply algorithm against disk-old via
 // enforce.ReplayEdits — a replay abort (no match, ambiguous match, create via
 // edit) returns an error so the in-vault write fails closed.
-func deriveNewBytes(p preToolUse, old []byte, exists bool) ([]byte, error) {
-	switch p.ToolName {
+func deriveNewBytes(toolName string, ti fileToolInput, old []byte, exists bool) ([]byte, error) {
+	switch toolName {
 	case "Write":
-		return []byte(p.ToolInput.Content), nil
+		return []byte(ti.Content), nil
 	case "Edit":
 		return enforce.ReplayEdits(old, exists, []enforce.Edit{{
-			OldString:  p.ToolInput.OldString,
-			NewString:  p.ToolInput.NewString,
-			ReplaceAll: p.ToolInput.ReplaceAll,
+			OldString:  ti.OldString,
+			NewString:  ti.NewString,
+			ReplaceAll: ti.ReplaceAll,
 		}})
 	case "MultiEdit":
-		edits := make([]enforce.Edit, len(p.ToolInput.Edits))
-		for i, e := range p.ToolInput.Edits {
+		edits := make([]enforce.Edit, len(ti.Edits))
+		for i, e := range ti.Edits {
 			edits[i] = enforce.Edit{OldString: e.OldString, NewString: e.NewString, ReplaceAll: e.ReplaceAll}
 		}
 		return enforce.ReplayEdits(old, exists, edits)
 	}
-	return nil, fmt.Errorf("%w: %s", errUnsupportedDerivation, p.ToolName)
+	return nil, fmt.Errorf("%w: %s", errUnsupportedDerivation, toolName)
 }
 
 // brokenPrefixReason selects the append-only denial code by mutation shape: a

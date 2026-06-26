@@ -353,6 +353,209 @@ func TestCheckWriteUnderivableEditFailsClosed(t *testing.T) {
 	}
 }
 
+// applyPatchPayload renders a raw PreToolUse JSON payload for a codex apply_patch
+// call, carrying the envelope under the untyped `input` key (codex hooks contract).
+func applyPatchPayload(t *testing.T, patch string) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{
+		"tool_name":  "apply_patch",
+		"tool_input": map[string]any{"input": patch},
+	})
+	if err != nil {
+		t.Fatalf("marshal apply_patch payload: %v", err)
+	}
+	return string(b)
+}
+
+func TestCheckWriteApplyPatchReadOnlyUpdateDenied(t *testing.T) { // US12
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "frozen.md", "---\nmode: read-only\n---\n# Frozen\n\nOriginal.\n")
+	commitCLIGit(t, root)
+	target := filepath.Join(root, "frozen.md")
+
+	patch := strings.Join([]string{
+		"*** Begin Patch",
+		"*** Update File: " + target,
+		"@@",
+		" # Frozen",
+		" ",
+		"-Original.",
+		"+Rewritten.",
+		"*** End Patch",
+	}, "\n")
+
+	decision, reasonCode, reason, codexStdout, stderr, code := invokeCheckWrite(t, applyPatchPayload(t, patch))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "deny" || reasonCode != "read_only" {
+		t.Fatalf("verdict = (%q,%q), want (deny, read_only)", decision, reasonCode)
+	}
+	for _, want := range []string{"frozen.md", "denied again", "memento unlock"} {
+		if !strings.Contains(reason, want) {
+			t.Fatalf("reason = %q, want it to contain %q", reason, want)
+		}
+	}
+
+	// The deny envelope must be byte-identical to the Claude contract: the same
+	// read-only Write deny produces the same stdout (ADR-0031, codex hooks contract).
+	_, _, _, claudeStdout, _, _ := invokeCheckWrite(t,
+		checkWritePayload(t, "Write", target, "---\nmode: read-only\n---\n# Frozen\n\nRewritten.\n"))
+	if codexStdout != claudeStdout {
+		t.Fatalf("apply_patch deny stdout not byte-identical to Claude Write deny:\n codex  = %q\n claude = %q", codexStdout, claudeStdout)
+	}
+}
+
+func TestCheckWriteApplyPatchAppendOnlyInteriorDeniedTailAllowed(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "log.md", "---\nmode: append-only\n---\n# Log\n\nEntry one.\nEntry two.\n")
+	commitCLIGit(t, root)
+	target := filepath.Join(root, "log.md")
+
+	interior := strings.Join([]string{
+		"*** Begin Patch",
+		"*** Update File: " + target,
+		"@@",
+		"-Entry one.",
+		"+Edited one.",
+		"*** End Patch",
+	}, "\n")
+	decision, reasonCode, _, _, stderr, code := invokeCheckWrite(t, applyPatchPayload(t, interior))
+	if code != 0 {
+		t.Fatalf("interior exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "deny" || reasonCode != "append_only_interior" {
+		t.Fatalf("interior verdict = (%q,%q), want (deny, append_only_interior)", decision, reasonCode)
+	}
+
+	tail := strings.Join([]string{
+		"*** Begin Patch",
+		"*** Update File: " + target,
+		"@@",
+		" Entry two.",
+		"+Entry three.",
+		"*** End Patch",
+	}, "\n")
+	decision, _, _, _, stderr, code = invokeCheckWrite(t, applyPatchPayload(t, tail))
+	if code != 0 {
+		t.Fatalf("tail exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "allow" {
+		t.Fatalf("tail decision = %q, want allow", decision)
+	}
+}
+
+func TestCheckWriteApplyPatchAddNewNoteAllowed(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	target := filepath.Join(root, "fresh.md")
+
+	patch := strings.Join([]string{
+		"*** Begin Patch",
+		"*** Add File: " + target,
+		"+---",
+		"+mode: read-only",
+		"+---",
+		"+# Fresh",
+		"*** End Patch",
+	}, "\n")
+	decision, _, _, _, stderr, code := invokeCheckWrite(t, applyPatchPayload(t, patch))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "allow" {
+		t.Fatalf("decision = %q, want allow (new notes are created freely)", decision)
+	}
+}
+
+func TestCheckWriteApplyPatchDeleteVaultNoteDenied(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "frozen.md", "---\nmode: read-only\n---\n# Frozen\n\nOriginal.\n")
+	commitCLIGit(t, root)
+	target := filepath.Join(root, "frozen.md")
+
+	patch := "*** Begin Patch\n*** Delete File: " + target + "\n*** End Patch"
+	decision, reasonCode, _, _, stderr, code := invokeCheckWrite(t, applyPatchPayload(t, patch))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "deny" || reasonCode != "apply_patch_unsupported_op" {
+		t.Fatalf("verdict = (%q,%q), want (deny, apply_patch_unsupported_op)", decision, reasonCode)
+	}
+}
+
+func TestCheckWriteApplyPatchOutsideVaultIsInert(t *testing.T) {
+	root := makeCLIVault(t)
+	outside := filepath.Join(filepath.Dir(root), "README.md")
+
+	patch := strings.Join([]string{
+		"*** Begin Patch",
+		"*** Update File: " + outside,
+		"@@",
+		"-a",
+		"+b",
+		"*** End Patch",
+	}, "\n")
+	_, _, _, stdout, stderr, code := invokeCheckWrite(t, applyPatchPayload(t, patch))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("stdout = %q, want empty (patches that touch no vault note are not gated)", stdout)
+	}
+}
+
+func TestCheckWriteApplyPatchNoEnvelopeFailsClosed(t *testing.T) {
+	makeCLIVault(t)
+	b, err := json.Marshal(map[string]any{
+		"tool_name":  "apply_patch",
+		"tool_input": map[string]any{"input": "not a patch at all"},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	_, _, _, _, stderr, code := invokeCheckWrite(t, string(b))
+	if code == 0 {
+		t.Fatalf("exit code = 0, want non-zero for an apply_patch payload with no recognisable envelope")
+	}
+	if !strings.Contains(stderr, "envelope") {
+		t.Fatalf("stderr = %q, want it to mention the missing envelope", stderr)
+	}
+}
+
+func TestCheckWriteApplyPatchBareStringToolInput(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "frozen.md", "---\nmode: read-only\n---\n# Frozen\n\nOriginal.\n")
+	commitCLIGit(t, root)
+	target := filepath.Join(root, "frozen.md")
+
+	patch := strings.Join([]string{
+		"*** Begin Patch",
+		"*** Update File: " + target,
+		"@@",
+		"-Original.",
+		"+Rewritten.",
+		"*** End Patch",
+	}, "\n")
+	// tool_input is the bare patch string rather than an object — findPatchEnvelope
+	// must still recover the envelope.
+	b, err := json.Marshal(map[string]any{"tool_name": "apply_patch", "tool_input": patch})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	decision, reasonCode, _, _, stderr, code := invokeCheckWrite(t, string(b))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "deny" || reasonCode != "read_only" {
+		t.Fatalf("verdict = (%q,%q), want (deny, read_only)", decision, reasonCode)
+	}
+}
+
 func TestCheckWriteNotInTopLevelHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := Run([]string{"help"}, &stdout, &stderr); code != 0 {
