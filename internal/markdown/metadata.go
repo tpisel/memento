@@ -31,9 +31,6 @@ const (
 	ModeReadOnly   WriteMode = "read-only"
 
 	DefaultWriteMode = ModeAppendOnly
-
-	ModeSectionReplace WriteMode = "section-replace"
-	ModeKeyedUpsert    WriteMode = "keyed-upsert"
 )
 
 type Metadata struct {
@@ -424,7 +421,7 @@ func parseBool(value string) (bool, error) {
 
 func validMode(mode WriteMode) bool {
 	switch mode {
-	case ModeAppendOnly, ModeLiving, ModeSectionReplace, ModeKeyedUpsert, ModeReadOnly:
+	case ModeAppendOnly, ModeLiving, ModeReadOnly:
 		return true
 	default:
 		return false

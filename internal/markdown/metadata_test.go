@@ -12,7 +12,7 @@ func TestExtractMetadataFromFrontmatterRichMarkdown(t *testing.T) {
 title: Frontmatter Title
 summary: A concise summary from frontmatter.
 tags: [memento, markdown, v0]
-mode: section-replace
+mode: living
 orient: true
 updated: 2026-06-10
 summary_hash: abc123
@@ -38,8 +38,8 @@ Body paragraph that should not replace frontmatter summary.
 	if !reflect.DeepEqual(got.Tags, []string{"memento", "markdown", "v0"}) {
 		t.Fatalf("Tags = %v, want ordered frontmatter tags", got.Tags)
 	}
-	if got.Mode != ModeSectionReplace {
-		t.Fatalf("Mode = %q, want %q", got.Mode, ModeSectionReplace)
+	if got.Mode != ModeLiving {
+		t.Fatalf("Mode = %q, want %q", got.Mode, ModeLiving)
 	}
 	if !got.Orient {
 		t.Fatal("Orient = false, want true from frontmatter")
@@ -470,6 +470,16 @@ func TestExtractMetadataRejectsMalformedFrontmatter(t *testing.T) {
 		{
 			name: "bad mode",
 			src:  "---\nmode: rewrite-history\n---\n# Title\n",
+			err:  ErrInvalidMode,
+		},
+		{
+			name: "retired section-replace mode",
+			src:  "---\nmode: section-replace\n---\n# Title\n",
+			err:  ErrInvalidMode,
+		},
+		{
+			name: "retired keyed-upsert mode",
+			src:  "---\nmode: keyed-upsert\n---\n# Title\n",
 			err:  ErrInvalidMode,
 		},
 	}
