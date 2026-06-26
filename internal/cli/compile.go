@@ -62,15 +62,11 @@ func writeCompileArtifacts(v vault.Vault) ([]manifest.Warning, int, error) {
 }
 
 func writeBriefArtifact(v vault.Vault, m manifest.Manifest) error {
-	toolFiles, err := brief.DetectToolFiles(v)
-	if err != nil {
-		return err
-	}
 	path := vault.BriefPath(v)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create brief directory: %w", err)
 	}
-	if err := os.WriteFile(path, brief.RenderWithToolFiles(m, toolFiles), 0o644); err != nil {
+	if err := os.WriteFile(path, brief.Render(m), 0o644); err != nil {
 		return fmt.Errorf("write brief: %w", err)
 	}
 	return nil

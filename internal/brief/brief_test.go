@@ -2,15 +2,12 @@ package brief
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/markdown"
-	"github.com/tpisel/memento/internal/vault"
 )
 
 func TestRenderProducesDeterministicMarkdownProjection(t *testing.T) {
@@ -146,7 +143,6 @@ A larger note.
 
 Staleness: 1 stale, 1 unsummarised
 Tag frequency: brief=2, memento=2
-Tool files: none
 Section read: memento read <key|@N>#<heading>
 `
 	if string(first) != want {
@@ -216,7 +212,6 @@ func TestRenderContractSectionsAppearOnceInDocumentedOrder(t *testing.T) {
 		"key: `folder/target.md` | mode: `read-only` | tags: `beta` | size: 20B / 2 lines",
 		"Headings: Context",
 		"---\n\nTag frequency: alpha=1, beta=1\n",
-		"Tool files: none\n",
 		"Section read: memento read <key|@N>#<heading>\n",
 	}
 
@@ -348,11 +343,13 @@ func TestRenderSuffixesResolvedSummaryWikiLinksWithEntryNumbers(t *testing.T) {
 	}
 }
 
-func TestRenderWithToolFilesListsDetectedFiles(t *testing.T) {
-	got := string(RenderWithToolFiles(manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion}, []string{"_memento/review.md", "_memento/writing.md"}))
+func TestRenderDoesNotSurfaceOperationalToolFiles(t *testing.T) {
+	got := string(Render(manifest.Manifest{SchemaVersion: manifest.CurrentSchemaVersion}))
 
-	if !bytes.Contains([]byte(got), []byte("Tool files: _memento/review.md, _memento/writing.md\n")) {
-		t.Fatalf("RenderWithToolFiles() =\n%s\nwant tool file footer", got)
+	for _, forbidden := range []string{"Tool files:", "_memento/", "audit.md", "review.md", "writing.md"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("Render() surfaces operational tool file marker %q, want it absent (ADR-0030):\n%s", forbidden, got)
+		}
 	}
 }
 
@@ -368,43 +365,6 @@ func TestFriendlyBytes(t *testing.T) {
 	for bytes, want := range tests {
 		if got := friendlyBytes(bytes); got != want {
 			t.Fatalf("friendlyBytes(%d) = %q, want %q", bytes, got, want)
-		}
-	}
-}
-
-func TestDetectToolFilesHandlesMissingNamespace(t *testing.T) {
-	files, err := DetectToolFiles(vault.Vault{Root: t.TempDir()})
-	if err != nil {
-		t.Fatalf("DetectToolFiles() error = %v, want nil", err)
-	}
-	if len(files) != 0 {
-		t.Fatalf("DetectToolFiles() = %#v, want empty", files)
-	}
-}
-
-func TestDetectToolFilesListsKnownFiles(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, vault.ToolDirName)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir tool dir: %v", err)
-	}
-	for _, name := range []string{"writing.md", "review.md", "notes.md"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("# "+name+"\n"), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
-
-	files, err := DetectToolFiles(vault.Vault{Root: root})
-	if err != nil {
-		t.Fatalf("DetectToolFiles() error = %v, want nil", err)
-	}
-	want := []string{"_memento/review.md", "_memento/writing.md"}
-	if len(files) != len(want) {
-		t.Fatalf("DetectToolFiles() = %#v, want %#v", files, want)
-	}
-	for i := range want {
-		if files[i] != want[i] {
-			t.Fatalf("DetectToolFiles() = %#v, want %#v", files, want)
 		}
 	}
 }
