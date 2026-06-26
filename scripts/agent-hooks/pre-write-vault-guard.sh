@@ -50,8 +50,12 @@ permission_decision() {
 }
 
 resolve_path() {
+  # Emit an absolute, symlink-resolved path with forward-slash separators. On
+  # Windows (Git Bash) realpath yields backslashes, but the vault prefix/glob
+  # comparisons below are written with '/', so normalize here at the single
+  # entry point for resolved paths. No-op on POSIX where os.sep is already '/'.
   local path=$1
-  python3 -c 'import os, sys; print(os.path.realpath(os.path.abspath(sys.argv[1])))' "$path"
+  python3 -c 'import os, sys; print(os.path.realpath(os.path.abspath(sys.argv[1])).replace(os.sep, "/"))' "$path"
 }
 
 extract_payload_field() {
