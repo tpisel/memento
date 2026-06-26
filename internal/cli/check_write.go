@@ -31,7 +31,7 @@ var errUnsupportedDerivation = errors.New("unsupported write derivation")
 
 // preToolUse is the slice of the raw PreToolUse payload check-write consumes.
 // Unknown fields are ignored; only the tool name and the file-write inputs the
-// Write/Edit/MultiEdit derivations need are read.
+// Write/Edit/MultiEdit derivations need (plus Bash's command) are read.
 type preToolUse struct {
 	ToolName  string `json:"tool_name"`
 	ToolInput struct {
@@ -44,6 +44,8 @@ type preToolUse struct {
 		ReplaceAll bool   `json:"replace_all"`
 		// MultiEdit derivation: edits applied in order.
 		Edits []editInput `json:"edits"`
+		// Bash classifier: the shell command, not a file_path.
+		Command string `json:"command"`
 	} `json:"tool_input"`
 }
 
@@ -66,13 +68,11 @@ type hookSpecificOutput struct {
 }
 
 // runCheckWrite is the hook-facing verdict engine (ADR-0031, hidden from help).
-// It reads the raw PreToolUse payload on stdin, resolves the target to a
-// vault-relative key, reads old-bytes from disk + ratification from git + active
-// unlock grants itself, derives new-bytes (Write only in this build), evaluates
-// the prefix invariant, and emits the harness verdict JSON on stdout. Writes
-// outside the vault and non-file tools are inert (exit 0, no output) so normal
-// permission flow governs the rest of the repo. Internal failures exit non-zero
-// for the wrapper to convert to a fail-closed deny.
+// It reads the raw PreToolUse payload on stdin and dispatches by tool: Write /
+// Edit / MultiEdit derive concrete new-bytes against a file_path; Bash is
+// classified against the deny-unless-provably-append rule. Tools outside that set
+// are inert (exit 0, no output) so normal permission flow governs the rest of the
+// repo. Internal failures exit non-zero for the wrapper to fail closed.
 func runCheckWrite(stdin io.Reader, stdout, stderr io.Writer) int {
 	payload, err := io.ReadAll(stdin)
 	if err != nil {
@@ -85,30 +85,55 @@ func runCheckWrite(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	// Only file-targeted write tools are in scope here; Bash (command, not
-	// file_path) and non-write tools fall through to normal permission flow.
-	if p.ToolName == "" || p.ToolInput.FilePath == "" {
-		return 0
-	}
 	switch p.ToolName {
 	case "Write", "Edit", "MultiEdit":
+		if p.ToolInput.FilePath == "" {
+			return 0
+		}
+		return checkWriteFile(p, stdout, stderr)
+	case "Bash":
+		if p.ToolInput.Command == "" {
+			return 0
+		}
+		return checkWriteBash(p.ToolInput.Command, stdout, stderr)
 	default:
 		return 0
 	}
+}
 
+// resolveVaultForCheck resolves the active vault for a verdict, mapping discovery
+// outcomes onto the shared posture: no vault ⇒ inert (the rest of the repo is not
+// ours to guard); multiple vaults ⇒ an `ask` verdict naming MEMENTO_VAULT_ROOT;
+// any other error ⇒ fail closed (non-zero). ok is false when the caller should
+// stop with the returned exit code. target names the write subject for the
+// ambiguity message.
+func resolveVaultForCheck(stdout, stderr io.Writer, target string) (vault.Vault, bool, int) {
 	v, err := resolveVault()
 	if err != nil {
 		if errors.Is(err, vault.ErrVaultNotFound) {
-			return 0 // no vault to guard
+			return vault.Vault{}, false, 0 // no vault to guard
 		}
 		if errors.Is(err, vault.ErrMultipleVaults) {
 			emitVerdict(stdout, "ask", reasonVaultDiscoveryAmbiguous, fmt.Sprintf(
-				"memento found more than one .memento vault, so it cannot tell which one %q belongs to. "+
-					"Set MEMENTO_VAULT_ROOT to the intended vault root, then retry the write.", p.ToolInput.FilePath))
-			return 0
+				"memento found more than one .memento vault, so it cannot tell which one %s belongs to. "+
+					"Set MEMENTO_VAULT_ROOT to the intended vault root, then retry.", target))
+			return vault.Vault{}, false, 0
 		}
 		fmt.Fprintf(stderr, "memento check-write: resolve vault: %v\n", err)
-		return 1
+		return vault.Vault{}, false, 1
+	}
+	return v, true, 0
+}
+
+// checkWriteFile gives the verdict for a file-targeted write tool (Write / Edit /
+// MultiEdit): it resolves the target to a vault-relative key, reads old-bytes
+// from disk + ratification from git + active unlock grants itself, derives
+// new-bytes, evaluates the prefix invariant, and emits the harness verdict.
+// Writes outside the vault are inert.
+func checkWriteFile(p preToolUse, stdout, stderr io.Writer) int {
+	v, ok, code := resolveVaultForCheck(stdout, stderr, fmt.Sprintf("%q", p.ToolInput.FilePath))
+	if !ok {
+		return code
 	}
 
 	key, inVault, err := vaultRelativeKey(v, p.ToolInput.FilePath)
@@ -120,6 +145,17 @@ func runCheckWrite(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	return gateVaultWrite(v, key, p.ToolName, brokenPrefixReason(p.ToolName), stdout, stderr,
+		func(old []byte, exists bool) ([]byte, error) { return deriveNewBytes(p, old, exists) })
+}
+
+// gateVaultWrite is the shared in-vault mode gate for a write already resolved to
+// a vault-relative key. It rejects non-writable keys (unwritable_path), reads
+// old-bytes + ratification + active grants, derives new-bytes via derive (whose
+// error fails the verdict closed), and emits the prefix-invariant verdict.
+// deriveLabel names the operation in the fail-closed message; brokenReason selects
+// the append-only denial flavour.
+func gateVaultWrite(v vault.Vault, key, deriveLabel, brokenReason string, stdout, stderr io.Writer, derive func(old []byte, exists bool) ([]byte, error)) int {
 	normKey, err := enforce.NormalizeWritableKey(v, key)
 	if err != nil {
 		emitVerdict(stdout, "deny", reasonUnwritablePath, fmt.Sprintf(
@@ -141,9 +177,9 @@ func runCheckWrite(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	newBytes, err := deriveNewBytes(p, old, exists)
+	newBytes, err := derive(old, exists)
 	if err != nil {
-		fmt.Fprintf(stderr, "memento check-write: cannot derive new bytes for %s: %v\n", p.ToolName, err)
+		fmt.Fprintf(stderr, "memento check-write: cannot derive new bytes for %s: %v\n", deriveLabel, err)
 		return 1
 	}
 
@@ -158,7 +194,7 @@ func runCheckWrite(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	decision := enforce.EvaluateVaultWrite(normKey, effectiveMode(normKey, old), old, newBytes, exists, ratified, granted, brokenPrefixReason(p.ToolName))
+	decision := enforce.EvaluateVaultWrite(normKey, effectiveMode(normKey, old), old, newBytes, exists, ratified, granted, brokenReason)
 	if decision.Allow {
 		emitVerdict(stdout, "allow", "", "")
 		return 0
