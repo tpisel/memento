@@ -90,14 +90,14 @@ func Read(v vault.Vault, name string) (Convention, error) {
 	}
 
 	front, body, _ := markdown.SplitFrontmatter(data)
-	whenToRead := frontmatterScalar(front, "when_to_read")
+	whenToRead := markdown.FrontmatterScalar(front, "when_to_read")
 	if whenToRead == "" {
 		return Convention{}, fmt.Errorf("%w: %s is missing a non-empty when_to_read", ErrInvalid, RelPath(name))
 	}
 
 	return Convention{
 		Name:       name,
-		Title:      frontmatterScalar(front, "title"),
+		Title:      markdown.FrontmatterScalar(front, "title"),
 		WhenToRead: whenToRead,
 		Body:       body,
 	}, nil
@@ -135,30 +135,4 @@ func List(v vault.Vault) (valid []Convention, warnings []string, err error) {
 	sort.Slice(valid, func(i, j int) bool { return valid[i].Name < valid[j].Name })
 	sort.Strings(warnings)
 	return valid, warnings, nil
-}
-
-// frontmatterScalar returns the trimmed, unquoted value of a single-line scalar
-// field in a raw frontmatter block, or "" when the field is absent or empty.
-func frontmatterScalar(front []byte, key string) string {
-	for _, line := range strings.Split(string(front), "\n") {
-		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		k, v, ok := strings.Cut(line, ":")
-		if !ok || strings.TrimSpace(k) != key {
-			continue
-		}
-		return unquoteScalar(strings.TrimSpace(v))
-	}
-	return ""
-}
-
-func unquoteScalar(value string) string {
-	if len(value) >= 2 {
-		if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {
-			return value[1 : len(value)-1]
-		}
-	}
-	return value
 }

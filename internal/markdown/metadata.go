@@ -168,6 +168,26 @@ func SplitFrontmatter(source []byte) (front []byte, body []byte, ok bool) {
 	return front, body, true
 }
 
+// FrontmatterScalar returns the trimmed, unquoted value of a single-line scalar
+// field in a raw frontmatter block (as returned by SplitFrontmatter), or "" when
+// the field is absent or empty. It shares the comment-skipping line scan and
+// scalar cleaning used by the metadata parser, so callers reading ad-hoc keys
+// (e.g. the convention package) need not reimplement either.
+func FrontmatterScalar(front []byte, key string) string {
+	for _, line := range strings.Split(string(front), "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(k) != key {
+			continue
+		}
+		return cleanScalar(v)
+	}
+	return ""
+}
+
 func splitFrontmatterBlock(source []byte) ([]byte, []byte, bool) {
 	if !hasOpeningFrontmatterFence(source) {
 		return nil, nil, false

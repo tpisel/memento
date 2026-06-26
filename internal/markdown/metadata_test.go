@@ -483,3 +483,33 @@ func TestExtractMetadataRejectsMalformedFrontmatter(t *testing.T) {
 		})
 	}
 }
+
+func TestFrontmatterScalar(t *testing.T) {
+	source := []byte("---\ntitle: Plain value\nquoted: \"double quoted\"\nsingle: 'single quoted'\n# comment: ignored\nempty:   \nwhen_to_read: before a write\n---\nbody\n")
+	front, _, ok := SplitFrontmatter(source)
+	if !ok {
+		t.Fatalf("SplitFrontmatter() ok = false, want true")
+	}
+
+	cases := []struct {
+		key  string
+		want string
+	}{
+		{"title", "Plain value"},
+		{"quoted", "double quoted"},
+		{"single", "single quoted"},
+		{"comment", ""},
+		{"empty", ""},
+		{"when_to_read", "before a write"},
+		{"absent", ""},
+	}
+	for _, tc := range cases {
+		if got := FrontmatterScalar(front, tc.key); got != tc.want {
+			t.Errorf("FrontmatterScalar(%q) = %q, want %q", tc.key, got, tc.want)
+		}
+	}
+
+	if got := FrontmatterScalar(nil, "title"); got != "" {
+		t.Errorf("FrontmatterScalar(nil) = %q, want empty", got)
+	}
+}
