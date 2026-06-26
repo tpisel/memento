@@ -152,7 +152,13 @@ print(("; ".join(flags) if flags else "no key tool-use") + " (bash={},native={})
 sanitize() { printf '%s' "$1" | tr '|\n' '/ '; }
 row="| \`${frozen:0:12}\` | $model_label | $arm | $behavior | $trial | $result | $review | $(sanitize "$evidence") — $(sanitize "$note_txt") [$status] | log: \`${keep#"$repo_root"/}\` |"
 
-printf '%s\n' "$row" | ( cd "$repo_root" && go run ./cmd/memento write "$report_key" >/dev/null )
+# Append the row natively. The `memento write` verb is gone (ADR-0031: native
+# writes under hook enforcement), so the harness appends straight to the
+# append-only run-report note under the real vault. Manifest coherence is the
+# PostToolUse hook's job in agent runs; this harness append needs no recompile.
+report_path="$repo_root/memento-memory/$report_key"
+mkdir -p "$(dirname "$report_path")"
+printf '%s\n' "$row" >> "$report_path"
 
 echo "cell: $model_label $arm $behavior t$trial -> $result (review=$review) [$status]"
 echo "  evidence: $evidence"

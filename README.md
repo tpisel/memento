@@ -46,9 +46,9 @@ From the root of a project you want to give an agent durable memory for:
 # 1. Scaffold or adopt a vault. Default vault dir is <project>-memory/.
 memento init
 
-# 2. Write a note. Stdin is the body; frontmatter is optional.
-echo "We rejected SQLite because the deploy target is read-only." \
-  | memento write decisions/storage-choice.md
+# 2. Write a note with your editor or your agent's native file tools.
+#    Frontmatter is optional; mode enforcement is handled by the write hooks.
+$EDITOR decisions/storage-choice.md
 
 # 3. See what the agent will see at task start.
 memento brief
@@ -71,7 +71,6 @@ Open the vault directory itself (e.g. `my-project-memory/`) as an Obsidian vault
 - `memento orient` — print tool-usage orientation plus any project overlays.
 - `memento read <key|@N>` — read a note by vault-relative key, or by the `@N` index from the brief. Supports `<key>#<heading>` for section reads. Stdout is the raw body; stderr carries `binding:` plus role-flattened link lines.
 - `memento convention <name>` — read an operational convention from `_memento/conventions/<name>.md`, printing its body without frontmatter. Conventions are surfaced by `memento orient`, not the brief.
-- `memento write [--overwrite] <key>` — create, append to, or overwrite a note from stdin, then auto-recompile.
 - `memento write-mode <key> <append-only|living|read-only> [--justification <reason>]` — durably change a note's frontmatter mode, then auto-recompile. Loosening requires `--justification`; tightening accepts it as optional self-documentation.
 - `memento unlock <key> --justification <reason>` — record a temporary single-key exception re-opening a read-only note's edit window until the next commit. The reason is held in a gitignored `.memento/unlock-grants.json` sidecar and lifted into a `Memento-Unlock:` commit trailer by the pre-commit hook.
 

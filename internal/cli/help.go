@@ -100,33 +100,6 @@ Errors:
 For the deeper picture, run: memento orient
 `
 
-const writeHelpText = `memento write
-
-Usage:
-  memento write [--overwrite] [--force-with-reason <reason>] <key>
-
-Create, append to, or overwrite a vault note from stdin, then recompile the vault.
-
-Key contract:
-  key is a vault-relative .md path. Repo-relative paths and paths prefixed with the vault directory are invalid.
-
-Flags:
-  --overwrite                   Replace the full note body with stdin. Without this flag, write appends by default.
-  --force-with-reason <reason>  Override a ratified mode rejection. Reason must be non-empty.
-
-Mode interaction:
-  append-only is the default when mode: is absent; ratified notes accept appends and reject overwrites.
-  living accepts appends and overwrites.
-  read-only rejects writes after ratification.
-  Unratified notes are still in their edit window and accept appends and overwrites regardless of mode.
-
-Stderr:
-  On success, stderr includes wrote: <abs path> (<byte count>, <append|overwrite>) before the compile result.
-  Forced writes also include forced: true and reason: <reason>.
-
-For the deeper picture, run: memento orient
-`
-
 const writeModeHelpText = `memento write-mode
 
 Usage:

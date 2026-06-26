@@ -287,8 +287,6 @@ Root dispatch errors use `memento: <token>: ...` because no verb has been select
 | `invalid-key` | A read/write key is empty, absolute, traversal-shaped, not writable, ignored, or otherwise not a vault-relative note key. | `note.ErrInvalidKey` | none |
 | `key-not-found` | `read <key>` does not find a matching non-ignored markdown entry. | `note.ErrNotFound` | none |
 | `section-not-found` | `read <key>#<section>` finds the note but not the section slug. | `note.ErrSectionNotFound` | none |
-| `unsupported-write-operation` | A library caller asks for a write operation outside append/overwrite support. | `note.ErrUnsupportedWriteOperation` | none |
-| `mode-rejects-write` | The target note's ratified mode rejects the requested operation. | `note.ErrReadOnly` | none |
 | `ignore-file-invalid` | `.mementoignore` uses unsupported or malformed syntax. | `ignore.ErrUnsupportedNegation`, `ignore.ErrEmptyPattern`, `ignore.ErrEmptySegment`, or `ignore.ErrInvalidRecursiveWildcard` | none |
 | `frontmatter-invalid` | Strict metadata parsing rejects malformed frontmatter, invalid `mode:`, or invalid `updated:` metadata. | `markdown.ErrMalformedFrontmatter`, `markdown.ErrUnterminatedFrontmatter`, `markdown.ErrInvalidMode`, or `markdown.ErrInvalidUpdated` | none |
 | `io-error` | Stdin/stdout or filesystem I/O fails outside a more specific token. | `cli.ErrIO` at the CLI boundary; wrapped OS errors from lower packages remain recoverable with `errors.Is`. | none |
