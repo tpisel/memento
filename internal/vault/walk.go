@@ -38,7 +38,12 @@ func WalkMarkdown(vault Vault, visit func(relPath, absPath string) error) error 
 
 		if d.IsDir() {
 			switch d.Name() {
-			case MarkerDirName:
+			case MarkerDirName, ToolDirName:
+				// _memento/ is a wholly operational namespace (ADR-0030):
+				// conventions, skills, the generated brief, and the onboarding
+				// guide are reached through their own operational paths, never
+				// indexed into the normal corpus. Skip it structurally so the
+				// guarantee does not depend on a .mementoignore entry.
 				return filepath.SkipDir
 			default:
 				if ignore.Matches(patterns, relPath, true) {
@@ -48,7 +53,7 @@ func WalkMarkdown(vault Vault, visit func(relPath, absPath string) error) error 
 			}
 		}
 
-		if relPath == IgnoreFileName || relPath == WritingGuideFileName || relPath == ToolDirName+"/"+BriefFileName {
+		if relPath == IgnoreFileName || relPath == WritingGuideFileName {
 			return nil
 		}
 		if ignore.Matches(patterns, relPath, false) {

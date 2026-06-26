@@ -49,6 +49,26 @@ func TestWalkMarkdownExcludesOperationalFiles(t *testing.T) {
 	}
 }
 
+func TestWalkMarkdownExcludesOperationalNamespaceWithoutIgnorePattern(t *testing.T) {
+	// ADR-0030: _memento/ is skipped structurally, not via .mementoignore, so
+	// the operational namespace cannot leak into the corpus if the ignore
+	// pattern is missing or removed.
+	root := t.TempDir()
+	vault := makeVault(t, root)
+	writeFile(t, root, ".mementoignore", "")
+	writeFile(t, root, "_memento/brief.md", "# Generated\n")
+	writeFile(t, root, "_memento/Using Memento.md", "# Onboarding\n")
+	writeFile(t, root, "_memento/conventions/writing.md", "# Convention\n")
+	writeFile(t, root, "_memento/skills/write.md", "# Skill\n")
+	writeFile(t, root, "content.md", "# Content\n")
+
+	got := walkPaths(t, vault)
+	want := []string{"content.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("WalkMarkdown() visited %v, want %v", got, want)
+	}
+}
+
 func TestWalkMarkdownWithoutIgnoreFile(t *testing.T) {
 	root := t.TempDir()
 	vault := makeVault(t, root)
