@@ -2648,6 +2648,116 @@ func TestConventionEmptyWhenToRead(t *testing.T) {
 	}
 }
 
+// TestConventionsEndToEndFromInit exercises the full operational-conventions
+// flow (ADR-0029/0030) against a vault that init actually produces, rather than
+// hand-placed fixtures: init scaffolds the three default conventions, orient
+// lists each one as a `memento convention <name>` prompt, the convention verb
+// returns body-only content, a malformed convention is surfaced by both orient
+// and the verb, and the normal brief stays clear of _memento operational files.
+func TestConventionsEndToEndFromInit(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "sample-app")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	chdirCLI(t, repo)
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"init"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run(init) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	root := filepath.Join(repo, "sample-app-memory")
+
+	// init scaffolds the three default conventions on disk.
+	for _, stem := range []string{"writing", "summarising", "conventions"} {
+		rel := "_memento/conventions/" + stem + ".md"
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err != nil {
+			t.Fatalf("stat %s: %v", rel, err)
+		}
+	}
+
+	// orient lists every default convention as a memento convention prompt.
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"orient"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run(orient) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(orient) stderr = %q, want empty for valid conventions", stderr.String())
+	}
+	for _, line := range []string{
+		"- before adding or editing a convention file: `memento convention conventions`",
+		"- when writing or revising a note summary: `memento convention summarising`",
+		"- before authoring a memento vault write: `memento convention writing`",
+	} {
+		if !strings.Contains(stdout.String(), line) {
+			t.Fatalf("Run(orient) stdout =\n%s\nwant conventions prompt %q", stdout.String(), line)
+		}
+	}
+
+	// the convention verb returns body-only content for each default convention.
+	for stem, heading := range map[string]string{
+		"writing":     "# Writing guide",
+		"summarising": "# Summarising guide",
+		"conventions": "# Conventions guide",
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		if code := Run([]string{"convention", stem}, &stdout, &stderr); code != 0 {
+			t.Fatalf("Run(convention %s) exit code = %d, want 0; stderr = %q", stem, code, stderr.String())
+		}
+		out := stdout.String()
+		if !strings.Contains(out, heading) {
+			t.Fatalf("Run(convention %s) stdout = %q, want body heading %q", stem, out, heading)
+		}
+		// Frontmatter scalar lines (delimited by a space) must be stripped; the
+		// conventions body legitimately mentions `when_to_read:` in backticks.
+		if strings.Contains(out, "when_to_read: ") || strings.Contains(out, "title: ") {
+			t.Fatalf("Run(convention %s) stdout = %q, leaked frontmatter", stem, out)
+		}
+		if strings.HasPrefix(strings.TrimLeft(out, "\n"), "---") {
+			t.Fatalf("Run(convention %s) stdout = %q, starts with frontmatter delimiter", stem, out)
+		}
+	}
+
+	// the normal brief excludes _memento operational files.
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"brief"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run(brief) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	brief := stdout.String()
+	for _, leaked := range []string{"memento convention", "conventions/", "# Writing guide", "when_to_read"} {
+		if strings.Contains(brief, leaked) {
+			t.Fatalf("Run(brief) stdout =\n%s\nleaked operational content %q", brief, leaked)
+		}
+	}
+	if m := readCLIFile(t, root, ".memento/manifest.json"); strings.Contains(m, "_memento/") {
+		t.Fatalf("manifest = %q, want no _memento operational entries", m)
+	}
+
+	// a malformed convention is surfaced by orient (warning) and the verb (error).
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\ntitle: Writing guide\n---\n\n# Writing guide\n\nbody\n")
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"orient"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run(orient) after corruption exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "writing.md") {
+		t.Fatalf("Run(orient) stderr = %q, want warning naming writing.md", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"convention", "writing"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("Run(convention writing) after corruption exit code = %d, want 1; stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid-convention") {
+		t.Fatalf("Run(convention writing) stderr = %q, want invalid-convention", stderr.String())
+	}
+}
+
 func TestConventionRequiresExactlyOneName(t *testing.T) {
 	setupConventionVault(t)
 
