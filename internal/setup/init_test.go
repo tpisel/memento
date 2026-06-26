@@ -373,83 +373,131 @@ esac
 	}
 }
 
-func TestInitInstallsClaudeWriteSkillFromVaultSource(t *testing.T) {
-	repo := t.TempDir()
-	source := "---\nname: memento-write\n---\n# Custom write skill\n\nRead the local guide first.\n"
-	writeSetupFile(t, repo, "memory/_memento/skills/write.md", source)
-	writeSetupFile(t, repo, ".claude/skills/other/SKILL.md", "# Other skill\n")
-	writeSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md", "# Old generated skill\n")
-
-	if _, err := Init(repo, "memory"); err != nil {
-		t.Fatalf("Init() error = %v, want nil", err)
-	}
-
-	got := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
-	if got != source {
-		t.Fatalf("installed write skill = %q, want vault source %q", got, source)
-	}
-	if other := readSetupFile(t, repo, ".claude/skills/other/SKILL.md"); other != "# Other skill\n" {
-		t.Fatalf("unrelated skill changed to %q", other)
-	}
-}
-
-func TestInitScaffoldsDefaultWriteSkillSource(t *testing.T) {
+func TestInitInstallsClaudeWriteEnforcementHooks(t *testing.T) {
 	repo := t.TempDir()
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
 	}
 
-	source := readSetupFile(t, repo, "memory/_memento/skills/write.md")
-	installed := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
-	if source != installed {
-		t.Fatalf("installed write skill differs from source\nsource:\n%s\ninstalled:\n%s", source, installed)
+	hooks := settingsObject(t, readClaudeSettings(t, repo), "hooks")
+
+	preCommand := filepath.Join(repo, ".claude", "memento-pre-write-vault-guard.sh")
+	assertManagedHook(t, hooks, "PreToolUse", "Write|Edit|MultiEdit|Bash", preCommand)
+	postCommand := filepath.Join(repo, ".claude", "memento-post-write-compile.sh")
+	assertManagedHook(t, hooks, "PostToolUse", "Write|Edit|MultiEdit|Bash", postCommand)
+
+	// The SessionStart orient hook survives the ADR-0031 rework.
+	orientCommand := filepath.Join(repo, ".claude", "memento-orient-session-start.sh")
+	if !settingsJSONContainsCommand(settingsArray(t, hooks, "SessionStart"), orientCommand) {
+		t.Fatalf("SessionStart hooks = %#v, want orient command %q preserved", hooks["SessionStart"], orientCommand)
 	}
-	for _, want := range []string{
-		"name: memento-write",
-		"Before authoring a vault write:",
-		"memento convention writing",
-		"_memento/conventions/writing.md",
-		"memento write",
-	} {
-		if !strings.Contains(source, want) {
-			t.Fatalf("_memento/skills/write.md = %q, want it to contain %q", source, want)
+
+	pre := readSetupFile(t, repo, ".claude/memento-pre-write-vault-guard.sh")
+	if !strings.Contains(pre, "check-write") || !strings.Contains(pre, "fail-closed") {
+		t.Fatalf("pre-write hook script = %q, want a fail-closed check-write delegate", pre)
+	}
+	post := readSetupFile(t, repo, ".claude/memento-post-write-compile.sh")
+	if !strings.Contains(post, "memento compile") || !strings.Contains(post, "DRIFT ALARM") {
+		t.Fatalf("post-write hook script = %q, want a compile + drift-alarm wrapper", post)
+	}
+
+	if runtime.GOOS != "windows" {
+		for _, rel := range []string{".claude/memento-pre-write-vault-guard.sh", ".claude/memento-post-write-compile.sh"} {
+			info, err := os.Stat(filepath.Join(repo, filepath.FromSlash(rel)))
+			if err != nil {
+				t.Fatalf("stat %s: %v", rel, err)
+			}
+			if info.Mode().Perm()&0o111 == 0 {
+				t.Fatalf("%s mode = %v, want executable bit set", rel, info.Mode().Perm())
+			}
 		}
-	}
-	for _, unwanted := range []string{
-		"memento read _memento/writing",
-		"`_memento/writing.md`",
-	} {
-		if strings.Contains(source, unwanted) {
-			t.Fatalf("_memento/skills/write.md = %q, want no legacy writing-guide reference %q", source, unwanted)
-		}
-	}
-	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
-	if strings.Contains(manifest, `_memento/skills/write.md`) {
-		t.Fatalf("manifest = %q, want write skill source excluded from the normal manifest", manifest)
 	}
 }
 
-func TestInitWriteSkillInstallIsIdempotent(t *testing.T) {
+func TestInitInstalledWriteHooksMatchCanonicalScripts(t *testing.T) {
 	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	repoRoot := setupRepoRoot(t)
+	cases := map[string]string{
+		".claude/memento-pre-write-vault-guard.sh": "scripts/agent-hooks/pre-write-vault-guard.sh",
+		".claude/memento-post-write-compile.sh":    "scripts/agent-hooks/post-write-compile.sh",
+	}
+	for installed, canonical := range cases {
+		got := readSetupFile(t, repo, installed)
+		want := readSetupFile(t, repoRoot, canonical)
+		if got != want {
+			t.Fatalf("%s drifted from canonical %s:\ninstalled:\n%s\ncanonical:\n%s", installed, canonical, got, want)
+		}
+	}
+}
+
+func TestInitDoesNotInstallWriteSkill(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	// ADR-0031 retired the write verb the skill routed through; init must not
+	// scaffold the skill source nor install the Claude skill.
+	for _, rel := range []string{
+		"memory/_memento/skills/write.md",
+		".claude/skills/memento-write/SKILL.md",
+	} {
+		if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(rel))); !os.IsNotExist(err) {
+			t.Fatalf("%s stat err = %v, want file not to exist", rel, err)
+		}
+	}
+}
+
+func TestInitWriteEnforcementHooksAreIdempotent(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, ".claude/settings.json", `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "/keep/pre.sh"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Edit", "hooks": [{"type": "command", "command": "/keep/post.sh"}]}
+    ]
+  }
+}
+`)
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("first Init() error = %v, want nil", err)
 	}
-	firstSource := readSetupFile(t, repo, "memory/_memento/skills/write.md")
-	firstInstalled := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
+	first := readSetupFile(t, repo, ".claude/settings.json")
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("second Init() error = %v, want nil", err)
 	}
-	secondSource := readSetupFile(t, repo, "memory/_memento/skills/write.md")
-	secondInstalled := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
+	second := readSetupFile(t, repo, ".claude/settings.json")
 
-	if secondSource != firstSource {
-		t.Fatalf("_memento/skills/write.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstSource, secondSource)
+	if second != first {
+		t.Fatalf(".claude/settings.json changed on rerun:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
-	if secondInstalled != firstInstalled {
-		t.Fatalf(".claude/skills/memento-write/SKILL.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstInstalled, secondInstalled)
+
+	hooks := settingsObject(t, readClaudeSettings(t, repo), "hooks")
+	preCommand := filepath.Join(repo, ".claude", "memento-pre-write-vault-guard.sh")
+	if count := settingsJSONCommandCount(settingsArray(t, hooks, "PreToolUse"), preCommand); count != 1 {
+		t.Fatalf("PreToolUse memento command count = %d, want 1; hooks = %#v", count, hooks["PreToolUse"])
+	}
+	postCommand := filepath.Join(repo, ".claude", "memento-post-write-compile.sh")
+	if count := settingsJSONCommandCount(settingsArray(t, hooks, "PostToolUse"), postCommand); count != 1 {
+		t.Fatalf("PostToolUse memento command count = %d, want 1; hooks = %#v", count, hooks["PostToolUse"])
+	}
+	// Unrelated hooks the user already had are preserved.
+	if !settingsJSONContainsCommand(settingsArray(t, hooks, "PreToolUse"), "/keep/pre.sh") {
+		t.Fatalf("PreToolUse hooks = %#v, want unrelated /keep/pre.sh preserved", hooks["PreToolUse"])
+	}
+	if !settingsJSONContainsCommand(settingsArray(t, hooks, "PostToolUse"), "/keep/post.sh") {
+		t.Fatalf("PostToolUse hooks = %#v, want unrelated /keep/post.sh preserved", hooks["PostToolUse"])
 	}
 }
 
@@ -1284,6 +1332,26 @@ func settingsArray(t *testing.T, parent map[string]any, key string) []any {
 		t.Fatalf("%s = %#v, want array", key, parent[key])
 	}
 	return value
+}
+
+// assertManagedHook checks that event holds a memento-managed hook entry whose
+// matcher equals wantMatcher and whose nested command equals wantCommand.
+func assertManagedHook(t *testing.T, hooks map[string]any, event, wantMatcher, wantCommand string) {
+	t.Helper()
+
+	for _, entry := range settingsArray(t, hooks, event) {
+		object, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		if object["matcher"] != wantMatcher {
+			continue
+		}
+		if settingsJSONContainsCommand(object["hooks"], wantCommand) {
+			return
+		}
+	}
+	t.Fatalf("%s hooks = %#v, want entry with matcher %q and command %q", event, hooks[event], wantMatcher, wantCommand)
 }
 
 func settingsJSONContainsCommand(value any, command string) bool {
