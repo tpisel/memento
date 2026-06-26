@@ -79,6 +79,10 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		return runWriteMode(args[1:], stdout, stderr)
 	case "unlock":
 		return runUnlock(args[1:], stdout, stderr)
+	case "check-write":
+		// Hook plumbing (ADR-0031), deliberately absent from help: the
+		// PreToolUse verdict engine, fed the raw payload on stdin.
+		return runCheckWrite(stdin, stdout, stderr)
 	default:
 		printRootError(stderr, fmt.Errorf("%w %q", ErrUnknownCommand, args[0]))
 		return 2

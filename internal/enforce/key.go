@@ -42,7 +42,7 @@ func NormalizeWritableKey(v vault.Vault, key string) (string, error) {
 	if key == vault.IgnoreFileName || key == vault.WritingGuideFileName {
 		return "", fmt.Errorf("%w: operational path is not writable: %s", note.ErrInvalidKey, key)
 	}
-	if parts[0] == vault.MarkerDirName {
+	if parts[0] == vault.MarkerDirName || parts[0] == vault.ToolDirName {
 		return "", fmt.Errorf("%w: operational path is not writable: %s", note.ErrInvalidKey, key)
 	}
 

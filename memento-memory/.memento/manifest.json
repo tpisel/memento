@@ -2550,8 +2550,8 @@
       "key": "OKF interop and external compatibility.md",
       "title": "OKF interop and external compatibility",
       "summary": "Working notes on aligning memento with Google Cloud's Open Knowledge Format (OKF) v0.1. Records what we can align without harming the Obsidian-as-human-interface commitment, what gap remains, whether to surface OKF support as an explicit mode, and where the OKF spec appears to be heading that we may already be on the path to.",
-      "bytes": 23983,
-      "lines": 186,
+      "bytes": 19305,
+      "lines": 157,
       "tags": [
         "distribution",
         "format",
@@ -2645,31 +2645,6 @@
         },
         {
           "level": 2,
-          "text": "Addendum 2026-06-26: reading the published example bundles",
-          "slug": "addendum-2026-06-26-reading-the-published-example-bundles"
-        },
-        {
-          "level": 3,
-          "text": "Correction: export emits RELATIVE links, not /-absolute",
-          "slug": "correction-export-emits-relative-links-not-absolute"
-        },
-        {
-          "level": 3,
-          "text": "Confirmed by the examples (no change, just now evidenced rather than assumed)",
-          "slug": "confirmed-by-the-examples-no-change-just-now-evidenced-rather-than-assumed"
-        },
-        {
-          "level": 3,
-          "text": "New evidence on \"where OKF is going\"",
-          "slug": "new-evidence-on-where-okf-is-going"
-        },
-        {
-          "level": 3,
-          "text": "Net",
-          "slug": "net"
-        },
-        {
-          "level": 2,
           "text": "Provenance",
           "slug": "provenance"
         }
@@ -2679,7 +2654,7 @@
       "updated": "",
       "body_sha": "ab00fe10efe821426a99726b1121badb252c97a3b63f1d6cc9a38dc5e422b1da",
       "summary_sha": "2ca9b3410ccd5e86f04c0fa082df02bca672b33baa6388e8baacaf4f15a5a889",
-      "summary_state": "stale",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -3166,6 +3141,30 @@
       }
     },
     {
+      "key": "check-write output contract.md",
+      "title": "check-write output contract",
+      "summary": "check-write emits the full PreToolUse harness verdict JSON on stdout itself (allow/deny/ask), not a bare {decision,reason_code,message} needing translation — so the PreToolUse hook is a true dumb pipe plus fail-closed-on-nonzero-exit. Resolves ADR-0031's ambiguous wording.",
+      "bytes": 2288,
+      "lines": 48,
+      "tags": [
+        "enforcement",
+        "hooks",
+        "memento",
+        "write"
+      ],
+      "headings": [],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "07ca5fb21e203141b135508d4776c96846a3ea60d5e0a321e36b7870f93266d6",
+      "summary_sha": "55964931f62203d75600a4539f339d72aadef060dd2b1cc04a7a6280e4960774",
+      "summary_state": "current",
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
       "key": "conditional-information-access.md",
       "title": "The two axes of conditional information access",
       "summary": "Conditional access decomposes into two typing axes — constative/performative (what the information is) and epistemic/deontic (how access is governed) — laid over the spec's access-pattern substrates. An exploration of what follows, not a feature plan.",
@@ -3273,8 +3272,8 @@
       "key": "doctor-scoping.md",
       "title": "Doctor — scoping list",
       "summary": "Live, exploratory list of candidate checks for the future `memento doctor` verb, consolidated from the ADRs and dogfooding. Doctor owns mechanical plumbing/health (no content judgement, no agent); this note is the running inbox of candidate checks so the eventual doctor ADR doesn't re-derive them. Not a spec — see [[review-audit-doctor faculties]] for the verb-boundary carve.",
-      "bytes": 5693,
-      "lines": 63,
+      "bytes": 7019,
+      "lines": 69,
       "tags": [
         "doctor",
         "memento",
@@ -3784,11 +3783,11 @@
     "distribution": 1,
     "doctor": 2,
     "draft": 1,
-    "enforcement": 1,
+    "enforcement": 2,
     "format": 1,
     "frontmatter": 4,
     "git": 1,
-    "hooks": 5,
+    "hooks": 6,
     "ignore": 1,
     "information-access": 1,
     "init": 4,
@@ -3799,7 +3798,7 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 39,
+    "memento": 40,
     "mode": 5,
     "namespace": 3,
     "obsidian": 4,
@@ -3829,7 +3828,7 @@
     "thought-bubble": 2,
     "unicode": 1,
     "vault": 3,
-    "write": 9,
+    "write": 10,
     "writing": 1
   }
 }

@@ -44,6 +44,8 @@ func TestNormalizeWritableKeyRejectsInvalidKeys(t *testing.T) {
 		"writing_guide.md",     // operational path
 		".memento/config.md",   // marker directory
 		".memento/manifest.md", // marker directory
+		"_memento/writing.md",  // operational tool namespace (ADR-0030/0031)
+		"_memento/skills/x.md", // operational tool namespace
 	}
 	for _, key := range cases {
 		t.Run(key, func(t *testing.T) {
