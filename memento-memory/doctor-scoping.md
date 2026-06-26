@@ -45,6 +45,12 @@ With the `write` verb gone, mode enforcement rests entirely on the PreToolUse ga
 
 Supersedes the earlier "Write skill installed for the detected agent" check above (ADR-0025) — it **inverts** to "*no* stale write-skill present".
 
+**Doctor itself is deferred (decided 2026-06-26).** ADR-0031 names doctor a hard dependency, but its implementation is *descoped* from the ADR-0031 build — doctor gets its own ADR later, and these stay candidate checks until then. Three consequences to carry forward:
+
+- **No liveness signal in the interim.** With no doctor, nothing loudly reports `enforcement: LIVE/OFF`. This is a consciously accepted gap; the only backstops are the PostToolUse **drift alarm** and the **`check-write` decision log** (detective, not preventive). The future doctor ADR closes it.
+- **The "interpreter deps present" check is contingent on the wrapper.** It was inherited from the old broad-deny `pre-write-vault-guard.sh`, which used python helpers. If the ADR-0031 wrapper is the pure-Go dumb pipe (`cat | memento check-write`), there is **no `python3` in the runtime hook chain** — this check should target whatever the final wrapper actually needs (bash + the `memento` binary), not python3. (`python3` survives only in the manual A-UAT scorer, which is not on the enforcement path.)
+- **Orphan cleanup needs an interim owner.** `doctor --fix` was to delete the retired write-skill + legacy hook entries. Until doctor exists, a standalone migration bead removes those artifacts in-repo; cross-vault upgrade cleanup waits for doctor.
+
 ## Discovery / onboarding (from 2026-06-26 second-cloner review)
 
 These close the "a second person clones the repo — what is this `_memento` stuff, and where's the tool?" gap. Install info lives in memento's own README, which does **not** travel into a user's vault.
