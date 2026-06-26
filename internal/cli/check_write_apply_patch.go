@@ -97,6 +97,8 @@ func checkWriteApplyPatch(patchText string, stdout, stderr io.Writer) int {
 		// Delete and rename touch a vault note's existence/identity, not just its
 		// body; deny them fail-closed rather than model bytes we cannot derive.
 		if op.Kind == enforce.PatchDelete || op.MoveTo != "" {
+			key, _, _ := vaultRelativeKey(v, op.Path)
+			recordDecision(v, "apply_patch", key, vaultWriteVerdict{decision: "deny", reasonCode: reasonApplyPatchUnsupported}, false, false, stderr)
 			emitVerdict(stdout, "deny", reasonApplyPatchUnsupported,
 				"This apply_patch deletes or renames a memento note, which memento cannot verify as a safe write, "+
 					"so it is denied and the identical patch will be denied again. "+

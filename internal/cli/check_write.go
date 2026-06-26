@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/tpisel/memento/internal/enforce"
 	"github.com/tpisel/memento/internal/markdown"
@@ -215,13 +216,28 @@ type vaultWriteVerdict struct {
 // error), and applies the drive-by then prefix-invariant verdict. deriveLabel
 // names the operation in the fail-closed stderr message; brokenReason selects the
 // append-only denial flavour.
-func computeVaultWriteVerdict(v vault.Vault, key, deriveLabel, brokenReason string, derive func(old []byte, exists bool) ([]byte, error), stderr io.Writer) (vaultWriteVerdict, error) {
+func computeVaultWriteVerdict(v vault.Vault, key, deriveLabel, brokenReason string, derive func(old []byte, exists bool) ([]byte, error), stderr io.Writer) (verdict vaultWriteVerdict, retErr error) {
+	// Record every reached verdict to the structured decision log (ADR-0031's
+	// observability surface): this is the single chokepoint every in-vault file
+	// verdict flows through, so logging here captures denials, drive-by blocks,
+	// and grant-permitted writes uniformly. A fail-closed internal error reaches
+	// no verdict, so it is not logged here; granted/ratified are zero for the
+	// pre-resolution denials, which classify as plain denials regardless.
+	var granted, ratified bool
+	logKey := key
+	defer func() {
+		if retErr == nil {
+			recordDecision(v, deriveLabel, logKey, verdict, granted, ratified, stderr)
+		}
+	}()
+
 	normKey, err := enforce.NormalizeWritableKey(v, key)
 	if err != nil {
 		return vaultWriteVerdict{decision: "deny", reasonCode: reasonUnwritablePath, message: fmt.Sprintf(
 			"%s is not a writable memento note — it is git-ignored, operational, or not a .md file — so this write is denied and the identical write will be denied again. "+
 				"Pick a different .md key under the vault.", key)}, nil
 	}
+	logKey = normKey
 	path, err := enforce.ResolveWritablePath(v, normKey)
 	if err != nil {
 		return vaultWriteVerdict{decision: "deny", reasonCode: reasonUnwritablePath, message: fmt.Sprintf(
@@ -241,12 +257,12 @@ func computeVaultWriteVerdict(v vault.Vault, key, deriveLabel, brokenReason stri
 		return vaultWriteVerdict{}, err
 	}
 
-	ratified, err := enforce.IsRatified(v, normKey)
+	ratified, err = enforce.IsRatified(v, normKey)
 	if err != nil {
 		fmt.Fprintf(stderr, "memento check-write: ratification for %s: %v\n", normKey, err)
 		return vaultWriteVerdict{}, err
 	}
-	_, granted, err := enforce.LookupGrant(v, normKey)
+	_, granted, err = enforce.LookupGrant(v, normKey)
 	if err != nil {
 		fmt.Fprintf(stderr, "memento check-write: unlock grants for %s: %v\n", normKey, err)
 		return vaultWriteVerdict{}, err
@@ -264,6 +280,50 @@ func computeVaultWriteVerdict(v vault.Vault, key, deriveLabel, brokenReason stri
 		return vaultWriteVerdict{decision: "allow", normKey: normKey, newBytes: newBytes}, nil
 	}
 	return vaultWriteVerdict{decision: "deny", reasonCode: decision.ReasonCode, message: decision.Message}, nil
+}
+
+// recordDecision appends an enforcement-visible verdict to the decision log,
+// classifying which of ADR-0031's three event kinds it is. Plain allows (no grant
+// in play) are not logged: the log is the enforcement audit, not a write journal.
+// granted/ratified are only consulted to recognise a grant consumption — a write
+// to a ratified note an active unlock permitted. A log-write failure is
+// best-effort: it must never flip a verdict, so it only surfaces on stderr.
+func recordDecision(v vault.Vault, tool, key string, verdict vaultWriteVerdict, granted, ratified bool, stderr io.Writer) {
+	event, ok := classifyDecisionEvent(verdict.decision, verdict.reasonCode, granted, ratified)
+	if !ok {
+		return
+	}
+	entry := enforce.DecisionLogEntry{
+		Time:       time.Now().UTC(),
+		Event:      event,
+		Tool:       tool,
+		Key:        key,
+		Decision:   verdict.decision,
+		ReasonCode: verdict.reasonCode,
+	}
+	if err := enforce.AppendDecisionLog(v, entry); err != nil {
+		fmt.Fprintf(stderr, "memento check-write: append decision log: %v\n", err)
+	}
+}
+
+// classifyDecisionEvent maps a verdict onto the decision-log event kind, or
+// reports false when the verdict is not enforcement-visible (a plain allow). A
+// drive-by block is a deny broken out by its reason code so the audit can tell a
+// mode-tampering attempt from an ordinary content denial; a grant consumption is
+// an allow that only stood because an unlock grant waived the invariant on a
+// ratified note (an unratified note would allow regardless, so it is not a
+// consumption).
+func classifyDecisionEvent(decision, reasonCode string, granted, ratified bool) (string, bool) {
+	switch {
+	case decision == "deny" && reasonCode == enforce.ReasonDriveByModeChange:
+		return enforce.EventDriveByBlock, true
+	case decision == "deny":
+		return enforce.EventDeny, true
+	case decision == "allow" && granted && ratified:
+		return enforce.EventGrantConsumption, true
+	default:
+		return "", false
+	}
 }
 
 // deriveNewBytes computes the bytes a tool would land on disk. Per ADR-0031 the

@@ -427,6 +427,8 @@ func gitignoreBlock() string {
 		"**/" + vault.MarkerDirName + "/" + enforce.GrantsFileName,
 		"# Memento pending-write ledger (check-write↔compile drift handshake)",
 		"**/" + vault.MarkerDirName + "/" + enforce.PendingFileName,
+		"# Memento check-write decision log (enforcement audit)",
+		"**/" + vault.MarkerDirName + "/" + enforce.DecisionLogFileName,
 		gitignoreEndSentinel,
 	}, "\n")
 }

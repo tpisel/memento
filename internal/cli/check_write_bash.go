@@ -56,6 +56,10 @@ func checkWriteBash(command string, stdout, stderr io.Writer) int {
 	verdict, key := classifyBash(v, command)
 	switch verdict {
 	case bashOpaque:
+		// Logged with an empty key: the opaque denial fires precisely because the
+		// target is not a single clean reference we can name, so there is no key to
+		// record — but the denial itself is part of the audit (ADR-0031).
+		recordDecision(v, "Bash", "", vaultWriteVerdict{decision: "deny", reasonCode: reasonBashOpaqueWrite}, false, false, stderr)
 		emitVerdict(stdout, "deny", reasonBashOpaqueWrite, bashOpaqueMessage)
 		return 0
 	case bashAppend:

@@ -762,6 +762,7 @@ func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {
 		"**/.obsidian/cache",
 		"**/_memento/brief.md",
 		"**/.memento/" + enforce.PendingFileName,
+		"**/.memento/" + enforce.DecisionLogFileName,
 		"# memento:gitignore:end",
 	} {
 		if !strings.Contains(second, want) {

@@ -3207,6 +3207,37 @@
       }
     },
     {
+      "key": "check-write decision log.md",
+      "title": "check-write decision log",
+      "summary": "The gitignored check-write audit is JSONL (one verdict per line) at .memento/decision-log.jsonl, recording exactly three enforcement-visible events — deny, drive_by_block, grant_consumption — and deliberately NOT plain allows. It is the enforcement audit, not a write journal; a log-write failure never flips a verdict.",
+      "bytes": 2635,
+      "lines": 46,
+      "tags": [
+        "enforcement",
+        "hooks",
+        "memento",
+        "observability",
+        "write"
+      ],
+      "headings": [],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "90659b239cc9c964807cc4d531c0ccffcad1345edf670d41d39eda4b705931c7",
+      "summary_sha": "55430c2d7fa9867668f9e0fe1de40161a0ffc72950bc521438889578d792dc0e",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "check-write output contract.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
       "key": "check-write output contract.md",
       "title": "check-write output contract",
       "summary": "check-write emits the full PreToolUse harness verdict JSON on stdout itself (allow/deny/ask), not a bare {decision,reason_code,message} needing translation — so the PreToolUse hook is a true dumb pipe plus fail-closed-on-nonzero-exit. Resolves ADR-0031's ambiguous wording.",
@@ -3230,6 +3261,10 @@
         "in": [
           {
             "source": "check-write compile drift handshake.md",
+            "type": "wiki"
+          },
+          {
+            "source": "check-write decision log.md",
             "type": "wiki"
           },
           {
@@ -4003,11 +4038,11 @@
     "distribution": 1,
     "doctor": 2,
     "draft": 1,
-    "enforcement": 5,
+    "enforcement": 6,
     "format": 1,
     "frontmatter": 4,
     "git": 2,
-    "hooks": 9,
+    "hooks": 10,
     "ignore": 1,
     "information-access": 1,
     "init": 4,
@@ -4018,9 +4053,10 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 43,
+    "memento": 44,
     "mode": 5,
     "namespace": 3,
+    "observability": 1,
     "obsidian": 4,
     "okf": 3,
     "open-question": 6,
@@ -4050,7 +4086,7 @@
     "unicode": 1,
     "unlock": 1,
     "vault": 3,
-    "write": 11,
+    "write": 12,
     "writing": 1
   }
 }

@@ -53,6 +53,8 @@ logs/*
 **/.obsidian/cache
 # Memento generated artifacts
 **/_memento/brief.md
+# Memento check-write decision log (enforcement audit)
+**/.memento/decision-log.jsonl
 # memento:gitignore:end
 
 # goreleaser build output
