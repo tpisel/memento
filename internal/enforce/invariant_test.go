@@ -25,6 +25,10 @@ func TestEvaluatePrefixInvariant(t *testing.T) {
 		{name: "append-only allows no-op", mode: markdown.ModeAppendOnly, old: "head", new: "head", wantAllow: true},
 		{name: "append-only denies truncate", mode: markdown.ModeAppendOnly, old: "head\nbody", new: "head", wantAllow: false, wantReason: ReasonAppendOnlyOverwrite},
 		{name: "append-only denies interior change", mode: markdown.ModeAppendOnly, old: "head\nbody", new: "HEAD\nbody", wantAllow: false, wantReason: ReasonAppendOnlyOverwrite},
+		// An unrecognised/retired effective mode fails closed to the append-only
+		// default, never living (ADR-0031): pure append allowed, truncate denied.
+		{name: "unknown mode allows pure append", mode: markdown.WriteMode("section-replace"), old: "head", new: "head\nmore", wantAllow: true},
+		{name: "unknown mode denies truncate", mode: markdown.WriteMode("section-replace"), old: "head\nbody", new: "head", wantAllow: false, wantReason: ReasonAppendOnlyOverwrite},
 	}
 
 	for _, tc := range tests {
@@ -79,6 +83,10 @@ func TestEvaluateVaultWrite(t *testing.T) {
 		{name: "ratified read-only edit denied (US1)", mode: markdown.ModeReadOnly, old: "frozen", new: "edited", exists: true, ratified: true, wantAllow: false, wantReason: ReasonReadOnly},
 		{name: "ratified append-only truncate denied (US2)", mode: markdown.ModeAppendOnly, old: "head\nbody", new: "head", exists: true, ratified: true, wantAllow: false, wantReason: ReasonAppendOnlyOverwrite},
 		{name: "ratified append-only append allowed (US2)", mode: markdown.ModeAppendOnly, old: "head", new: "head\nmore", exists: true, ratified: true, wantAllow: true},
+		// A ratified note whose effective mode is unrecognised/retired is held to the
+		// append-only default, not let through as living (ADR-0031 bug fix).
+		{name: "ratified unknown-mode truncate denied", mode: markdown.WriteMode("section-replace"), old: "head\nbody", new: "head", exists: true, ratified: true, wantAllow: false, wantReason: ReasonAppendOnlyOverwrite},
+		{name: "ratified unknown-mode append allowed", mode: markdown.WriteMode("section-replace"), old: "head", new: "head\nmore", exists: true, ratified: true, wantAllow: true},
 	}
 
 	for _, tc := range tests {

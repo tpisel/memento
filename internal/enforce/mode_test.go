@@ -23,7 +23,11 @@ func TestEvaluateMode(t *testing.T) {
 		{"append-only overwrite", markdown.ModeAppendOnly, OpOverwrite, false, ReasonAppendOnlyOverwrite},
 		{"living append", markdown.ModeLiving, OpAppend, true, ""},
 		{"living overwrite", markdown.ModeLiving, OpOverwrite, true, ""},
-		{"unknown mode allows", markdown.WriteMode("bogus"), OpOverwrite, true, ""},
+		// An unrecognised/retired mode token (e.g. ADR-0031 flips section-replace to
+		// invalid) must fail closed to the append-only default, never living: append
+		// allowed, overwrite denied.
+		{"unknown mode append allowed", markdown.WriteMode("section-replace"), OpAppend, true, ""},
+		{"unknown mode overwrite denied", markdown.WriteMode("section-replace"), OpOverwrite, false, ReasonAppendOnlyOverwrite},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

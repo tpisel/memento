@@ -24,7 +24,9 @@ const ReasonAppendOnlyInterior = "append_only_interior"
 // the unlock grant (the mutability predicate) are composed by EvaluateVaultWrite.
 // brokenReason is the reason code to attach when append-only's prefix is broken:
 // a whole-file Write/truncate passes ReasonAppendOnlyOverwrite, an in-place Edit
-// passes ReasonAppendOnlyInterior. An unrecognised mode is treated as living.
+// passes ReasonAppendOnlyInterior. An unrecognised/unparseable mode fails closed to
+// the append-only default (markdown.DefaultWriteMode), never living: it must not be
+// possible to bypass the prefix invariant with bad mode DATA (ADR-0031).
 func EvaluatePrefixInvariant(key string, mode markdown.WriteMode, old, new []byte, brokenReason string) Decision {
 	switch mode {
 	case markdown.ModeReadOnly:
@@ -38,7 +40,12 @@ func EvaluatePrefixInvariant(key string, mode markdown.WriteMode, old, new []byt
 					"Ask the user before changing it; if they agree, run `memento unlock %s --justification <reason>` for a one-off edit.",
 				key, key),
 		}
-	case markdown.ModeAppendOnly:
+	case markdown.ModeLiving:
+		return Decision{Allow: true}
+	default:
+		// append-only — the explicit ModeAppendOnly case and the safe default for any
+		// unrecognised/retired mode token, which must fail closed rather than fall
+		// through to living (ADR-0031).
 		if bytes.HasPrefix(new, old) {
 			return Decision{Allow: true}
 		}
@@ -49,8 +56,6 @@ func EvaluatePrefixInvariant(key string, mode markdown.WriteMode, old, new []byt
 					"Re-do it as an append that keeps the current content as a prefix, or run `memento write-mode %s living --justification <reason>` to allow overwrites.",
 				key, key),
 		}
-	default:
-		return Decision{Allow: true}
 	}
 }
 
