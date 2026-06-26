@@ -59,7 +59,7 @@ func Read(v vault.Vault, key string) ([]byte, error) {
 
 func parseReadTarget(target string) (key string, section string, err error) {
 	key, section, hasSection := strings.Cut(target, "#")
-	key, err = normalizeKey(key)
+	key, err = NormalizeKey(key)
 	if err != nil {
 		return "", "", err
 	}
@@ -69,7 +69,11 @@ func parseReadTarget(target string) (key string, section string, err error) {
 	return key, section, nil
 }
 
-func normalizeKey(key string) (string, error) {
+// NormalizeKey validates a vault-relative key and returns it unchanged on
+// success. It rejects empty keys, backslash separators, absolute paths, and
+// "."/".." path components. Exported so internal/enforce can reuse the base
+// normalization beneath its writable-key rules.
+func NormalizeKey(key string) (string, error) {
 	if key == "" {
 		return "", fmt.Errorf("%w: empty key", ErrInvalidKey)
 	}

@@ -86,7 +86,7 @@ func WriteWithResult(v vault.Vault, key string, content []byte, opts WriteOption
 }
 
 func normalizeWritableKey(v vault.Vault, key string) (string, error) {
-	key, err := normalizeKey(key)
+	key, err := NormalizeKey(key)
 	if err != nil {
 		return "", err
 	}
@@ -128,7 +128,7 @@ func normalizeWritableKey(v vault.Vault, key string) (string, error) {
 }
 
 func validateWriteMode(v vault.Vault, key, path string, opts WriteOptions) (bool, error) {
-	ratified, err := isRatified(v, key)
+	ratified, err := IsRatified(v, key)
 	if err != nil {
 		return false, err
 	}

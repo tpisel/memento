@@ -24,7 +24,7 @@ func BindingForReadTarget(v vault.Vault, target string) (BindingState, error) {
 	if err != nil {
 		return "", err
 	}
-	ratified, err := isRatified(v, key)
+	ratified, err := IsRatified(v, key)
 	if err != nil {
 		return "", err
 	}
@@ -34,7 +34,10 @@ func BindingForReadTarget(v vault.Vault, target string) (BindingState, error) {
 	return BindingUnratified, nil
 }
 
-func isRatified(v vault.Vault, key string) (bool, error) {
+// IsRatified reports whether key is committed in the vault's git tree (a
+// non-git tree is treated as ratified). It is exported so internal/enforce can
+// reuse the same predicate without forking the git mechanics.
+func IsRatified(v vault.Vault, key string) (bool, error) {
 	inside, err := isInsideGitWorkTree(v.Root)
 	if err != nil {
 		return false, err
