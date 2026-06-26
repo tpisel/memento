@@ -360,6 +360,10 @@
           {
             "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0030-memento-operational-namespace.md",
+            "type": "wiki"
           }
         ]
       }
@@ -415,6 +419,10 @@
           },
           {
             "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0030-memento-operational-namespace.md",
             "type": "wiki"
           }
         ]
@@ -520,6 +528,10 @@
           },
           {
             "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
             "type": "wiki"
           }
         ]
@@ -709,6 +721,10 @@
           },
           {
             "source": "Architecture decision record/adr-0027-role-based-autoload.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
             "type": "wiki"
           }
         ]
@@ -1562,6 +1578,10 @@
           {
             "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
+            "type": "wiki"
           }
         ]
       }
@@ -1902,6 +1922,181 @@
         "in": [
           {
             "source": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0030-memento-operational-namespace.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
+      "title": "Convention files and the convention verb",
+      "summary": "Convention files move workflow guidance out of the normal brief corpus and into `_memento/conventions/`, where each valid convention declares only `title` and non-empty `when_to_read:` frontmatter. `memento orient` lists every valid convention as a conditional read prompt, and `memento convention <name>` reads the body without frontmatter. No hidden conventions: missing or empty `when_to_read` makes a convention invalid.",
+      "bytes": 6392,
+      "lines": 100,
+      "tags": [
+        "_memento",
+        "agents",
+        "cli",
+        "conventions",
+        "memento",
+        "orient"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Authoring conventions",
+          "slug": "authoring-conventions"
+        },
+        {
+          "level": 2,
+          "text": "Init templates",
+          "slug": "init-templates"
+        },
+        {
+          "level": 2,
+          "text": "Validation and errors",
+          "slug": "validation-and-errors"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "ec00a2f9bf085b5fcf9f86785af30a694df5c83eeeb7267547467e3cdb5941b2",
+      "summary_sha": "2de121c028f77cf3664b97c736b7f78c7b1da9ff4b6147c33cbdf1e9428a1fe8",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0013-orient-verb-and-minimal-bootloader.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0024-bootloader-contents.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0030-memento-operational-namespace.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0030-memento-operational-namespace.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0030-memento-operational-namespace.md",
+      "title": "_memento operational namespace and default ignore policy",
+      "summary": "`_memento/` is reclassified as a wholly operational namespace rather than a mixed normal-memory folder. It is ignored from the normal manifest/brief corpus by default, with first-class operational access paths for generated brief output, convention files under `_memento/conventions/`, and agent skill projections under `_memento/skills/`.",
+      "bytes": 5741,
+      "lines": 84,
+      "tags": [
+        "_memento",
+        "brief",
+        "conventions",
+        "memento",
+        "namespace",
+        "skills"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Operational access paths",
+          "slug": "operational-access-paths"
+        },
+        {
+          "level": 2,
+          "text": "Skills",
+          "slug": "skills"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "6abc4c5340f9bed7e64b70066f1e1d6270a9c99ca2a113a494c31651babeb01c",
+      "summary_sha": "242c442761f4b6e2ae37ef4bbcb91a83d02ccc5f7e23bb9320ccfb4d47a7f94f",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0008-memento-brief-projection.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0009-memento-subfolder-namespace.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
             "type": "wiki"
           }
         ]
@@ -2301,6 +2496,106 @@
       }
     },
     {
+      "key": "_memento/conventions/conventions.md",
+      "title": "Writing conventions",
+      "summary": "Conventions are operational guidance, not normal project-memory notes. They live under _memento/conventions/, are discovered from when_to_read: frontmatter, and are read through the convention mechanism when a workflow reaches the named circumstance.",
+      "bytes": 1517,
+      "lines": 33,
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "File naming",
+          "slug": "file-naming"
+        },
+        {
+          "level": 2,
+          "text": "Frontmatter",
+          "slug": "frontmatter"
+        },
+        {
+          "level": 2,
+          "text": "Body",
+          "slug": "body"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "_memento/conventions/summarising.md",
+      "title": "Writing summaries",
+      "summary": "Lead with the answer, not the question.",
+      "bytes": 1241,
+      "lines": 22,
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Heuristics",
+          "slug": "heuristics"
+        },
+        {
+          "level": 2,
+          "text": "Check",
+          "slug": "check"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
+      "key": "_memento/conventions/writing.md",
+      "title": "Writing memento memory",
+      "summary": "Write memento notes for project knowledge that should survive a task and is not obvious from the code. Keep task state, sequencing, blockers, and close notes in the task store; keep this vault for design decisions, durable constraints, and discoveries a future implementation loop should inherit.",
+      "bytes": 1650,
+      "lines": 26,
+      "tags": [],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Write when",
+          "slug": "write-when"
+        },
+        {
+          "level": 2,
+          "text": "Do not write",
+          "slug": "do-not-write"
+        },
+        {
+          "level": 2,
+          "text": "Shape",
+          "slug": "shape"
+        }
+      ],
+      "mode": "append-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "",
+      "summary_sha": "",
+      "summary_state": "missing",
+      "links": {
+        "out": [],
+        "in": []
+      }
+    },
+    {
       "key": "_memento/skills/write.md",
       "title": "Writing to the memento vault",
       "summary": "Use before creating or updating any note in the memento vault (memento-memory/). Loads the project writing guide and the safe-write rules so durable knowledge lands correctly and read-only notes are not corrupted.",
@@ -2358,8 +2653,8 @@
       "key": "a-uat/run-report.md",
       "title": "A-UAT run report",
       "summary": "Append-only-in-practice results log from the A-UAT runner against the ADR-0026 test matrix. One row per model x arm x behavior x trial cell, with tool-log evidence and a provisional result. Resumable - the batch driver skips cells already recorded for the current frozen_at. Rows flagged review=yes need human adjudication. (Mode is living so the header can be restructured during the run; harden to append-only once the run set is complete.)",
-      "bytes": 27120,
-      "lines": 132,
+      "bytes": 30202,
+      "lines": 146,
       "tags": [
         "a-uat",
         "results",
@@ -2375,6 +2670,11 @@
           "level": 2,
           "text": "Results",
           "slug": "results"
+        },
+        {
+          "level": 2,
+          "text": "Determination - 2026-06-26",
+          "slug": "determination-2026-06-26"
         }
       ],
       "mode": "living",
@@ -3243,18 +3543,19 @@
     }
   ],
   "tags": {
+    "_memento": 2,
     "a-uat": 3,
-    "agents": 13,
+    "agents": 14,
     "audit": 1,
     "beads": 2,
     "bootloader": 2,
-    "brief": 3,
-    "cli": 1,
+    "brief": 4,
+    "cli": 2,
     "compile": 5,
     "config": 1,
     "configuration": 1,
     "convention": 1,
-    "conventions": 2,
+    "conventions": 4,
     "design-philosophy": 1,
     "distribution": 1,
     "doctor": 1,
@@ -3273,13 +3574,13 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 34,
+    "memento": 36,
     "mode": 3,
-    "namespace": 2,
+    "namespace": 3,
     "obsidian": 4,
     "okf": 3,
     "open-question": 4,
-    "orient": 6,
+    "orient": 7,
     "philosophy": 1,
     "portability": 2,
     "proposal": 4,
@@ -3291,7 +3592,7 @@
     "roles": 1,
     "schema": 2,
     "scope": 1,
-    "skills": 4,
+    "skills": 5,
     "staleness": 2,
     "states": 1,
     "summaries": 1,
