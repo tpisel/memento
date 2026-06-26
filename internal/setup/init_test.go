@@ -2,6 +2,7 @@ package setup
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -228,6 +229,193 @@ func TestInitBootloaderIsIdempotent(t *testing.T) {
 	}
 	if count := strings.Count(secondHook, "# memento:start"); count != 1 {
 		t.Fatalf("pre-commit hook start sentinel count = %d, want 1; contents = %q", count, secondHook)
+	}
+}
+
+func TestInitInstallsClaudeOrientSessionStartHook(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, ".claude/settings.json", `{
+  "permissions": {"allow": ["Bash"]},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "/keep/pre-write.sh"}]}
+    ],
+    "SessionStart": [
+      {"matcher": "startup", "hooks": [{"type": "command", "command": "/keep/session.sh"}]}
+    ]
+  }
+}
+`)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	settings := readClaudeSettings(t, repo)
+	hooks := settingsObject(t, settings, "hooks")
+	sessionStart := settingsArray(t, hooks, "SessionStart")
+	if len(sessionStart) != 2 {
+		t.Fatalf("SessionStart hooks = %#v, want existing plus memento hook", sessionStart)
+	}
+	if !settingsJSONContainsCommand(sessionStart, "/keep/session.sh") {
+		t.Fatalf("SessionStart hooks = %#v, want existing hook preserved", sessionStart)
+	}
+
+	command := filepath.Join(repo, ".claude", "memento-orient-session-start.sh")
+	if !settingsJSONContainsCommand(sessionStart, command) {
+		t.Fatalf("SessionStart hooks = %#v, want memento command %q", sessionStart, command)
+	}
+	if !settingsJSONContainsCommand(settingsArray(t, hooks, "PreToolUse"), "/keep/pre-write.sh") {
+		t.Fatalf("hooks = %#v, want unrelated PreToolUse hook preserved", hooks)
+	}
+
+	script := readSetupFile(t, repo, ".claude/memento-orient-session-start.sh")
+	if !strings.Contains(script, "memento compile") || !strings.Contains(script, "memento orient") {
+		t.Fatalf("Claude orient script = %q, want compile and orient commands", script)
+	}
+}
+
+func TestInitUpdatesExistingClaudeOrientHookWithoutDuplicating(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, ".claude/settings.json", `{
+  "hooks": {
+    "SessionStart": [
+      {"matcher": "startup", "hooks": [{"type": "command", "command": "/old/memento-orient-session-start.sh"}]}
+    ]
+  }
+}
+`)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	settings := readClaudeSettings(t, repo)
+	sessionStart := settingsArray(t, settingsObject(t, settings, "hooks"), "SessionStart")
+	command := filepath.Join(repo, ".claude", "memento-orient-session-start.sh")
+	if count := settingsJSONCommandCount(sessionStart, command); count != 1 {
+		t.Fatalf("memento SessionStart command count = %d, want 1; hooks = %#v", count, sessionStart)
+	}
+	if settingsJSONContainsCommand(sessionStart, "/old/memento-orient-session-start.sh") {
+		t.Fatalf("SessionStart hooks = %#v, want old memento command replaced", sessionStart)
+	}
+}
+
+func TestClaudeOrientHookRunsCompileBeforeOrient(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Claude hook is a bash script")
+	}
+
+	repo := t.TempDir()
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "calls.log")
+	writeSetupFile(t, binDir, "memento", `#!/bin/sh
+printf '%s\n' "$1" >> "$MEMENTO_TEST_LOG"
+case "$1" in
+  compile) exit 0 ;;
+  orient) printf 'ORIENT OK\n'; exit 0 ;;
+  *) exit 2 ;;
+esac
+`)
+	if err := os.Chmod(filepath.Join(binDir, "memento"), 0o755); err != nil {
+		t.Fatalf("chmod fake memento: %v", err)
+	}
+
+	stdout := runClaudeOrientHook(t, repo, binDir, logPath, "")
+	gotLog := readSetupFile(t, filepath.Dir(logPath), filepath.Base(logPath))
+	if gotLog != "compile\norient\n" {
+		t.Fatalf("memento call log = %q, want compile before orient", gotLog)
+	}
+	if !strings.Contains(hookAdditionalContext(t, stdout), "ORIENT OK") {
+		t.Fatalf("hook stdout = %q, want orient output in additionalContext", stdout)
+	}
+}
+
+func TestClaudeOrientHookRunsOrientWhenCompileFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Claude hook is a bash script")
+	}
+
+	repo := t.TempDir()
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "calls.log")
+	writeSetupFile(t, binDir, "memento", `#!/bin/sh
+printf '%s\n' "$1" >> "$MEMENTO_TEST_LOG"
+case "$1" in
+  compile) printf 'compile broke\n' >&2; exit 42 ;;
+  orient) printf 'ORIENT AFTER FAILURE\n'; exit 0 ;;
+  *) exit 2 ;;
+esac
+`)
+	if err := os.Chmod(filepath.Join(binDir, "memento"), 0o755); err != nil {
+		t.Fatalf("chmod fake memento: %v", err)
+	}
+
+	stdout := runClaudeOrientHook(t, repo, binDir, logPath, "")
+	gotLog := readSetupFile(t, filepath.Dir(logPath), filepath.Base(logPath))
+	if gotLog != "compile\norient\n" {
+		t.Fatalf("memento call log = %q, want compile failure followed by orient", gotLog)
+	}
+	context := hookAdditionalContext(t, stdout)
+	if !strings.Contains(context, "memento compile failed; continuing with memento orient.") {
+		t.Fatalf("additionalContext = %q, want concise compile failure note", context)
+	}
+	if !strings.Contains(context, "ORIENT AFTER FAILURE") {
+		t.Fatalf("additionalContext = %q, want orient output after compile failure", context)
+	}
+}
+
+func TestInitInstallsClaudeWriteSkillFromVaultSource(t *testing.T) {
+	repo := t.TempDir()
+	source := "---\nname: memento-write\n---\n# Custom write skill\n\nRead the local guide first.\n"
+	writeSetupFile(t, repo, "memory/_memento/skills/write.md", source)
+	writeSetupFile(t, repo, ".claude/skills/other/SKILL.md", "# Other skill\n")
+	writeSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md", "# Old generated skill\n")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
+	if got != source {
+		t.Fatalf("installed write skill = %q, want vault source %q", got, source)
+	}
+	if other := readSetupFile(t, repo, ".claude/skills/other/SKILL.md"); other != "# Other skill\n" {
+		t.Fatalf("unrelated skill changed to %q", other)
+	}
+}
+
+func TestInitScaffoldsDefaultWriteSkillSource(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	source := readSetupFile(t, repo, "memory/_memento/skills/write.md")
+	installed := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
+	if source != installed {
+		t.Fatalf("installed write skill differs from source\nsource:\n%s\ninstalled:\n%s", source, installed)
+	}
+	for _, want := range []string{
+		"name: memento-write",
+		"Before authoring a vault write:",
+		"memento read _memento/writing",
+		"memento write",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("_memento/skills/write.md = %q, want it to contain %q", source, want)
+		}
+	}
+	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
+	if !strings.Contains(manifest, `"key": "_memento/skills/write.md"`) {
+		t.Fatalf("manifest = %q, want scaffolded write skill source indexed", manifest)
 	}
 }
 
@@ -942,4 +1130,98 @@ func countSetupLine(contents, want string) int {
 		}
 	}
 	return count
+}
+
+func readClaudeSettings(t *testing.T, repo string) map[string]any {
+	t.Helper()
+
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(readSetupFile(t, repo, ".claude/settings.json")), &settings); err != nil {
+		t.Fatalf("unmarshal .claude/settings.json: %v", err)
+	}
+	return settings
+}
+
+func settingsObject(t *testing.T, parent map[string]any, key string) map[string]any {
+	t.Helper()
+
+	value, ok := parent[key].(map[string]any)
+	if !ok {
+		t.Fatalf("%s = %#v, want object", key, parent[key])
+	}
+	return value
+}
+
+func settingsArray(t *testing.T, parent map[string]any, key string) []any {
+	t.Helper()
+
+	value, ok := parent[key].([]any)
+	if !ok {
+		t.Fatalf("%s = %#v, want array", key, parent[key])
+	}
+	return value
+}
+
+func settingsJSONContainsCommand(value any, command string) bool {
+	return settingsJSONCommandCount(value, command) > 0
+}
+
+func settingsJSONCommandCount(value any, command string) int {
+	switch typed := value.(type) {
+	case []any:
+		count := 0
+		for _, item := range typed {
+			count += settingsJSONCommandCount(item, command)
+		}
+		return count
+	case map[string]any:
+		count := 0
+		if got, ok := typed["command"].(string); ok && got == command {
+			count++
+		}
+		for _, item := range typed {
+			count += settingsJSONCommandCount(item, command)
+		}
+		return count
+	default:
+		return 0
+	}
+}
+
+func runClaudeOrientHook(t *testing.T, repo, binDir, logPath, extraEnv string) string {
+	t.Helper()
+
+	cmd := exec.Command(filepath.Join(repo, ".claude", "memento-orient-session-start.sh"))
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"MEMENTO_TEST_LOG="+logPath,
+	)
+	if extraEnv != "" {
+		cmd.Env = append(cmd.Env, extraEnv)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run Claude orient hook: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Claude orient hook stderr = %q, want empty", stderr.String())
+	}
+	return stdout.String()
+}
+
+func hookAdditionalContext(t *testing.T, stdout string) string {
+	t.Helper()
+
+	var payload struct {
+		HookSpecificOutput struct {
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("unmarshal hook stdout %q: %v", stdout, err)
+	}
+	return payload.HookSpecificOutput.AdditionalContext
 }

@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,9 @@ const (
 	ConfigFileName          = "config.toml"
 	agentsInstructionsFile  = "AGENTS.md"
 	claudeInstructionsFile  = "CLAUDE.md"
+	claudeSettingsFile      = ".claude/settings.json"
+	claudeOrientHookScript  = ".claude/memento-orient-session-start.sh"
+	claudeWriteSkillFile    = ".claude/skills/memento-write/SKILL.md"
 	bootloaderStartSentinel = "<!-- memento:start -->"
 	bootloaderEndSentinel   = "<!-- memento:end -->"
 	hookStartSentinel       = "# memento:start"
@@ -69,6 +73,24 @@ var defaultUsingMementoGuide = strings.Join([]string{
 	"This guide is only a gentle starter. You can edit it, move ideas from it into your own notes, or remove it once it stops being useful.",
 	"",
 	"If you don't want this file, deleting it is fine - memento does not depend on it.",
+	"",
+}, "\n")
+
+var defaultWriteSkill = strings.Join([]string{
+	"---",
+	"name: memento-write",
+	"description: Use before creating or updating any note in the memento vault. Loads the project writing guide and the safe-write rules so durable knowledge lands correctly and read-only notes are not corrupted.",
+	"---",
+	"",
+	"# Writing to the memento vault",
+	"",
+	"Before authoring a vault write:",
+	"",
+	"1. **Read the writing guide.** Run `memento read _memento/writing` to load when/what to write, what to keep in the task store instead, and the expected note shape. Do this before composing, not after.",
+	"2. **Write through memento, not native file edits.** Use `memento write` so the mode check (`append-only` / `living` / `read-only`) is applied. A native file edit of a vault note bypasses that check and can silently overwrite a `read-only` note - the read-only guarantee lives in the write verb, not in the file.",
+	"3. **Keep it scannable.** Durable notes should read cleanly from `memento brief`; lead the summary with the load-bearing fact or decision.",
+	"",
+	"This skill is a delivery surface for `_memento/writing.md` - that file is the source of truth. If the two ever disagree, the guide wins.",
 	"",
 }, "\n")
 
@@ -127,6 +149,9 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensureMementoIgnore(v); err != nil {
 		return vault.Vault{}, err
 	}
+	if err := ensureWriteSkillSource(v); err != nil {
+		return vault.Vault{}, err
+	}
 	if err := ensureManifest(v); err != nil {
 		return vault.Vault{}, err
 	}
@@ -137,6 +162,9 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 		return vault.Vault{}, err
 	}
 	if err := ensurePreCommitHook(root, v); err != nil {
+		return vault.Vault{}, err
+	}
+	if err := ensureClaudeAgentIntegration(root, v); err != nil {
 		return vault.Vault{}, err
 	}
 
@@ -335,6 +363,235 @@ func ensurePreCommitHook(repoRoot string, v vault.Vault) error {
 		return fmt.Errorf("make pre-commit hook executable: %w", err)
 	}
 	return nil
+}
+
+func ensureClaudeAgentIntegration(repoRoot string, v vault.Vault) error {
+	if err := ensureClaudeOrientHookScript(repoRoot); err != nil {
+		return err
+	}
+	if err := ensureClaudeSettings(repoRoot); err != nil {
+		return err
+	}
+	if err := ensureClaudeWriteSkill(repoRoot, v); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ensureWriteSkillSource(v vault.Vault) error {
+	path := filepath.Join(v.Root, vault.ToolDirName, "skills", "write.md")
+	if info, err := os.Stat(path); err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("%s already exists as a directory", path)
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat _memento write skill source: %w", err)
+	}
+	if err := writeNewFile(path, []byte(defaultWriteSkill), 0o644); err != nil {
+		return fmt.Errorf("create _memento write skill source: %w", err)
+	}
+	return nil
+}
+
+func ensureClaudeWriteSkill(repoRoot string, v vault.Vault) error {
+	sourcePath := filepath.Join(v.Root, vault.ToolDirName, "skills", "write.md")
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return fmt.Errorf("read _memento write skill source: %w", err)
+	}
+
+	path := filepath.Join(repoRoot, filepath.FromSlash(claudeWriteSkillFile))
+	if err := writeFileIfChanged(path, source, 0o644); err != nil {
+		return fmt.Errorf("install Claude write skill: %w", err)
+	}
+	return nil
+}
+
+func ensureClaudeOrientHookScript(repoRoot string) error {
+	path := filepath.Join(repoRoot, filepath.FromSlash(claudeOrientHookScript))
+	script := claudeOrientHookScriptContents(repoRoot)
+	if err := writeFileIfChanged(path, []byte(script), 0o755); err != nil {
+		return fmt.Errorf("install Claude orient hook script: %w", err)
+	}
+	if err := ensureExecutable(path); err != nil {
+		return fmt.Errorf("make Claude orient hook script executable: %w", err)
+	}
+	return nil
+}
+
+func claudeOrientHookScriptContents(repoRoot string) string {
+	return strings.Join([]string{
+		"#!/usr/bin/env bash",
+		"set -u",
+		"",
+		"repo_root=" + shellQuote(repoRoot),
+		"",
+		"json_escape() {",
+		"  local value=$1",
+		"  value=${value//\\\\/\\\\\\\\}",
+		"  value=${value//\\\"/\\\\\\\"}",
+		"  value=${value//$'\\b'/\\\\b}",
+		"  value=${value//$'\\f'/\\\\f}",
+		"  value=${value//$'\\n'/\\\\n}",
+		"  value=${value//$'\\r'/\\\\r}",
+		"  value=${value//$'\\t'/\\\\t}",
+		"  printf '%s' \"$value\"",
+		"}",
+		"",
+		"emit_context() {",
+		"  local context=$1",
+		"  printf '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"%s\"}}\\n' \"$(json_escape \"$context\")\"",
+		"}",
+		"",
+		"if ! command -v memento >/dev/null 2>&1; then",
+		"  emit_context 'memento SessionStart hook: memento not on PATH; orient unavailable.'",
+		"  exit 0",
+		"fi",
+		"",
+		"compile_note=''",
+		"if ! compile_output=\"$(cd \"$repo_root\" && memento compile 2>&1)\"; then",
+		"  compile_note=$'memento compile failed; continuing with memento orient.\\n'",
+		"fi",
+		"",
+		"orient_output=\"$(cd \"$repo_root\" && memento orient 2>&1)\"",
+		"orient_status=$?",
+		"if [ \"$orient_status\" -ne 0 ]; then",
+		"  orient_output=$'memento orient failed.\\n'\"$orient_output\"",
+		"fi",
+		"",
+		"emit_context \"$compile_note$orient_output\"",
+		"",
+	}, "\n")
+}
+
+func ensureClaudeSettings(repoRoot string) error {
+	path := filepath.Join(repoRoot, filepath.FromSlash(claudeSettingsFile))
+	settings := map[string]any{}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read Claude settings: %w", err)
+		}
+	} else if len(strings.TrimSpace(string(data))) > 0 {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return fmt.Errorf("parse Claude settings: %w", err)
+		}
+	}
+
+	hooks, err := objectSetting(settings, "hooks")
+	if err != nil {
+		return err
+	}
+	sessionStart, err := arraySetting(hooks, "SessionStart")
+	if err != nil {
+		return err
+	}
+
+	command := filepath.Join(repoRoot, filepath.FromSlash(claudeOrientHookScript))
+	hooks["SessionStart"] = upsertClaudeOrientHook(sessionStart, command)
+	settings["hooks"] = hooks
+
+	updated, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("render Claude settings: %w", err)
+	}
+	updated = append(updated, '\n')
+	if string(updated) == string(data) {
+		return nil
+	}
+	if err := writeFileIfChanged(path, updated, 0o644); err != nil {
+		return fmt.Errorf("write Claude settings: %w", err)
+	}
+	return nil
+}
+
+func objectSetting(parent map[string]any, key string) (map[string]any, error) {
+	if raw, ok := parent[key]; ok {
+		object, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("Claude settings %s must be an object", key)
+		}
+		return object, nil
+	}
+	object := map[string]any{}
+	parent[key] = object
+	return object, nil
+}
+
+func arraySetting(parent map[string]any, key string) ([]any, error) {
+	if raw, ok := parent[key]; ok {
+		array, ok := raw.([]any)
+		if !ok {
+			return nil, fmt.Errorf("Claude settings hooks.%s must be an array", key)
+		}
+		return array, nil
+	}
+	array := []any{}
+	parent[key] = array
+	return array, nil
+}
+
+func upsertClaudeOrientHook(entries []any, command string) []any {
+	managed := claudeOrientHookEntry(command)
+	cleaned := make([]any, 0, len(entries)+1)
+	for _, entry := range entries {
+		object, ok := entry.(map[string]any)
+		if !ok {
+			cleaned = append(cleaned, entry)
+			continue
+		}
+		hooks, ok := object["hooks"].([]any)
+		if !ok {
+			cleaned = append(cleaned, entry)
+			continue
+		}
+
+		filtered := make([]any, 0, len(hooks))
+		for _, hook := range hooks {
+			if isMementoOrientHook(hook) {
+				continue
+			}
+			filtered = append(filtered, hook)
+		}
+		if len(filtered) == len(hooks) {
+			cleaned = append(cleaned, entry)
+			continue
+		}
+		if len(filtered) == 0 {
+			continue
+		}
+		object["hooks"] = filtered
+		cleaned = append(cleaned, object)
+	}
+	cleaned = append(cleaned, managed)
+	return cleaned
+}
+
+func claudeOrientHookEntry(command string) map[string]any {
+	return map[string]any{
+		"matcher": "startup|resume|compact",
+		"hooks": []any{
+			map[string]any{
+				"type":    "command",
+				"command": command,
+			},
+		},
+	}
+}
+
+func isMementoOrientHook(hook any) bool {
+	object, ok := hook.(map[string]any)
+	if !ok {
+		return false
+	}
+	command, ok := object["command"].(string)
+	if !ok {
+		return false
+	}
+	base := filepath.Base(command)
+	return base == filepath.Base(claudeOrientHookScript) || base == "orient-session-start.sh"
 }
 
 func preCommitHookBlock(repoRoot string, v vault.Vault) string {
@@ -551,6 +808,24 @@ func writeNewFile(path string, contents []byte, perm os.FileMode) error {
 
 	if _, err := file.Write(contents); err != nil {
 		return fmt.Errorf("write agent instructions: %w", err)
+	}
+	return nil
+}
+
+func writeFileIfChanged(path string, contents []byte, perm os.FileMode) error {
+	if data, err := os.ReadFile(path); err == nil {
+		if string(data) == string(contents) {
+			return nil
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, contents, perm); err != nil {
+		return err
 	}
 	return nil
 }
