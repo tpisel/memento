@@ -65,7 +65,7 @@ var defaultUsingMementoGuide = strings.Join([]string{
 	"",
 	"`brief.md` is auto-regenerated from `.memento/manifest.json`. It is the short agent-facing view of your memory vault: titles, summaries, tags, headings, and modes. Because it is regenerated, edits to `brief.md` will be replaced the next time memento compiles the vault.",
 	"",
-	"Tool-read files such as `writing.md`, `review.md`, and `audit.md` let you describe local conventions in normal markdown. Memento reads them only when their corresponding workflows need them.",
+	"`conventions/` holds operational guides written in normal markdown, such as `writing.md`. Each declares a `when_to_read:` line naming when it applies. `memento orient` surfaces those prompts, and an agent loads the body with `memento convention <name>` (for example `memento convention writing`) when the moment arrives.",
 	"",
 	"This guide is only a gentle starter. You can edit it, move ideas from it into your own notes, or remove it once it stops being useful.",
 	"",

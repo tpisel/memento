@@ -1211,7 +1211,8 @@ func assertUsingMementoGuide(t *testing.T, got string) {
 		"# Using Memento",
 		"`_memento/` is the human-readable tool namespace for this vault.",
 		"`brief.md` is auto-regenerated from `.memento/manifest.json`",
-		"Tool-read files such as `writing.md`, `review.md`, and `audit.md`",
+		"`conventions/` holds operational guides",
+		"`memento convention <name>`",
 		"If you don't want this file, deleting it is fine",
 	} {
 		if !strings.Contains(got, want) {
@@ -1222,6 +1223,9 @@ func assertUsingMementoGuide(t *testing.T, got string) {
 		"mode: read-only",
 		"<!-- memento:readme:start -->",
 		"<!-- memento:readme:end -->",
+		"Tool-read files such as",
+		"`review.md`",
+		"`audit.md`",
 	} {
 		if strings.Contains(got, unwanted) {
 			t.Fatalf("_memento/Using Memento.md = %q, want it not to contain %q", got, unwanted)
