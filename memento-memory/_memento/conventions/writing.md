@@ -21,6 +21,27 @@ Write memento notes for project knowledge that should survive a task and is not 
 - Do not turn task close notes into durable design docs; extract only the part that changes project understanding.
 - Do not guess. If evidence is thin, leave a task comment or an open-question note instead of ratifying it as fact.
 
+## Frontmatter
+
+Every durable note carries this frontmatter. Copy the template and fill it in; do not reconstruct the schema from memory.
+
+```yaml
+---
+title: Optional. Overrides the H1-derived manifest title; omit to use the H1.
+summary: "Lead with the load-bearing fact or decision. This is the text memento brief shows."
+tags:
+  - one-or-more
+  - lowercase-tags
+mode: living
+status: reference
+date: 2026-06-26
+---
+```
+
+- `title`, `summary`, `tags`, `mode` are **tool-consumed** (ADR-0014): memento reads them into the manifest and enforces `mode`. Spell them exactly — unknown keys are silently ignored, so `mod:` or `tag:` fails without warning.
+- `mode` is one of `append-only`, `living`, `read-only` (ADR-0015). Absent `mode:` defaults to `append-only`. Use `living` for reference notes that evolve in place, `read-only` for frozen records, `append-only` for logs/journals.
+- `status` and `date` are **convention** fields: memento parses but ignores them. They exist for human discipline and are not required by the tool. Keep `date` as `YYYY-MM-DD`.
+
 ## Shape
 
 Keep durable notes short enough to scan from `memento brief`. Summaries should lead with the load-bearing fact or decision. ADRs are for accepted architecture or workflow decisions; evolving reference notes are for material expected to keep changing.
