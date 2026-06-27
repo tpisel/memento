@@ -1210,13 +1210,23 @@ func insertOrReplaceSentinelBlockWith(contents, block, startSentinel, endSentine
 // preceding [table] and silently become e.g. `model.hooks`. Leading comments,
 // blank lines, and any pre-table top-level keys stay above the block; with no
 // table header there is no table scope to escape, so the block is appended.
+//
+// A line starting with '[' is only a table header at bracket depth 0. Inside a
+// multi-line array value (`deny = [\n  ["shell"],\n]`) the continuation lines also
+// start with '[', so we track bracket nesting and skip them — inserting the block
+// there would split the array and emit invalid TOML, breaking codex config load.
 func insertSentinelBlockAtTop(contents, block string) string {
 	lines := strings.Split(contents, "\n")
 	insertAt := -1
+	depth := 0
 	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "[") {
+		if depth == 0 && strings.HasPrefix(strings.TrimSpace(line), "[") {
 			insertAt = i
 			break
+		}
+		depth += bracketDepthDelta(line)
+		if depth < 0 {
+			depth = 0
 		}
 	}
 	if insertAt == -1 {
@@ -1234,6 +1244,32 @@ func insertSentinelBlockAtTop(contents, block string) string {
 	b.WriteString("\n\n")
 	b.WriteString(after)
 	return b.String()
+}
+
+// bracketDepthDelta returns the net change in TOML array nesting for one line:
+// '[' opens, ']' closes. Brackets inside strings or after a '#' comment do not
+// count. It is a line heuristic, not a TOML parse (memento has no TOML dependency),
+// enough to tell a multi-line array's continuation lines apart from table headers.
+func bracketDepthDelta(line string) int {
+	delta := 0
+	var quote rune
+	for _, r := range line {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '\'':
+			quote = r
+		case r == '#':
+			return delta
+		case r == '[':
+			delta++
+		case r == ']':
+			delta--
+		}
+	}
+	return delta
 }
 
 func appendSentinelBlock(contents, block string) string {

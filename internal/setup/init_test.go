@@ -787,6 +787,44 @@ func TestInitPlacesCodexHooksAboveLeadingCommentedTable(t *testing.T) {
 	assertCodexHooksTopLevel(t, got)
 }
 
+func TestInitPlacesCodexHooksOutsideLeadingMultiLineArray(t *testing.T) {
+	repo := t.TempDir()
+	markCodexRepo(t, repo)
+	// A config that opens with a multi-line array whose continuation lines start
+	// with '[' (a nested array). The naive "first line starting with [" scan trips
+	// on the continuation and splits the array, emitting invalid TOML. The block
+	// must land outside the array and stay top-level (before the first real table).
+	existing := "deny = [\n  [\"shell\"],\n]\n\n[model]\nname = \"gpt\"\n"
+	writeSetupFile(t, repo, ".codex/config.toml", existing)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, ".codex/config.toml")
+	if !strings.Contains(got, `hooks = "hooks.json"`) {
+		t.Fatalf(".codex/config.toml = %q, want memento hooks wiring written", got)
+	}
+	// The block must not be inserted between `deny = [` and its closing `]`.
+	denyOpen := strings.Index(got, "deny = [")
+	arrayClose := strings.Index(got, "\n]")
+	hooksAt := strings.Index(got, `hooks = "hooks.json"`)
+	if denyOpen == -1 || arrayClose == -1 {
+		t.Fatalf(".codex/config.toml = %q, want the deny array preserved", got)
+	}
+	if hooksAt > denyOpen && hooksAt < arrayClose {
+		t.Fatalf(".codex/config.toml = %q, want hooks key outside the deny array, not split inside it", got)
+	}
+	// And it must remain top-level: before the [model] table, after the array.
+	modelAt := strings.Index(got, "[model]")
+	if modelAt == -1 || hooksAt > modelAt {
+		t.Fatalf(".codex/config.toml = %q, want hooks key before the [model] table so it stays top-level", got)
+	}
+	if hooksAt < arrayClose {
+		t.Fatalf(".codex/config.toml = %q, want hooks key after the closed deny array", got)
+	}
+}
+
 func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {
 	repo := t.TempDir()
 	writeSetupFile(t, repo, ".gitignore", "build/\n")
