@@ -2712,8 +2712,8 @@
       "key": "a-uat/run-report.md",
       "title": "A-UAT run report",
       "summary": "Append-only-in-practice results log from the A-UAT runner against the ADR-0026 test matrix. One row per model x arm x behavior x trial cell, with tool-log evidence and a provisional result. Resumable - the batch driver skips cells already recorded for the current frozen_at. Rows flagged review=yes need human adjudication. (Mode is living so the header can be restructured during the run; harden to append-only once the run set is complete.)",
-      "bytes": 30202,
-      "lines": 146,
+      "bytes": 35234,
+      "lines": 173,
       "tags": [
         "a-uat",
         "results",
@@ -2734,6 +2734,16 @@
           "level": 2,
           "text": "Determination - 2026-06-26",
           "slug": "determination-2026-06-26"
+        },
+        {
+          "level": 2,
+          "text": "Session: 2026-06-27 — post-ADR-0031 H-only run (freeze 918e019)",
+          "slug": "session-2026-06-27-post-adr-0031-h-only-run-freeze-918e019"
+        },
+        {
+          "level": 3,
+          "text": "Findings (freeze 918e019, 2026-06-27)",
+          "slug": "findings-freeze-918e019-2026-06-27"
         }
       ],
       "mode": "living",
@@ -2761,9 +2771,9 @@
     {
       "key": "a-uat/test-matrix.md",
       "title": "A-UAT test matrix",
-      "summary": "Post-ADR-0031 manual A-UAT matrix for the validation gate. One shipping arm (H, the branch-tip hooks-only build) runs the native-write behaviours (N1-N5) plus a codex orient-injection check (N6); opus runs the full set, sonnet a single N4 spot check, codex N1-N6. Defines the disposable probe prompts, the upgraded evidence model (cross-reference the b19 check-write decision log against a post-run vault git diff; a b11 drift alarm is a replay-fidelity finding), and the three pre-registered decision rules — rule 1 is now an absolute leak bar on H (~0 hard-bypass / silent-leak), not a non-regression vs the dropped W control — that turn observed leaks into the ADR-0031 ship/skip call.",
-      "bytes": 17683,
-      "lines": 172,
+      "summary": "Post-ADR-0031 manual A-UAT matrix for the validation gate. One shipping arm (H, the branch-tip hooks-only build) runs the native-write behaviours (N1-N5) plus a codex orient-injection check (N6); opus runs the full set, sonnet a single N4 spot check, codex N1-N6. Defines the disposable probe prompts, the upgraded evidence model (cross-reference the b19 check-write decision log against a post-run vault git diff; a b11 drift alarm is a replay-fidelity finding), and the three pre-registered decision rules — rule 1 is now an absolute leak bar on H (~0 hard-bypass / silent-leak), not a non-regression vs the dropped W control — that turn observed leaks into the ADR-0031 ship/skip call. Per the loosening stance settled 2026-06-27 (memento-ryr.32), a self-serve `write-mode`/`unlock` that thaws a walled note without explicit user authorisation is now an `unauthorised_loosening` finding, not a legitimate recovery: rule 2 no longer blesses it and the leak taxonomy names it.",
+      "bytes": 20442,
+      "lines": 173,
       "tags": [
         "a-uat",
         "agents",
@@ -2856,8 +2866,8 @@
       "mode": "living",
       "orient": false,
       "updated": "",
-      "body_sha": "8b8be57bfa9a6666ea26418265cd2009086fac4d2b296373897f6043dcf66e51",
-      "summary_sha": "0a6bb8a65125cf786cb1276182b4c6508bb10984822a24d0d367aaf24e3382dc",
+      "body_sha": "2357d8536353b183ce893a75217c5e0e79077ccc82b90763a64d65ee11b539ff",
+      "summary_sha": "38bd478d356d5f829efc04b39af8014fa1ca3d8eac99e575c7676b5b4a04b6d3",
       "summary_state": "current",
       "links": {
         "out": [
@@ -3324,9 +3334,9 @@
     {
       "key": "codex-cli lifecycle hooks contract.md",
       "title": "codex-cli lifecycle hooks contract",
-      "summary": "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml/hooks.json schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences.",
-      "bytes": 14249,
-      "lines": 240,
+      "summary": "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. CRITICAL (memento-ryr.31): codex declares hooks INLINE only — `hooks` must be a HooksToml struct ([[hooks.<Event>]] array-of-tables); the path-indirection form `hooks = \\\"hooks.json\\\"` is REJECTED at config load (`invalid type: string, expected struct HooksToml`), so memento ships no hooks.json. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences.",
+      "bytes": 15384,
+      "lines": 249,
       "tags": [
         "agents",
         "codex",
@@ -3400,9 +3410,9 @@
       "mode": "living",
       "orient": false,
       "updated": "",
-      "body_sha": "f9a62d13737dead3b5bc9d51616c68c26c514292a106b846e4de7a98e94303ae",
-      "summary_sha": "7c8d709dde1e24da2f15c83bb7cd16c82fdd3faba3084353f2f19228e68c1e4e",
-      "summary_state": "stale",
+      "body_sha": "ee0ab551572edba172b17267abaa1667ea65f904fe7c422f46f6cab0d07b775c",
+      "summary_sha": "e203a34d81e1b25309d4a10d3f7f0f9b2c6a8cf0b0cdf9a66f778a90f043e692",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -3424,6 +3434,16 @@
             "target": "check-write output contract.md",
             "type": "wiki",
             "resolved": true
+          },
+          {
+            "target": "hooks.<Event>",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "hooks.<Event>.hooks",
+            "type": "wiki",
+            "resolved": false
           }
         ],
         "in": []

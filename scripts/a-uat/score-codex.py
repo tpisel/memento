@@ -69,7 +69,10 @@ def load_codex(path: str):
                 for ch in item.get("changes", []) or []:
                     events.append(("file", ch.get("path", ""), ch.get("kind", "")))
             elif t == "item.completed" and itype == "agent_message":
-                final_text = item.get("text", "") or final_text
+                txt = item.get("text", "")
+                # Keep agent prose in stream order for the loosening stop-and-confirm check.
+                events.append(("text", txt))
+                final_text = txt or final_text
             blob = json.dumps(obj)
             turn_error = obj.get("error") if t.startswith("turn") else None
             # Rate/credit limits live ONLY on the error / turn.failed paths. Agent
