@@ -183,9 +183,13 @@ permissionDecision:deny"). Other non-zero exits are not the block path.
   `matcher` and a nested `[[hooks.<Event>.hooks]]` command handler pointing at a
   `.codex/memento-*.sh` copy of the same dumb-pipe script Claude uses (byte-identical,
   pinned by a drift test). **There is no `.codex/hooks.json`** — codex rejects the
-  path-indirection form (above). PreToolUse/PostToolUse matcher is the broad
-  `apply_patch|Shell` (codex tool_name strings are unpinned — over-firing is harmless).
-  Each handler carries `timeout_sec` (gate 5, compile 30). The block is **appended at
+  path-indirection form (above). PreToolUse/PostToolUse matcher is **`apply_patch`**
+  (exact name, not regex; the only confirmed hookable write tool — `Shell` was a dead
+  Claude-ism that never matched, see the apply_patch-only section). SessionStart
+  matcher is `startup|resume|clear|compact` — codex's session-start `source` enum, so
+  dropping `clear` skips orient on a clear-triggered session. Matcher fix landed in
+  memento-ryr.40 (init.go + scripts/a-uat/run-cell.sh). Each handler carries
+  `timeout_sec` (gate 5, compile 30). The block is **appended at
   the end** of config.toml: array-of-tables headers must follow every top-level key,
   and appending leaves nothing for them to capture (the b25/b27 top-insertion +
   bracket-depth machinery existed only for the bare `hooks = …` key and was removed).

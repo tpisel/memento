@@ -567,6 +567,18 @@ func TestInitInstallsCodexHooksWhenCodexDetected(t *testing.T) {
 	orientCommand := filepath.Join(repo, ".codex", "memento-orient-session-start.sh")
 	assertCodexInlineHook(t, config, "SessionStart", codexOrientHookMatcher, orientCommand, codexCompileTimeoutSec)
 
+	// Pin the literal matcher values (memento-ryr.40): codex matches EXACT tool
+	// names and EXACT SessionStart sources, not regex. The write gate is
+	// apply_patch-only ("Shell" never matched — PreToolUse does not fire for shell
+	// writes, ryr.39), and SessionStart must list `clear` or orient is skipped on a
+	// clear-triggered session.
+	if codexWriteHookMatcher != "apply_patch" {
+		t.Errorf("codexWriteHookMatcher = %q, want %q", codexWriteHookMatcher, "apply_patch")
+	}
+	if codexOrientHookMatcher != "startup|resume|clear|compact" {
+		t.Errorf("codexOrientHookMatcher = %q, want %q", codexOrientHookMatcher, "startup|resume|clear|compact")
+	}
+
 	if runtime.GOOS != "windows" {
 		for _, rel := range []string{
 			".codex/memento-pre-write-vault-guard.sh",

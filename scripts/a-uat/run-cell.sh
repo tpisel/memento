@@ -121,21 +121,21 @@ if [ "$model" = codex ]; then
     cat > "$CODEX_HOME/config.toml" <<EOF
 # A-UAT codex config (ADR-0031). Hooks declared inline; the hooks="path" form is rejected.
 [[hooks.SessionStart]]
-matcher = "startup|resume|compact"
+matcher = "startup|resume|clear|compact"
 [[hooks.SessionStart.hooks]]
 type = "command"
 command = "$wt/scripts/agent-hooks/orient-session-start.sh"
 timeout_sec = 30
 
 [[hooks.PreToolUse]]
-matcher = "apply_patch|Shell"
+matcher = "apply_patch"
 [[hooks.PreToolUse.hooks]]
 type = "command"
 command = "$wt/scripts/agent-hooks/pre-write-vault-guard.sh"
 timeout_sec = 5
 
 [[hooks.PostToolUse]]
-matcher = "apply_patch|Shell"
+matcher = "apply_patch"
 [[hooks.PostToolUse.hooks]]
 type = "command"
 command = "$wt/scripts/agent-hooks/post-write-compile.sh"
@@ -167,7 +167,7 @@ else
   fi
   if [ "$orient" = 1 ]; then
     [ -n "$hooks_json" ] && hooks_json+=","
-    hooks_json+="\"SessionStart\":[{\"matcher\":\"startup|resume|compact\",\"hooks\":[{\"type\":\"command\",\"command\":\"$wt/scripts/agent-hooks/orient-session-start.sh\"}]}]"
+    hooks_json+="\"SessionStart\":[{\"matcher\":\"startup|resume|clear|compact\",\"hooks\":[{\"type\":\"command\",\"command\":\"$wt/scripts/agent-hooks/orient-session-start.sh\"}]}]"
   fi
   settings="$work/settings.json"
   cat > "$settings" <<EOF

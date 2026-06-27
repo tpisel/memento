@@ -23,7 +23,7 @@ const (
 	claudeOrientHookScript    = ".claude/memento-orient-session-start.sh"
 	claudePreWriteHookScript  = ".claude/memento-pre-write-vault-guard.sh"
 	claudePostWriteHookScript = ".claude/memento-post-write-compile.sh"
-	claudeOrientHookMatcher   = "startup|resume|compact"
+	claudeOrientHookMatcher   = "startup|resume|clear|compact"
 	claudeWriteHookMatcher    = "Write|Edit|MultiEdit|Bash"
 
 	codexConfigDirName       = ".codex"
@@ -31,12 +31,13 @@ const (
 	codexOrientHookScript    = ".codex/memento-orient-session-start.sh"
 	codexPreWriteHookScript  = ".codex/memento-pre-write-vault-guard.sh"
 	codexPostWriteHookScript = ".codex/memento-post-write-compile.sh"
-	// codex's write surface is apply_patch (structured edits) + the shell tool
-	// (raw `>>` appends) — ADR-0031 "Multi-agent". The exact tool_name strings are
-	// unpinned by the b15 spike (tool_input is untyped), so this matcher is
-	// deliberately broad; over-firing is harmless because check-write is inert on
-	// non-vault targets and compile is idempotent. Confirmed at live-fire (A-UAT).
-	codexWriteHookMatcher  = "apply_patch|Shell"
+	// codex matches EXACT tool names (the `|` group is exact names, not regex), and
+	// the only confirmed hookable write tool in `codex exec` is apply_patch: the
+	// PreToolUse hook never fires for shell writes (memento-ryr.39), so a `Shell`
+	// entry matched nothing and falsely implied shell was gated. Keep it honest —
+	// apply_patch only. Over-firing is harmless (check-write is inert off-vault,
+	// compile is idempotent), but claiming coverage we don't have is not.
+	codexWriteHookMatcher  = "apply_patch"
 	codexOrientHookMatcher = claudeOrientHookMatcher
 	// PreToolUse is the latency-sensitive gate (the b15 spike used timeout_sec=5);
 	// the compile-backed hooks get a wider budget since compile is whole-vault.
