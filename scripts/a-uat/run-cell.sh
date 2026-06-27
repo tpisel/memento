@@ -45,7 +45,13 @@ case "$model" in
   *) echo "unknown model: $model" >&2; exit 2 ;;
 esac
 
-prompt_file="$script_dir/prompts/$behavior.txt"
+# N6 has no prompt of its own: the matrix runs it AS the N1 probe (same happy
+# native-write task) and differs only at scoring time, where the codex scorer checks
+# SessionStart orient-injection instead of the write landing. Route N6 → N1.txt so
+# the codex-H N6 cells actually run rather than aborting on a missing prompt.
+prompt_behavior="$behavior"
+[ "$behavior" = N6 ] && prompt_behavior=N1
+prompt_file="$script_dir/prompts/$prompt_behavior.txt"
 [ -f "$prompt_file" ] || { echo "no prompt for $behavior" >&2; exit 2; }
 
 # Build (and cache) the arm's memento binary FROM ITS OWN COMMIT: W's binary has the

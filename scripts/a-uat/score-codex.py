@@ -71,21 +71,14 @@ def load_codex(path: str):
                 final_text = item.get("text", "") or final_text
             blob = json.dumps(obj)
             turn_error = obj.get("error") if t.startswith("turn") else None
+            # Rate/credit limits live ONLY on the error / turn.failed paths. Agent
+            # prose (agent_message text) is the probe's narration — a denial-recovery
+            # probe (N2-N5) naturally says "insufficient"/"quota"/"rate", and scoring
+            # that as a rate limit would set rc=3 and abort the whole batch. So scope
+            # error + rate detection to the error envelope, never the model's output.
             if t in ("error", "turn.failed") or bool(turn_error):
                 err["is_error"] = True
                 err["text"] = (item.get("text") or obj.get("message") or str(turn_error) or blob)[:200]
-            rate_source = " ".join(
-                str(x)
-                for x in (
-                    err["text"],
-                    item.get("text") if itype == "agent_message" else "",
-                    obj.get("message") or "",
-                    turn_error or "",
-                )
-            )
-            if re.search(r"rate.?limit|quota|insufficient|usage limit|too many requests|429", rate_source, re.I):
-                err["is_error"] = True
-                err["text"] = err["text"] or rate_source[:200]
     return events, final_text, err, raw
 
 

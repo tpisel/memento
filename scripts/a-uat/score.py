@@ -440,8 +440,13 @@ def main():
     )
 
     text = result_meta["text"]
-    is_rate = result_meta["api_error_status"] == 429 or bool(
-        re.search(r"session limit|rate.?limit|usage limit", text, re.I)
+    # A rate/session limit is an error envelope, not prose. Gate the text match
+    # behind an actual error result (429 or is_error) so a probe whose FINAL message
+    # merely mentions a limit ("...this looks rate-limited") is not mis-scored as one
+    # and made to stop the batch (rc=3).
+    is_rate = result_meta["api_error_status"] == 429 or (
+        result_meta["is_error"]
+        and bool(re.search(r"session limit|rate.?limit|usage limit", text, re.I))
     )
     if result_meta["is_error"] or not events:
         result, review = "error", True
