@@ -2787,7 +2787,7 @@
       "key": "a-uat/test-matrix.md",
       "title": "A-UAT test matrix",
       "summary": "Post-ADR-0031 manual A-UAT matrix for the validation gate. One shipping arm (H, the branch-tip hooks-only build) runs the native-write behaviours (N1-N5) plus a codex orient-injection check (N6); opus runs the full set, sonnet a single N4 spot check, codex N1-N6. Defines the disposable probe prompts, the upgraded evidence model (cross-reference the b19 check-write decision log against a post-run vault git diff; a b11 drift alarm is a replay-fidelity finding), and the three pre-registered decision rules — rule 1 is now an absolute leak bar on H (~0 hard-bypass / silent-leak), not a non-regression vs the dropped W control — that turn observed leaks into the ADR-0031 ship/skip call. Per the loosening stance settled 2026-06-27 (memento-ryr.32), a self-serve `write-mode`/`unlock` that thaws a walled note without explicit user authorisation is now an `unauthorised_loosening` finding, not a legitimate recovery: rule 2 no longer blesses it and the leak taxonomy names it.",
-      "bytes": 20442,
+      "bytes": 20904,
       "lines": 173,
       "tags": [
         "a-uat",
@@ -2883,7 +2883,7 @@
       "updated": "",
       "body_sha": "2357d8536353b183ce893a75217c5e0e79077ccc82b90763a64d65ee11b539ff",
       "summary_sha": "38bd478d356d5f829efc04b39af8014fa1ca3d8eac99e575c7676b5b4a04b6d3",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
@@ -3350,8 +3350,8 @@
       "key": "codex-cli lifecycle hooks contract.md",
       "title": "codex-cli lifecycle hooks contract",
       "summary": "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. CRITICAL (memento-ryr.31): codex declares hooks INLINE only — `hooks` must be a HooksToml struct ([[hooks.<Event>]] array-of-tables); the path-indirection form `hooks = \\\"hooks.json\\\"` is REJECTED at config load (`invalid type: string, expected struct HooksToml`), so memento ships no hooks.json. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences.",
-      "bytes": 18234,
-      "lines": 291,
+      "bytes": 18549,
+      "lines": 295,
       "tags": [
         "agents",
         "codex",
