@@ -103,6 +103,17 @@ if [ "$model" = codex ]; then
   # silently no-ops and the cell degrades to a W-like ungated run.
   export CODEX_HOME="$wt/.codex"
   mkdir -p "$CODEX_HOME"
+  # codex resolves credentials from $CODEX_HOME/auth.json, but we point CODEX_HOME at
+  # a fresh per-cell dir for config/hook isolation — which has no auth, so codex 401s
+  # ("Missing bearer authentication") and the cell errors with an empty stream. Copy
+  # the operator's real login into the isolated home so the probe can actually reach a
+  # model. Without this the whole codex leg is unauthenticated and void.
+  src_auth="${REAL_CODEX_HOME:-$HOME/.codex}/auth.json"
+  if [ -f "$src_auth" ]; then
+    cp "$src_auth" "$CODEX_HOME/auth.json"
+  else
+    echo "warning: no codex auth.json at $src_auth; codex cells will 401" >&2
+  fi
   if [ "$enforce" = 1 ]; then
     # Hooks must be declared INLINE: codex-cli 0.142.2 rejects the path form
     # (hooks = "hooks.json") at config load with "expected struct HooksToml"
