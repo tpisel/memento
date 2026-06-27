@@ -3,6 +3,7 @@ package setup
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -508,13 +509,29 @@ func markCodexRepo(t *testing.T, repo string) {
 	}
 }
 
-func readCodexHooks(t *testing.T, repo string) map[string]any {
+// assertCodexInlineHook fails unless config declares the memento hook for event as
+// an inline `[[hooks.<event>]]` array-of-tables entry (codex-cli 0.142.2's HooksToml
+// shape) carrying the matcher, a nested command handler with command, and the
+// timeout budget — all in source order. memento has no TOML parser dependency, so
+// this is a positional substring check over the written file.
+func assertCodexInlineHook(t *testing.T, config, event, matcher, command string, timeoutSec int) {
 	t.Helper()
-	var hooks map[string]any
-	if err := json.Unmarshal([]byte(readSetupFile(t, repo, ".codex/hooks.json")), &hooks); err != nil {
-		t.Fatalf("unmarshal .codex/hooks.json: %v", err)
+	want := []string{
+		"[[hooks." + event + "]]",
+		`matcher = "` + matcher + `"`,
+		"[[hooks." + event + ".hooks]]",
+		`type = "command"`,
+		`command = "` + command + `"`,
+		fmt.Sprintf("timeout_sec = %d", timeoutSec),
 	}
-	return hooks
+	cursor := 0
+	for _, fragment := range want {
+		at := strings.Index(config[cursor:], fragment)
+		if at == -1 {
+			t.Fatalf(".codex/config.toml = %q, want %q for the %s hook in source order after offset %d", config, fragment, event, cursor)
+		}
+		cursor += at + len(fragment)
+	}
 }
 
 func TestInitInstallsCodexHooksWhenCodexDetected(t *testing.T) {
@@ -525,32 +542,30 @@ func TestInitInstallsCodexHooksWhenCodexDetected(t *testing.T) {
 		t.Fatalf("Init() error = %v, want nil", err)
 	}
 
-	// config.toml uses the path-indirection form so the install is a JSON file
-	// parallel to Claude's settings.json.
+	// Hooks are declared INLINE in config.toml: codex-cli 0.142.2 rejects the
+	// path-indirection form (`hooks = "hooks.json"`) at config load, so there is no
+	// parallel hooks.json (memento-ryr.31).
 	config := readSetupFile(t, repo, ".codex/config.toml")
-	for _, want := range []string{"# memento:start", `hooks = "hooks.json"`, "# memento:end"} {
+	for _, want := range []string{"# memento:start", "# memento:end"} {
 		if !strings.Contains(config, want) {
 			t.Fatalf(".codex/config.toml = %q, want it to contain %q", config, want)
 		}
 	}
-
-	hooks := readCodexHooks(t, repo)
-	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
-	assertManagedHook(t, hooks, "PreToolUse", codexWriteHookMatcher, preCommand)
-	postCommand := filepath.Join(repo, ".codex", "memento-post-write-compile.sh")
-	assertManagedHook(t, hooks, "PostToolUse", codexWriteHookMatcher, postCommand)
-	orientCommand := filepath.Join(repo, ".codex", "memento-orient-session-start.sh")
-	assertManagedHook(t, hooks, "SessionStart", codexOrientHookMatcher, orientCommand)
+	if strings.Contains(config, `hooks = "hooks.json"`) {
+		t.Fatalf(".codex/config.toml = %q, want NOT the rejected path-indirection form", config)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".codex", "hooks.json")); !os.IsNotExist(err) {
+		t.Fatalf(".codex/hooks.json stat err = %v, want it not to exist (inline form)", err)
+	}
 
 	// timeout_sec rides on every codex handler (b15 schema): the gate gets the
 	// tight budget, the compile-backed hooks a wider one.
-	rawHooks := readSetupFile(t, repo, ".codex/hooks.json")
-	if !strings.Contains(rawHooks, `"timeout_sec": 5`) {
-		t.Fatalf(".codex/hooks.json = %q, want the PreToolUse gate timeout_sec 5", rawHooks)
-	}
-	if !strings.Contains(rawHooks, `"timeout_sec": 30`) {
-		t.Fatalf(".codex/hooks.json = %q, want a compile-hook timeout_sec 30", rawHooks)
-	}
+	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
+	assertCodexInlineHook(t, config, "PreToolUse", codexWriteHookMatcher, preCommand, codexGateTimeoutSec)
+	postCommand := filepath.Join(repo, ".codex", "memento-post-write-compile.sh")
+	assertCodexInlineHook(t, config, "PostToolUse", codexWriteHookMatcher, postCommand, codexCompileTimeoutSec)
+	orientCommand := filepath.Join(repo, ".codex", "memento-orient-session-start.sh")
+	assertCodexInlineHook(t, config, "SessionStart", codexOrientHookMatcher, orientCommand, codexCompileTimeoutSec)
 
 	if runtime.GOOS != "windows" {
 		for _, rel := range []string{
@@ -622,43 +637,29 @@ func TestInitCodexScriptsMatchCanonicalScripts(t *testing.T) {
 func TestInitCodexHooksAreIdempotent(t *testing.T) {
 	repo := t.TempDir()
 	markCodexRepo(t, repo)
-	writeSetupFile(t, repo, ".codex/hooks.json", `{
-  "PreToolUse": [
-    {"matcher": "Shell", "hooks": [{"type": "command", "command": "/keep/codex-pre.sh"}]}
-  ]
-}
-`)
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("first Init() error = %v, want nil", err)
 	}
-	firstHooks := readSetupFile(t, repo, ".codex/hooks.json")
 	firstConfig := readSetupFile(t, repo, ".codex/config.toml")
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("second Init() error = %v, want nil", err)
 	}
-	secondHooks := readSetupFile(t, repo, ".codex/hooks.json")
 	secondConfig := readSetupFile(t, repo, ".codex/config.toml")
 
-	if secondHooks != firstHooks {
-		t.Fatalf(".codex/hooks.json changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstHooks, secondHooks)
-	}
 	if secondConfig != firstConfig {
 		t.Fatalf(".codex/config.toml changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstConfig, secondConfig)
 	}
 
-	hooks := readCodexHooks(t, repo)
-	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
-	if count := settingsJSONCommandCount(settingsArray(t, hooks, "PreToolUse"), preCommand); count != 1 {
-		t.Fatalf("PreToolUse memento command count = %d, want 1; hooks = %#v", count, hooks["PreToolUse"])
-	}
-	// The user's unrelated codex hook is preserved.
-	if !settingsJSONContainsCommand(settingsArray(t, hooks, "PreToolUse"), "/keep/codex-pre.sh") {
-		t.Fatalf("PreToolUse hooks = %#v, want unrelated /keep/codex-pre.sh preserved", hooks["PreToolUse"])
-	}
+	// The rerun replaces the sentinel block in place rather than appending a second
+	// copy: exactly one block and one PreToolUse command entry.
 	if count := strings.Count(secondConfig, "# memento:start"); count != 1 {
 		t.Fatalf(".codex/config.toml start sentinel count = %d, want 1; contents = %q", count, secondConfig)
+	}
+	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
+	if count := strings.Count(secondConfig, `command = "`+preCommand+`"`); count != 1 {
+		t.Fatalf(".codex/config.toml PreToolUse command count = %d, want 1; contents = %q", count, secondConfig)
 	}
 }
 
@@ -711,19 +712,14 @@ func TestInitPreservesForeignCodexHooksDeclaration(t *testing.T) {
 	if !strings.Contains(notices.String(), "already declares hooks") {
 		t.Fatalf("notice = %q, want a manual-wiring notice", notices.String())
 	}
-	// hooks.json is still staged so a manual wiring has a target.
-	if _, err := os.Stat(filepath.Join(repo, ".codex", "hooks.json")); err != nil {
-		t.Fatalf("stat .codex/hooks.json: %v", err)
-	}
 }
 
 func TestInitPreservesUnrelatedCodexConfig(t *testing.T) {
 	repo := t.TempDir()
 	markCodexRepo(t, repo)
-	// A real config opens with a [model] table; appending the bare hooks key at
-	// the end of the file would scope it under [model] (model.hooks), so the
-	// top-level hooks pointer codex needs would never exist. The block must land
-	// above the first table header.
+	// Memento's inline hook tables are array-of-tables headers, which must sit after
+	// every top-level key. Appending the block at the end leaves the user's existing
+	// [model] table untouched and nothing for the hook tables to capture.
 	existing := "[model]\nname = \"gpt\"\n"
 	writeSetupFile(t, repo, ".codex/config.toml", existing)
 
@@ -732,68 +728,23 @@ func TestInitPreservesUnrelatedCodexConfig(t *testing.T) {
 	}
 
 	got := readSetupFile(t, repo, ".codex/config.toml")
-	if !strings.Contains(got, "[model]\nname = \"gpt\"") {
-		t.Fatalf(".codex/config.toml = %q, want existing table preserved", got)
+	if !strings.HasPrefix(got, "[model]\nname = \"gpt\"") {
+		t.Fatalf(".codex/config.toml = %q, want existing table preserved at the top", got)
 	}
-	if !strings.Contains(got, `hooks = "hooks.json"`) {
-		t.Fatalf(".codex/config.toml = %q, want memento hooks wiring written", got)
-	}
-	assertCodexHooksTopLevel(t, got)
-}
-
-// assertCodexHooksTopLevel fails unless the memento `hooks = "hooks.json"` key
-// sits before the first TOML table header, where it binds at top level rather
-// than to a preceding [table]. memento has no TOML parser dependency, so this is
-// a positional check over the written file.
-func assertCodexHooksTopLevel(t *testing.T, contents string) {
-	t.Helper()
-	hooksAt := strings.Index(contents, `hooks = "hooks.json"`)
-	if hooksAt == -1 {
-		t.Fatalf(".codex/config.toml = %q, want a hooks key", contents)
-	}
-	firstTableAt := -1
-	offset := 0
-	for _, line := range strings.Split(contents, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "[") {
-			firstTableAt = offset
-			break
-		}
-		offset += len(line) + 1
-	}
-	if firstTableAt != -1 && hooksAt > firstTableAt {
-		t.Fatalf(".codex/config.toml = %q, want hooks key before the first table header so it stays top-level", contents)
+	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
+	assertCodexInlineHook(t, got, "PreToolUse", codexWriteHookMatcher, preCommand, codexGateTimeoutSec)
+	// The memento block is appended after the user's table.
+	if strings.Index(got, "[model]") > strings.Index(got, "# memento:start") {
+		t.Fatalf(".codex/config.toml = %q, want the memento block appended after the [model] table", got)
 	}
 }
 
-func TestInitPlacesCodexHooksAboveLeadingCommentedTable(t *testing.T) {
+func TestInitPreservesLeadingMultiLineArrayCodexConfig(t *testing.T) {
 	repo := t.TempDir()
 	markCodexRepo(t, repo)
-	// Leading comments and blank lines must stay above the block, but the hooks
-	// key must still precede the first table header.
-	existing := "# my codex config\n\n[model]\nname = \"gpt-5\"\n\n[tools]\nshell = true\n"
-	writeSetupFile(t, repo, ".codex/config.toml", existing)
-
-	if _, err := Init(repo, "memory"); err != nil {
-		t.Fatalf("Init() error = %v, want nil", err)
-	}
-
-	got := readSetupFile(t, repo, ".codex/config.toml")
-	if !strings.HasPrefix(got, "# my codex config") {
-		t.Fatalf(".codex/config.toml = %q, want leading comment preserved at start", got)
-	}
-	if !strings.Contains(got, "[tools]\nshell = true") {
-		t.Fatalf(".codex/config.toml = %q, want unrelated tables preserved", got)
-	}
-	assertCodexHooksTopLevel(t, got)
-}
-
-func TestInitPlacesCodexHooksOutsideLeadingMultiLineArray(t *testing.T) {
-	repo := t.TempDir()
-	markCodexRepo(t, repo)
-	// A config that opens with a multi-line array whose continuation lines start
-	// with '[' (a nested array). The naive "first line starting with [" scan trips
-	// on the continuation and splits the array, emitting invalid TOML. The block
-	// must land outside the array and stay top-level (before the first real table).
+	// A config that opens with a top-level multi-line array followed by a table.
+	// Appending memento's hook tables at the end preserves both verbatim — the old
+	// top-insertion logic that could split such an array is gone (memento-ryr.31).
 	existing := "deny = [\n  [\"shell\"],\n]\n\n[model]\nname = \"gpt\"\n"
 	writeSetupFile(t, repo, ".codex/config.toml", existing)
 
@@ -802,27 +753,11 @@ func TestInitPlacesCodexHooksOutsideLeadingMultiLineArray(t *testing.T) {
 	}
 
 	got := readSetupFile(t, repo, ".codex/config.toml")
-	if !strings.Contains(got, `hooks = "hooks.json"`) {
-		t.Fatalf(".codex/config.toml = %q, want memento hooks wiring written", got)
+	if !strings.HasPrefix(got, existing) {
+		t.Fatalf(".codex/config.toml = %q, want the existing array and table preserved verbatim at the top", got)
 	}
-	// The block must not be inserted between `deny = [` and its closing `]`.
-	denyOpen := strings.Index(got, "deny = [")
-	arrayClose := strings.Index(got, "\n]")
-	hooksAt := strings.Index(got, `hooks = "hooks.json"`)
-	if denyOpen == -1 || arrayClose == -1 {
-		t.Fatalf(".codex/config.toml = %q, want the deny array preserved", got)
-	}
-	if hooksAt > denyOpen && hooksAt < arrayClose {
-		t.Fatalf(".codex/config.toml = %q, want hooks key outside the deny array, not split inside it", got)
-	}
-	// And it must remain top-level: before the [model] table, after the array.
-	modelAt := strings.Index(got, "[model]")
-	if modelAt == -1 || hooksAt > modelAt {
-		t.Fatalf(".codex/config.toml = %q, want hooks key before the [model] table so it stays top-level", got)
-	}
-	if hooksAt < arrayClose {
-		t.Fatalf(".codex/config.toml = %q, want hooks key after the closed deny array", got)
-	}
+	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
+	assertCodexInlineHook(t, got, "PreToolUse", codexWriteHookMatcher, preCommand, codexGateTimeoutSec)
 }
 
 func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {

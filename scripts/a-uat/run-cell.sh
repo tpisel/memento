@@ -104,16 +104,31 @@ if [ "$model" = codex ]; then
   export CODEX_HOME="$wt/.codex"
   mkdir -p "$CODEX_HOME"
   if [ "$enforce" = 1 ]; then
+    # Hooks must be declared INLINE: codex-cli 0.142.2 rejects the path form
+    # (hooks = "hooks.json") at config load with "expected struct HooksToml"
+    # (memento-ryr.31). This mirrors memento init's codexConfigBlock.
     cat > "$CODEX_HOME/config.toml" <<EOF
-# A-UAT codex config (ADR-0031). hooks key must be top-level.
-hooks = "hooks.json"
-EOF
-    cat > "$CODEX_HOME/hooks.json" <<EOF
-{
-  "SessionStart": [{"matcher":"startup|resume|compact","hooks":[{"type":"command","command":"$wt/scripts/agent-hooks/orient-session-start.sh","timeout_sec":30}]}],
-  "PreToolUse": [{"matcher":"apply_patch|Shell","hooks":[{"type":"command","command":"$wt/scripts/agent-hooks/pre-write-vault-guard.sh","timeout_sec":5}]}],
-  "PostToolUse": [{"matcher":"apply_patch|Shell","hooks":[{"type":"command","command":"$wt/scripts/agent-hooks/post-write-compile.sh","timeout_sec":30}]}]
-}
+# A-UAT codex config (ADR-0031). Hooks declared inline; the hooks="path" form is rejected.
+[[hooks.SessionStart]]
+matcher = "startup|resume|compact"
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "$wt/scripts/agent-hooks/orient-session-start.sh"
+timeout_sec = 30
+
+[[hooks.PreToolUse]]
+matcher = "apply_patch|Shell"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "$wt/scripts/agent-hooks/pre-write-vault-guard.sh"
+timeout_sec = 5
+
+[[hooks.PostToolUse]]
+matcher = "apply_patch|Shell"
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "$wt/scripts/agent-hooks/post-write-compile.sh"
+timeout_sec = 30
 EOF
     trust_flag=(--dangerously-bypass-hook-trust)
   else

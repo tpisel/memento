@@ -28,7 +28,6 @@ const (
 
 	codexConfigDirName       = ".codex"
 	codexConfigFile          = ".codex/config.toml"
-	codexHooksFile           = ".codex/hooks.json"
 	codexOrientHookScript    = ".codex/memento-orient-session-start.sh"
 	codexPreWriteHookScript  = ".codex/memento-pre-write-vault-guard.sh"
 	codexPostWriteHookScript = ".codex/memento-post-write-compile.sh"
@@ -513,11 +512,13 @@ func ensureClaudeAgentIntegration(repoRoot string) error {
 // (ADR-0031 "Multi-agent"; schema from the b15 spike — see
 // [[codex-cli lifecycle hooks contract]]). The dumb-pipe scripts are reused
 // verbatim: check-write's PreToolUse verdict JSON is byte-identical-valid on codex,
-// so a codex-family copy of each script is installed under .codex/. Hooks are
-// declared via the path-indirection form (config.toml `hooks = "hooks.json"`),
-// which keeps the install a JSON file parallel to Claude's settings.json. codex
-// installs hooks UNTRUSTED (trust-by-hash), so this stages the gate and surfaces
-// the trust step — it cannot stand up a live gate non-interactively.
+// so a codex-family copy of each script is installed under .codex/. The hooks are
+// declared INLINE in config.toml as `[[hooks.<Event>]]` array-of-tables: codex-cli
+// 0.142.2 rejects the path-indirection form (`hooks = "hooks.json"`) with
+// `invalid type: string, expected struct HooksToml`, so there is no parallel
+// hooks.json (memento-ryr.31). codex installs hooks UNTRUSTED (trust-by-hash), so
+// this stages the gate and surfaces the trust step — it cannot stand up a live gate
+// non-interactively.
 func ensureCodexAgentIntegration(repoRoot string, notices io.Writer) error {
 	if err := ensureHookScript(repoRoot, codexOrientHookScript, claudeOrientHookScriptContents(repoRoot)); err != nil {
 		return fmt.Errorf("install codex orient hook script: %w", err)
@@ -531,21 +532,21 @@ func ensureCodexAgentIntegration(repoRoot string, notices io.Writer) error {
 	if err := ensureCodexConfigHooks(repoRoot, notices); err != nil {
 		return err
 	}
-	if err := ensureCodexHooksJSON(repoRoot); err != nil {
-		return err
-	}
 	emitCodexTrustNotice(repoRoot, notices)
 	return nil
 }
 
-// ensureCodexConfigHooks points codex at .codex/hooks.json via a memento-managed
-// sentinel block in config.toml (`hooks = "hooks.json"`, resolved beside the
-// config). If the user already declares a top-level hooks key of their own, memento
+// ensureCodexConfigHooks writes memento's lifecycle hooks as an inline
+// `[[hooks.<Event>]]` block in config.toml, kept inside a memento sentinel block so
+// reruns replace it idempotently. The block is appended after any existing content:
+// codex hooks are array-of-tables headers, which (unlike the old bare `hooks = …`
+// key) must sit after every top-level key, and appending leaves nothing for them to
+// capture. If the user already declares a hooks key/table of their own, memento
 // leaves config.toml untouched and degrades to a manual-wiring notice rather than
 // corrupting their config — the additive invariant (never break what exists).
 func ensureCodexConfigHooks(repoRoot string, notices io.Writer) error {
 	path := filepath.Join(repoRoot, filepath.FromSlash(codexConfigFile))
-	block := codexConfigBlock()
+	block := codexConfigBlock(repoRoot)
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -564,7 +565,7 @@ func ensureCodexConfigHooks(repoRoot string, notices io.Writer) error {
 		return nil
 	}
 
-	updated, err := insertOrReplaceSentinelBlockWith(contents, block, hookStartSentinel, hookEndSentinel, "codex config.toml", "memento", insertSentinelBlockAtTop)
+	updated, err := insertOrReplaceSentinelBlock(contents, block, hookStartSentinel, hookEndSentinel, "codex config.toml", "memento")
 	if err != nil {
 		return err
 	}
@@ -577,13 +578,50 @@ func ensureCodexConfigHooks(repoRoot string, notices io.Writer) error {
 	return nil
 }
 
-func codexConfigBlock() string {
-	return strings.Join([]string{
+// codexConfigBlock renders memento's three lifecycle hooks as inline TOML
+// array-of-tables (codex-cli 0.142.2's `HooksToml` shape; the `hooks = "path"` form
+// is rejected — memento-ryr.31). Each event gets a `[[hooks.<Event>]]` entry with a
+// matcher plus a nested `[[hooks.<Event>.hooks]]` command handler carrying the
+// absolute script path and the event's timeout budget.
+func codexConfigBlock(repoRoot string) string {
+	type codexHook struct {
+		event      string
+		matcher    string
+		script     string
+		timeoutSec int
+	}
+	hooks := []codexHook{
+		{"SessionStart", codexOrientHookMatcher, codexOrientHookScript, codexCompileTimeoutSec},
+		{"PreToolUse", codexWriteHookMatcher, codexPreWriteHookScript, codexGateTimeoutSec},
+		{"PostToolUse", codexWriteHookMatcher, codexPostWriteHookScript, codexCompileTimeoutSec},
+	}
+
+	lines := []string{
 		hookStartSentinel,
-		"# memento points codex lifecycle hooks at hooks.json beside this config (ADR-0031).",
-		`hooks = "hooks.json"`,
-		hookEndSentinel,
-	}, "\n")
+		"# memento wires codex lifecycle hooks inline (ADR-0031); codex rejects the hooks=\"path\" form.",
+	}
+	for _, h := range hooks {
+		command := filepath.Join(repoRoot, filepath.FromSlash(h.script))
+		lines = append(lines,
+			"",
+			fmt.Sprintf("[[hooks.%s]]", h.event),
+			fmt.Sprintf("matcher = %s", tomlBasicString(h.matcher)),
+			fmt.Sprintf("[[hooks.%s.hooks]]", h.event),
+			`type = "command"`,
+			fmt.Sprintf("command = %s", tomlBasicString(command)),
+			fmt.Sprintf("timeout_sec = %d", h.timeoutSec),
+		)
+	}
+	lines = append(lines, hookEndSentinel)
+	return strings.Join(lines, "\n")
+}
+
+// tomlBasicString renders s as a TOML basic string, escaping the backslash and
+// double-quote a filesystem path can carry. memento has no TOML dependency, so this
+// is the minimal escaping the hook command/matcher values need.
+func tomlBasicString(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return `"` + r.Replace(s) + `"`
 }
 
 // codexConfigHasForeignHooks reports whether config.toml already declares a
@@ -606,94 +644,20 @@ func codexConfigHasForeignHooks(contents string) bool {
 	return false
 }
 
-// ensureCodexHooksJSON writes the codex hooks file: a JSON object keyed by event
-// name (SessionStart/PreToolUse/PostToolUse), each a matcher-group array whose
-// command is a memento hook script. The upsert is idempotent and preserves any
-// unrelated hooks the user added, mirroring the Claude settings install.
-func ensureCodexHooksJSON(repoRoot string) error {
-	path := filepath.Join(repoRoot, filepath.FromSlash(codexHooksFile))
-
-	root := map[string]any{}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("read codex hooks.json: %w", err)
-		}
-	} else if len(strings.TrimSpace(string(data))) > 0 {
-		if err := json.Unmarshal(data, &root); err != nil {
-			return fmt.Errorf("parse codex hooks.json: %w", err)
-		}
-	}
-
-	type managedHook struct {
-		event      string
-		matcher    string
-		command    string
-		timeoutSec int
-		isManaged  func(any) bool
-	}
-	managed := []managedHook{
-		{"SessionStart", codexOrientHookMatcher, codexOrientHookScript, codexCompileTimeoutSec, isMementoOrientHook},
-		{"PreToolUse", codexWriteHookMatcher, codexPreWriteHookScript, codexGateTimeoutSec, isMementoPreWriteHook},
-		{"PostToolUse", codexWriteHookMatcher, codexPostWriteHookScript, codexCompileTimeoutSec, isMementoPostWriteHook},
-	}
-	for _, m := range managed {
-		entries, err := codexHookArray(root, m.event)
-		if err != nil {
-			return err
-		}
-		command := filepath.Join(repoRoot, filepath.FromSlash(m.command))
-		root[m.event] = replaceManagedHook(entries, m.isManaged, managedCodexHookEntry(m.matcher, command, m.timeoutSec))
-	}
-
-	updated, err := json.MarshalIndent(root, "", "  ")
-	if err != nil {
-		return fmt.Errorf("render codex hooks.json: %w", err)
-	}
-	updated = append(updated, '\n')
-	return writeFileIfChanged(path, updated, 0o644)
-}
-
-func codexHookArray(root map[string]any, event string) ([]any, error) {
-	if raw, ok := root[event]; ok {
-		array, ok := raw.([]any)
-		if !ok {
-			return nil, fmt.Errorf("codex hooks.json %s must be an array", event)
-		}
-		return array, nil
-	}
-	array := []any{}
-	root[event] = array
-	return array, nil
-}
-
-func managedCodexHookEntry(matcher, command string, timeoutSec int) map[string]any {
-	return map[string]any{
-		"matcher": matcher,
-		"hooks": []any{
-			map[string]any{
-				"type":        "command",
-				"command":     command,
-				"timeout_sec": timeoutSec,
-			},
-		},
-	}
-}
-
 // emitCodexTrustNotice surfaces the codex hook-trust step (b15 spike). codex
 // records trust per content hash and skips untrusted hooks, so the gate this
 // staged is fail-open until the user reviews and trusts it — init cannot make it
 // live non-interactively. When config wiring was skipped (foreign hooks key) the
 // foreign-hooks notice already fired, so the trust line still applies once wired.
 func emitCodexTrustNotice(repoRoot string, notices io.Writer) {
-	fmt.Fprintf(notices, "memento: codex hooks staged in %s (untrusted).\n", displayPath(repoRoot, filepath.Join(repoRoot, filepath.FromSlash(codexHooksFile))))
+	fmt.Fprintf(notices, "memento: codex hooks staged in %s (untrusted).\n", displayPath(repoRoot, filepath.Join(repoRoot, filepath.FromSlash(codexConfigFile))))
 	fmt.Fprintln(notices, "codex trusts hooks by content hash and skips untrusted ones, so the memento write-enforcement gate stays fail-open until you review and trust it.")
 	fmt.Fprintln(notices, "Trust it in codex (hooks browser), or pass --dangerously-bypass-hook-trust only for automation that already vets hook sources.")
 }
 
 func emitCodexForeignHooksNotice(notices io.Writer) {
 	fmt.Fprintln(notices, "memento: .codex/config.toml already declares hooks; left unchanged.")
-	fmt.Fprintln(notices, `Wire the gate yourself: set hooks = "hooks.json", or merge .codex/hooks.json into your existing hooks table.`)
+	fmt.Fprintln(notices, "Wire the gate yourself: add memento's hook scripts under your [hooks] tables (see .codex/memento-*.sh).")
 }
 
 func ensureHookScript(repoRoot, relPath, script string) error {
@@ -1179,14 +1143,9 @@ func insertOrReplaceGitignoreBlock(contents, block string) (string, error) {
 	return insertOrReplaceSentinelBlock(contents, block, gitignoreStartSentinel, gitignoreEndSentinel, ".gitignore", "memento gitignore")
 }
 
+// insertOrReplaceSentinelBlock replaces an existing in-place block where it sits
+// and otherwise appends a fresh block at the end of contents.
 func insertOrReplaceSentinelBlock(contents, block, startSentinel, endSentinel, target, blockName string) (string, error) {
-	return insertOrReplaceSentinelBlockWith(contents, block, startSentinel, endSentinel, target, blockName, appendSentinelBlock)
-}
-
-// insertOrReplaceSentinelBlockWith replaces an existing in-place block where it
-// sits and otherwise delegates first insertion to insert, letting callers control
-// where a fresh block lands (append at end vs. before the first TOML table header).
-func insertOrReplaceSentinelBlockWith(contents, block, startSentinel, endSentinel, target, blockName string, insert func(string, string) string) (string, error) {
 	start := strings.Index(contents, startSentinel)
 	end := strings.Index(contents, endSentinel)
 	startCount := strings.Count(contents, startSentinel)
@@ -1194,7 +1153,7 @@ func insertOrReplaceSentinelBlockWith(contents, block, startSentinel, endSentine
 
 	switch {
 	case start == -1 && end == -1:
-		return insert(contents, block), nil
+		return appendSentinelBlock(contents, block), nil
 	case start == -1 || end == -1 || end < start:
 		return "", fmt.Errorf("%s contains an incomplete %s block", target, blockName)
 	case startCount != 1 || endCount != 1:
@@ -1203,73 +1162,6 @@ func insertOrReplaceSentinelBlockWith(contents, block, startSentinel, endSentine
 
 	end += len(endSentinel)
 	return contents[:start] + block + contents[end:], nil
-}
-
-// insertSentinelBlockAtTop places block before the first TOML table header so a
-// bare top-level key inside it (codex `hooks = "hooks.json"`) cannot bind to a
-// preceding [table] and silently become e.g. `model.hooks`. Leading comments,
-// blank lines, and any pre-table top-level keys stay above the block; with no
-// table header there is no table scope to escape, so the block is appended.
-//
-// A line starting with '[' is only a table header at bracket depth 0. Inside a
-// multi-line array value (`deny = [\n  ["shell"],\n]`) the continuation lines also
-// start with '[', so we track bracket nesting and skip them — inserting the block
-// there would split the array and emit invalid TOML, breaking codex config load.
-func insertSentinelBlockAtTop(contents, block string) string {
-	lines := strings.Split(contents, "\n")
-	insertAt := -1
-	depth := 0
-	for i, line := range lines {
-		if depth == 0 && strings.HasPrefix(strings.TrimSpace(line), "[") {
-			insertAt = i
-			break
-		}
-		depth += bracketDepthDelta(line)
-		if depth < 0 {
-			depth = 0
-		}
-	}
-	if insertAt == -1 {
-		return appendSentinelBlock(contents, block)
-	}
-
-	before := strings.TrimRight(strings.Join(lines[:insertAt], "\n"), "\n")
-	after := strings.Join(lines[insertAt:], "\n")
-	var b strings.Builder
-	if before != "" {
-		b.WriteString(before)
-		b.WriteString("\n\n")
-	}
-	b.WriteString(block)
-	b.WriteString("\n\n")
-	b.WriteString(after)
-	return b.String()
-}
-
-// bracketDepthDelta returns the net change in TOML array nesting for one line:
-// '[' opens, ']' closes. Brackets inside strings or after a '#' comment do not
-// count. It is a line heuristic, not a TOML parse (memento has no TOML dependency),
-// enough to tell a multi-line array's continuation lines apart from table headers.
-func bracketDepthDelta(line string) int {
-	delta := 0
-	var quote rune
-	for _, r := range line {
-		switch {
-		case quote != 0:
-			if r == quote {
-				quote = 0
-			}
-		case r == '"' || r == '\'':
-			quote = r
-		case r == '#':
-			return delta
-		case r == '[':
-			delta++
-		case r == ']':
-			delta--
-		}
-	}
-	return delta
 }
 
 func appendSentinelBlock(contents, block string) string {

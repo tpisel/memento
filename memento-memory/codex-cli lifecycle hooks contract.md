@@ -1,6 +1,6 @@
 ---
 title: codex-cli lifecycle hooks contract
-summary: "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml/hooks.json schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences."
+summary: "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. CRITICAL (memento-ryr.31): codex declares hooks INLINE only — `hooks` must be a HooksToml struct ([[hooks.<Event>]] array-of-tables); the path-indirection form `hooks = \"hooks.json\"` is REJECTED at config load (`invalid type: string, expected struct HooksToml`), so memento ships no hooks.json. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences."
 tags:
   - memento
   - codex
@@ -109,9 +109,16 @@ permissionDecision:deny"). Other non-zero exits are not the block path.
     array-of-tables entry under header `hooks.PreToolUse` (`matcher`, then a nested
     array-of-tables `hooks.PreToolUse.hooks` whose entries are
     `type = "command"`, `command = "memento check-write"`, `timeout_sec = 5`).
-  - **path indirection**: `hooks = "./hooks.json"` (a `HooksFile`), the same
-    mechanism `plugin.json`'s `hooks` field uses. The JSON form (no TOML
-    bracket-escaping needed, parallels Claude's `.claude/settings.json`):
+  - **path indirection — DOES NOT WORK at runtime (memento-ryr.31).** The embedded
+    schema carries a `HooksFile` variant suggesting `hooks = "./hooks.json"`, but
+    codex-cli 0.142.2 **rejects a string value for `hooks`** at config load:
+    `invalid type: string "hooks.json", expected struct HooksToml` (reproduced under
+    `codex exec --strict-config`). So `hooks` must be an inline `HooksToml` struct;
+    the path form is not loadable. memento therefore emits the **inline** form only
+    and ships no `hooks.json`. (The old b16 install used the path form and was wholly
+    rejected — every codex A-UAT cell errored at config load before running; see the
+    2026-06-27 void run.) The JSON shape below is kept only as a shape reference for
+    the matcher-group/handler fields; it is **not** a valid `config.toml` value:
     ```json
     {
       "PreToolUse": [
@@ -130,20 +137,22 @@ permissionDecision:deny"). Other non-zero exits are not the block path.
   `commandWindows`, `timeoutSec`, `async`, `type` (TOML authoring keys are the
   snake_case forms, e.g. `timeout_sec`, `command_windows`).
 - **`init` install note (b16):** install PreToolUse + PostToolUse entries; keep each
-  command a dumb pipe to `memento check-write` / `memento compile`. The
-  `hooks = "./hooks.json"` path form is the cleaner install target (per-agent-family
-  branching then writes a codex `hooks.json` here vs a `.claude/settings.json` there,
-  both JSON).
-- **b16 realized (memento-ryr.16).** `init` now branches per family: Claude is the
-  always-installed baseline; codex is additive, gated on a `.codex/` dir in the repo.
-  The codex install writes **project-local `.codex/`** — `config.toml` carries a
-  memento sentinel block declaring `hooks = "hooks.json"` (relative, resolved beside
-  the config), and `.codex/hooks.json` carries SessionStart/PreToolUse/PostToolUse
-  matcher groups pointing at `.codex/memento-*.sh` copies of the same dumb-pipe
-  scripts Claude uses (byte-identical, pinned by a drift test). PreToolUse/PostToolUse
-  matcher is the broad `apply_patch|Shell` (codex tool_name strings are unpinned —
-  over-firing is harmless). Each handler carries `timeout_sec` (gate 5, compile 30).
-  Two degradations preserve the additive invariant: a foreign top-level `hooks` key
+  command a dumb pipe to `memento check-write` / `memento compile`.
+- **b16 realized (memento-ryr.16), corrected by memento-ryr.31.** `init` branches per
+  family: Claude is the always-installed baseline; codex is additive, gated on a
+  `.codex/` dir in the repo. The codex install writes **project-local `.codex/`** with
+  the SessionStart/PreToolUse/PostToolUse hooks declared **inline** in `config.toml`
+  inside a memento sentinel block — `[[hooks.<Event>]]` array-of-tables, each with a
+  `matcher` and a nested `[[hooks.<Event>.hooks]]` command handler pointing at a
+  `.codex/memento-*.sh` copy of the same dumb-pipe script Claude uses (byte-identical,
+  pinned by a drift test). **There is no `.codex/hooks.json`** — codex rejects the
+  path-indirection form (above). PreToolUse/PostToolUse matcher is the broad
+  `apply_patch|Shell` (codex tool_name strings are unpinned — over-firing is harmless).
+  Each handler carries `timeout_sec` (gate 5, compile 30). The block is **appended at
+  the end** of config.toml: array-of-tables headers must follow every top-level key,
+  and appending leaves nothing for them to capture (the b25/b27 top-insertion +
+  bracket-depth machinery existed only for the bare `hooks = …` key and was removed).
+  Two degradations preserve the additive invariant: a foreign `hooks` key/table
   already in `config.toml` is left untouched with a manual-wiring notice (no TOML dep,
   so this is a line heuristic, not a parse); and the **hook-trust step is surfaced on
   stdout** (`InitOptions.NoticeWriter`) — codex installs the hook untrusted, so the
