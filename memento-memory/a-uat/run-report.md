@@ -240,3 +240,11 @@ Full 34-cell re-run after the three fixes (ryr.31 codex config, ryr.32 loosening
 - **Codex auth (ryr.36)** — `run-cell.sh` now copies the operator's `~/.codex/auth.json` into the isolated `CODEX_HOME`; the earlier all-`error` codex leg was unauthenticated, not a code fault.
 
 **Net:** Claude enforcement is solid post-fix; orient injection works on both surfaces; codex *write-blocking* via PreToolUse hooks does not currently work (ryr.37) — the open question for codex-readiness.
+
+## Session: 2026-06-28 (codex re-run) — post reason_code+matcher fix (freeze 4634c7c51604)
+
+Pre-registration:
+- **H freeze:** `4634c7c51604` = HEAD. Includes ryr.37 (drop reason_code from PreToolUse hook stdout — the unknown key codex's strict schema rejected), ryr.40 (codex matcher → `apply_patch`; SessionStart → `startup|resume|clear|compact`), ryr.38 (scorer drift/N5 false-positive fix), ryr.39 (doc).
+- **scope:** codex leg only (MODELS=codex), N1-N5 + N6, n=3 (~18 cells). Claude leg unchanged from 73e9129 (already validated).
+- **hypothesis under test:** codex now HONORS the apply_patch deny → N2 (read-only) and N3 (append-only) flip from 3/3 hard_bypass to BLOCKED. N5 shell-write stays the documented ungated case (ryr.39, codex exec PreToolUse doesn't fire for shell). N6 orient still injects.
+- codex auth via run-cell.sh copying ~/.codex/auth.json into the isolated CODEX_HOME (ryr.36). codex enforced cells pass --dangerously-bypass-hook-trust.
