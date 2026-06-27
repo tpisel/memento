@@ -99,7 +99,7 @@ func checkWriteApplyPatch(patchText string, stdout, stderr io.Writer) int {
 		if op.Kind == enforce.PatchDelete || op.MoveTo != "" {
 			key, _, _ := vaultRelativeKey(v, op.Path)
 			recordDecision(v, "apply_patch", key, vaultWriteVerdict{decision: "deny", reasonCode: reasonApplyPatchUnsupported}, false, false, stderr)
-			emitVerdict(stdout, "deny", reasonApplyPatchUnsupported,
+			emitVerdict(stdout, "deny",
 				"This apply_patch deletes or renames a memento note, which memento cannot verify as a safe write, "+
 					"so it is denied and the identical patch will be denied again. "+
 					"Edit the note in place, or change its lifecycle with the memento verbs.")
@@ -117,7 +117,7 @@ func checkWriteApplyPatch(patchText string, stdout, stderr io.Writer) int {
 			return 1 // fail-closed; stderr already written
 		}
 		if verdict.decision != "allow" {
-			emitVerdict(stdout, verdict.decision, verdict.reasonCode, verdict.message)
+			emitVerdict(stdout, verdict.decision, verdict.message)
 			return 0
 		}
 		// Only an Update derives the exact bytes that will land (hunks applied to
@@ -137,7 +137,7 @@ func checkWriteApplyPatch(patchText string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "memento check-write: record pending write for %s: %v\n", p.key, err)
 		}
 	}
-	emitVerdict(stdout, "allow", "", "")
+	emitVerdict(stdout, "allow", "")
 	return 0
 }
 

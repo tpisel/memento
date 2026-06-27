@@ -70,9 +70,14 @@ Claude's `tool_input`. Codex adds `turn_id`/`model`/`permission_mode`/`tool_use_
 
 Extra top-level fields exist (`continue`, `stopReason`, `suppressOutput`,
 `systemMessage`); all default to no-op. The schema is `additionalProperties:false`
-at the top level — but `check-write`'s extra `reason_code` rides **inside** behaviour
-that the harness ignores in practice (verify on first live-fire; if codex rejects
-unknown top-level keys, `reason_code` must move or be dropped for codex).
+at the top level. **CONFIRMED (memento-ryr.37, codex-cli 0.142.2):** the strictness
+is real and `deny_unknown_fields` — `check-write`'s old top-level `reason_code` made
+codex **discard the entire verdict and fall open** (a denied `apply_patch` landed),
+while Claude ignored the unknown key and blocked. Empirical A/B: deny WITH
+`reason_code` → not blocked; deny WITHOUT → blocked; `reason_code` nested in
+`hookSpecificOutput` → also rejected (nested is strict too). Fix: `reason_code` is
+**dropped from the wire** entirely — it now lives only in the decision log. So the
+wire verdict is decision + message, period (see [[check-write output contract]]).
 
 ## ask IS supported (resolves the vault_discovery_ambiguous fallback)
 
@@ -222,8 +227,11 @@ left `tool_input`'s exact shape unpinned (it is untyped — schema `true`):
   so an end-to-end "deny actually blocks an `apply_patch`/shell call" run is deferred
   to the A-UAT gate (ADR-0026). The schema is authoritative for the contract shape;
   execution-level byte-identity is schema-confirmed, not yet run-confirmed.
-- `reason_code` survival as a top-level extra on codex (vs `additionalProperties:false`)
-  is the one thing to check on first live-fire.
+- ~~`reason_code` survival as a top-level extra on codex~~ — **RESOLVED
+  (memento-ryr.37): it does NOT survive.** codex's strict `deny_unknown_fields`
+  schema discarded the whole verdict and fell open. `reason_code` was dropped from
+  the wire; the fail-open it caused is fixed. See the PreToolUse output section
+  above.
 
 ## Side discovery — memento's wikilink extractor ignores code context
 

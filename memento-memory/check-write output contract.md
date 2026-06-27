@@ -1,6 +1,6 @@
 ---
 title: check-write output contract
-summary: "check-write emits the full PreToolUse harness verdict JSON on stdout itself (allow/deny/ask), not a bare {decision,reason_code,message} needing translation — so the PreToolUse hook is a true dumb pipe plus fail-closed-on-nonzero-exit. Resolves ADR-0031's ambiguous wording."
+summary: "check-write emits the full PreToolUse harness verdict JSON on stdout itself (allow/deny/ask), not a bare {decision,reason_code,message} needing translation — so the PreToolUse hook is a true dumb pipe plus fail-closed-on-nonzero-exit. Resolves ADR-0031's ambiguous wording. The wire verdict carries NO reason_code (dropped in memento-ryr.37: codex's strict PreToolUse schema rejects unknown top-level keys and falls open on the whole verdict); reason_code now lives ONLY in the decision log."
 tags:
   - memento
   - enforcement
@@ -21,13 +21,20 @@ wrapper can stay a genuine dumb pipe:
 **`check-write` writes the full harness verdict JSON to stdout itself.** Shape:
 
 ```json
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"<message>"},"reason_code":"read_only"}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"<message>"}}
 ```
 
 - `decision` → `permissionDecision` (`allow` | `deny` | `ask`).
 - `message` → `permissionDecisionReason`.
-- `reason_code` is a **top-level extra field** (the harness ignores it) carried
-  for the decision log (memento-ryr.19). The harness contract has no slot for it.
+- **No `reason_code` on the wire.** It was once a top-level extra field, but codex's
+  PreToolUse output schema is strict (`deny_unknown_fields`): an unknown top-level
+  key makes codex **discard the whole verdict and fall open**, so a denied
+  `apply_patch` landed anyway (the memento-ryr.37 fail-open bug; Claude ignored the
+  extra key, which is why only codex fell open). The verdict now carries decision +
+  message only. The reason code is persisted to the **decision log** by
+  `recordDecision` (memento-ryr.19) — its sole home, and where the A-UAT scorer
+  reads it. An `ask` (`vault_discovery_ambiguous`) is not logged at all, so its
+  reason survives only in the human-readable message.
 
 **Emission rules.** Only in-vault, file-targeted writes get a verdict:
 

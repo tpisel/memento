@@ -756,7 +756,7 @@ fi
 # path, so nothing partial sits on our stdout here. Fail closed: emit a deny and
 # exit 2. The harness blocks on exit 2 OR an explicit permissionDecision "deny";
 # we send both so a JSON-only harness and an exit-code-only harness each block.
-printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"memento check-write could not run (missing binary, unparseable payload, or internal error), so this write is blocked fail-closed. Restore the memento hook before writing vault files."},"reason_code":"hook_internal_error"}'
+printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"memento check-write could not run (missing binary, unparseable payload, or internal error), so this write is blocked fail-closed. Restore the memento hook before writing vault files."}}'
 printf 'memento check-write unavailable (exit %s); blocking write fail-closed.\n' "$status" >&2
 exit 2
 `

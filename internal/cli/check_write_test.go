@@ -45,17 +45,33 @@ func checkEditPayload(t *testing.T, filePath, oldString, newString string, repla
 // invokeCheckWrite feeds payload on stdin and returns the verdict's decode plus the
 // raw streams. A missing hookSpecificOutput (empty stdout) decodes to the zero
 // value, which the allow/inert cases assert against.
+//
+// reasonCode no longer rides the wire (memento-ryr.37: codex's strict PreToolUse
+// schema rejects an unknown top-level key and falls open, so the verdict carries
+// decision + message only). The reason code lives in the decision log, so we read
+// it from there — the entry THIS call appended (the log is the durable enforcement
+// surface the A-UAT scorer reads). A call that logs nothing (plain allow, inert,
+// or an ask) yields an empty reasonCode.
 func invokeCheckWrite(t *testing.T, payload string) (decision, reasonCode, reason, stdout, stderr string, code int) {
 	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	before := len(decisionLogEntries(t, cwd))
+
 	var out, errOut bytes.Buffer
 	code = RunWithInput([]string{"check-write"}, strings.NewReader(payload), &out, &errOut)
-
 	stdout, stderr = out.String(), errOut.String()
+
+	if entries := decisionLogEntries(t, cwd); len(entries) > before {
+		reasonCode = entries[len(entries)-1].ReasonCode
+	}
+
 	if strings.TrimSpace(stdout) == "" {
-		return "", "", "", stdout, stderr, code
+		return "", reasonCode, "", stdout, stderr, code
 	}
 	var parsed struct {
-		ReasonCode         string `json:"reason_code"`
 		HookSpecificOutput struct {
 			PermissionDecision       string `json:"permissionDecision"`
 			PermissionDecisionReason string `json:"permissionDecisionReason"`
@@ -64,7 +80,7 @@ func invokeCheckWrite(t *testing.T, payload string) (decision, reasonCode, reaso
 	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 		t.Fatalf("check-write stdout = %q, not valid JSON: %v", stdout, err)
 	}
-	return parsed.HookSpecificOutput.PermissionDecision, parsed.ReasonCode, parsed.HookSpecificOutput.PermissionDecisionReason, stdout, stderr, code
+	return parsed.HookSpecificOutput.PermissionDecision, reasonCode, parsed.HookSpecificOutput.PermissionDecisionReason, stdout, stderr, code
 }
 
 func TestCheckWriteReadOnlyEditDenied(t *testing.T) { // US1
@@ -90,6 +106,42 @@ func TestCheckWriteReadOnlyEditDenied(t *testing.T) { // US1
 		if !strings.Contains(reason, want) {
 			t.Fatalf("reason = %q, want it to contain %q", reason, want)
 		}
+	}
+}
+
+// TestCheckWriteVerdictOmitsReasonCodeOnWire pins the memento-ryr.37 fix: the hook
+// stdout verdict must carry NO reason_code key. codex's PreToolUse output schema is
+// strict (deny_unknown_fields), so an unknown top-level reason_code made codex
+// discard the whole deny and fall open (apply_patch landed despite the gate). The
+// reason code lives in the decision log, never on the wire.
+func TestCheckWriteVerdictOmitsReasonCodeOnWire(t *testing.T) {
+	root := makeCLIVault(t)
+	initCLIGit(t, root)
+	writeCLIFile(t, root, "frozen.md", "---\nmode: read-only\n---\n# Frozen\n\nOriginal.\n")
+	commitCLIGit(t, root)
+	target := filepath.Join(root, "frozen.md")
+
+	_, _, _, stdout, stderr, code := invokeCheckWrite(t,
+		checkWritePayload(t, "Write", target, "---\nmode: read-only\n---\n# Frozen\n\nRewritten.\n"))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if strings.Contains(stdout, "reason_code") {
+		t.Fatalf("verdict stdout = %q, want NO reason_code key (codex falls open on unknown top-level keys)", stdout)
+	}
+	// Decode strictly: any unknown field (top-level or nested) is a regression that
+	// would re-trip codex's strict schema.
+	dec := json.NewDecoder(strings.NewReader(stdout))
+	dec.DisallowUnknownFields()
+	var v struct {
+		HookSpecificOutput struct {
+			HookEventName            string `json:"hookEventName"`
+			PermissionDecision       string `json:"permissionDecision"`
+			PermissionDecisionReason string `json:"permissionDecisionReason"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := dec.Decode(&v); err != nil {
+		t.Fatalf("verdict stdout = %q carries a field outside the codex-safe schema: %v", stdout, err)
 	}
 }
 
@@ -291,13 +343,20 @@ func TestCheckWriteAmbiguousVaultAsks(t *testing.T) {
 	chdirCLI(t, repo)
 
 	target := filepath.Join(repo, "alpha", "note.md")
-	decision, reasonCode, _, _, stderr, code := invokeCheckWrite(t,
+	// The ambiguity verdict is an `ask`, not a deny, so it is not recorded to the
+	// decision log; its reason now lives only in the human-readable message (the
+	// reason_code wire field was dropped in memento-ryr.37). Assert the decision and
+	// that the message steers the agent to MEMENTO_VAULT_ROOT.
+	decision, _, reason, _, stderr, code := invokeCheckWrite(t,
 		checkWritePayload(t, "Write", target, "x"))
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr = %q", code, stderr)
 	}
-	if decision != "ask" || reasonCode != "vault_discovery_ambiguous" {
-		t.Fatalf("verdict = (%q,%q), want (ask, vault_discovery_ambiguous)", decision, reasonCode)
+	if decision != "ask" {
+		t.Fatalf("decision = %q, want ask", decision)
+	}
+	if !strings.Contains(reason, "MEMENTO_VAULT_ROOT") {
+		t.Fatalf("reason = %q, want it to name MEMENTO_VAULT_ROOT", reason)
 	}
 }
 

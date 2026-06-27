@@ -60,7 +60,7 @@ func checkWriteBash(command string, stdout, stderr io.Writer) int {
 		// target is not a single clean reference we can name, so there is no key to
 		// record — but the denial itself is part of the audit (ADR-0031).
 		recordDecision(v, "Bash", "", vaultWriteVerdict{decision: "deny", reasonCode: reasonBashOpaqueWrite}, false, false, stderr)
-		emitVerdict(stdout, "deny", reasonBashOpaqueWrite, bashOpaqueMessage)
+		emitVerdict(stdout, "deny", bashOpaqueMessage)
 		return 0
 	case bashAppend:
 		// A `>>` is, by construction, an append: model new-bytes as the old bytes

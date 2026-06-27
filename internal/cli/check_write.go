@@ -15,14 +15,13 @@ import (
 	"github.com/tpisel/memento/internal/vault"
 )
 
-// Resolution-stage reason codes, completing ADR-0031's denial-UX taxonomy
-// alongside the content-invariant codes in internal/enforce. unwritable_path
-// fires when an in-vault target is not a writable note; vault_discovery_ambiguous
-// is the one verdict that asks rather than denies.
-const (
-	reasonUnwritablePath          = "unwritable_path"
-	reasonVaultDiscoveryAmbiguous = "vault_discovery_ambiguous"
-)
+// reasonUnwritablePath is a resolution-stage denial reason, completing ADR-0031's
+// denial-UX taxonomy alongside the content-invariant codes in internal/enforce. It
+// fires when an in-vault target is not a writable note — git-ignored, operational,
+// or not a .md file. Reason codes ride the decision log only (recordDecision),
+// never the hook wire: codex's strict PreToolUse schema rejects an unknown
+// top-level key and falls open on the whole verdict (memento-ryr.37).
+const reasonUnwritablePath = "unwritable_path"
 
 // errUnsupportedDerivation marks a write tool whose new-bytes deriveNewBytes does
 // not handle — a guard against a future dispatch wiring a tool here without a
@@ -66,7 +65,6 @@ type editInput struct {
 
 type hookOutput struct {
 	HookSpecificOutput hookSpecificOutput `json:"hookSpecificOutput"`
-	ReasonCode         string             `json:"reason_code,omitempty"`
 }
 
 type hookSpecificOutput struct {
@@ -134,7 +132,7 @@ func resolveVaultForCheck(stdout, stderr io.Writer, target string) (vault.Vault,
 			return vault.Vault{}, false, 0 // no vault to guard
 		}
 		if errors.Is(err, vault.ErrMultipleVaults) {
-			emitVerdict(stdout, "ask", reasonVaultDiscoveryAmbiguous, fmt.Sprintf(
+			emitVerdict(stdout, "ask", fmt.Sprintf(
 				"memento found more than one .memento vault, so it cannot tell which one %s belongs to. "+
 					"Set MEMENTO_VAULT_ROOT to the intended vault root, then retry.", target))
 			return vault.Vault{}, false, 0
@@ -193,7 +191,7 @@ func gateVaultWrite(v vault.Vault, key, deriveLabel, brokenReason string, record
 			fmt.Fprintf(stderr, "memento check-write: record pending write for %s: %v\n", verdict.normKey, err)
 		}
 	}
-	emitVerdict(stdout, verdict.decision, verdict.reasonCode, verdict.message)
+	emitVerdict(stdout, verdict.decision, verdict.message)
 	return 0
 }
 
@@ -384,14 +382,19 @@ func readOldBytes(path string) ([]byte, bool, error) {
 	return data, true, nil
 }
 
-func emitVerdict(stdout io.Writer, decision, reasonCode, message string) {
+// emitVerdict writes the PreToolUse harness verdict JSON to stdout: the decision
+// and the human-readable message only. It carries no reason_code — codex's
+// PreToolUse output schema is strict (deny_unknown_fields), so an unknown
+// top-level key makes codex discard the whole verdict and fall open
+// (memento-ryr.37). The reason code still reaches the decision log via
+// recordDecision, which is where the A-UAT scorer reads it.
+func emitVerdict(stdout io.Writer, decision, message string) {
 	out := hookOutput{
 		HookSpecificOutput: hookSpecificOutput{
 			HookEventName:            "PreToolUse",
 			PermissionDecision:       decision,
 			PermissionDecisionReason: message,
 		},
-		ReasonCode: reasonCode,
 	}
 	data, err := json.Marshal(out)
 	if err != nil {
