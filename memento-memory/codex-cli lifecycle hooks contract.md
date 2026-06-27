@@ -87,6 +87,38 @@ MEMENTO_VAULT_ROOT" — works natively on codex; **no deny-fallback is required.
 (`PermissionRequest`'s decision is allow/deny only — but that is not the event
 `check-write` answers.)
 
+## PreToolUse never fires for shell writes — codex enforcement is apply_patch-only (memento-ryr.39)
+
+**The hard limit, proven empirically (fork, codex-cli 0.142.2, root-causing ryr.37's
+N5 silent_leak).** A vault write via shell (`printf … > note.md`) runs **completely
+ungated**: the PreToolUse hook never fires for shell tools in `codex exec`. Proven by
+logging every hook payload — with matcher `apply_patch|shell|local_shell` and a prompt
+doing BOTH a shell write and an `apply_patch`, the hook fired **once**, only for
+`tool_name="apply_patch"`; the shell write produced **zero** hook invocations.
+
+Two facts underpin this:
+
+- **codex matches EXACT tool names, not regex** (the `|`-separated group is exact
+  names, not a pattern): matcher `.*` fires nothing, and the shipped `"Shell"`
+  (capital) is dead and never matched. This retires the contract's earlier "codex
+  tool_name strings are unpinned — over-firing is harmless" guess. (Matcher fix in
+  init.go/run-cell.sh is memento-ryr.40; this note owns the *finding*.)
+- **codex shell approval lives on a separate surface, not PreToolUse.** The
+  `PermissionRequest` / exec-approval path (the spike flagged it "under development")
+  is approval-facing and does NOT provide a PreToolUse shell gate. In `codex exec` it
+  is inert anyway — the binary carries *"exec command approval is not supported in
+  exec mode"* and *"apply_patch approval is not supported in exec mode"*.
+
+**IMPLICATION (codex-readiness, this branch).** Even after the ryr.37 reason_code fix
+(which closes `apply_patch` — the bulk of codex writes), codex write-enforcement is
+**PARTIAL**: a shell write to a walled note cannot be blocked via PreToolUse on this
+codex version. This is a genuine codex-cli LIMIT, not a memento bug to code around —
+there is no lifecycle-hook path to gate shell writes in `codex exec` 0.142.2.
+**Mitigation** is an external read-only sandbox (filesystem/landlock-style), not a
+memento hook. This feeds the parked structural decision memento-ryr.35 and is the
+honest framing for the branch's codex-readiness call: codex enforcement = apply_patch
+covered, shell ungated.
+
 ## PostToolUse
 
 Output `decision` is `BlockDecisionWire` = **`block` only** (no allow — PostToolUse
@@ -222,11 +254,13 @@ left `tool_input`'s exact shape unpinned (it is untyped — schema `true`):
 
 ## Limits of this spike
 
-- The PreToolUse **deny was confirmed against codex's own embedded schema**, not by a
-  live tool call — this box's codex is unauthenticated (`doctor` handshake → HTTP 401),
-  so an end-to-end "deny actually blocks an `apply_patch`/shell call" run is deferred
-  to the A-UAT gate (ADR-0026). The schema is authoritative for the contract shape;
-  execution-level byte-identity is schema-confirmed, not yet run-confirmed.
+- The PreToolUse deny was originally confirmed against codex's embedded schema, not a
+  live call. **Live-fire has since run (memento-ryr.34/.37 A-UAT + the ryr.39 fork):**
+  an `apply_patch` deny DOES block end-to-end once `reason_code` is off the wire
+  (ryr.37) — but a **shell** write is never gated at all (the PreToolUse hook does not
+  fire for shell tools in `codex exec`; see the apply_patch-only section above). So the
+  "deny blocks an apply_patch/shell call" claim resolves split: apply_patch yes, shell
+  no.
 - ~~`reason_code` survival as a top-level extra on codex~~ — **RESOLVED
   (memento-ryr.37): it does NOT survive.** codex's strict `deny_unknown_fields`
   schema discarded the whole verdict and fell open. `reason_code` was dropped from

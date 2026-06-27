@@ -218,8 +218,24 @@ matcher groups, synchronous shell command, JSON-on-stdin → JSON-on-stdout — 
 deny contract is **byte-identical to Claude Code**
 (`{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":…}}`).
 Verified empirically: codex headless edits via `apply_patch` for structured writes
-and raw `>> ` for appends, so its gate story is the same two buckets as Claude,
-weighted more toward Bash.
+and raw `>> ` for appends.
+
+**Correction (memento-ryr.39, codex-cli 0.142.2 — empirical, not the same two
+buckets as Claude).** codex enforcement is **apply_patch-only**: the PreToolUse hook
+**never fires for shell tools** in `codex exec`, so a shell write to a walled note
+(`printf … > note.md`) runs completely **ungated**. codex matches EXACT tool names
+(not regex — `.*`/`Shell` are dead), and its shell-approval surface
+(`PermissionRequest`/exec-approval) is approval-facing and inert in exec mode
+(*"exec command approval is not supported in exec mode"*), not a PreToolUse gate.
+After the ryr.37 `reason_code` fix closes the `apply_patch` path (the bulk of codex
+writes), codex write-enforcement remains **PARTIAL** on this version — a genuine
+codex-cli limit, not a memento bug. Mitigation for codex shell writes is an external
+read-only sandbox, not a hook. So codex's gate story is **apply_patch covered, shell
+ungated**, which is weaker than Claude's two-bucket (Write/Edit + Bash) coverage.
+This is the honest framing for this branch's codex-readiness call and feeds the parked
+structural decision memento-ryr.35. (Matcher-string fix in `init` is
+memento-ryr.40; this is the contract pin: see
+[[codex-cli lifecycle hooks contract]].)
 
 Two codex-specific install wrinkles `init` must own: codex's **hook-trust model**
 (hooks trusted by hash, skipped until reviewed — so `init` cannot silently install a

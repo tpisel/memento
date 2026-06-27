@@ -2151,8 +2151,8 @@
       "key": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
       "title": "Remove the write verb — native writes under hook-based mode enforcement",
       "summary": "Removes the memento write verb entirely. Agents write note bodies with their native tools (Write/Edit/MultiEdit/Bash on Claude; apply_patch/shell on codex); a PreToolUse check-write hook gives the allow/deny verdict pre-mutate and a PostToolUse compile keeps the manifest coherent and raises a drift alarm. Two verbs survive for the operations native tools can't do — write-mode (durable mode change) and unlock (temporary read-only exception) — plus check-write as hook plumbing. Mode is enforced by the prefix invariant evaluated in Go from the tool payload + disk. Decides the write-side-enforcement item deferred by ADR-0025 and retires its write skill; revisits ADR-0004. Enforcement is an explicit cooperative-agent guardrail, fail-closed on internal hook error but irreducibly fail-open on hook absence — drift detection, not the hook, is the integrity floor.",
-      "bytes": 19151,
-      "lines": 310,
+      "bytes": 20297,
+      "lines": 326,
       "tags": [
         "agents",
         "enforcement",
@@ -2248,7 +2248,7 @@
       "updated": "",
       "body_sha": "455b684536a051be725f6e4ad326027aacfbc938fbaab498b0ddc9c86174b174",
       "summary_sha": "10fdd4daa517fdc927f225b51505c0f07f7411132babc567ce7f272e255f971b",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
@@ -2278,6 +2278,11 @@
           },
           {
             "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "codex-cli lifecycle hooks contract.md",
             "type": "wiki",
             "resolved": true
           },
@@ -2712,8 +2717,8 @@
       "key": "a-uat/run-report.md",
       "title": "A-UAT run report",
       "summary": "Append-only-in-practice results log from the A-UAT runner against the ADR-0026 test matrix. One row per model x arm x behavior x trial cell, with tool-log evidence and a provisional result. Resumable - the batch driver skips cells already recorded for the current frozen_at. Rows flagged review=yes need human adjudication. (Mode is living so the header can be restructured during the run; harden to append-only once the run set is complete.)",
-      "bytes": 35234,
-      "lines": 173,
+      "bytes": 49892,
+      "lines": 242,
       "tags": [
         "a-uat",
         "results",
@@ -2744,6 +2749,16 @@
           "level": 3,
           "text": "Findings (freeze 918e019, 2026-06-27)",
           "slug": "findings-freeze-918e019-2026-06-27"
+        },
+        {
+          "level": 2,
+          "text": "Session: 2026-06-27 (re-run) — post-fix H-only (freeze 73e9129)",
+          "slug": "session-2026-06-27-re-run-post-fix-h-only-freeze-73e9129"
+        },
+        {
+          "level": 3,
+          "text": "Findings — re-run (freeze 73e9129, 2026-06-27)",
+          "slug": "findings-re-run-freeze-73e9129-2026-06-27"
         }
       ],
       "mode": "living",
@@ -3293,9 +3308,9 @@
     {
       "key": "check-write output contract.md",
       "title": "check-write output contract",
-      "summary": "check-write emits the full PreToolUse harness verdict JSON on stdout itself (allow/deny/ask), not a bare {decision,reason_code,message} needing translation — so the PreToolUse hook is a true dumb pipe plus fail-closed-on-nonzero-exit. Resolves ADR-0031's ambiguous wording.",
-      "bytes": 2288,
-      "lines": 48,
+      "summary": "check-write emits the full PreToolUse harness verdict JSON on stdout itself (allow/deny/ask), not a bare {decision,reason_code,message} needing translation — so the PreToolUse hook is a true dumb pipe plus fail-closed-on-nonzero-exit. Resolves ADR-0031's ambiguous wording. The wire verdict carries NO reason_code (dropped in memento-ryr.37: codex's strict PreToolUse schema rejects unknown top-level keys and falls open on the whole verdict); reason_code now lives ONLY in the decision log.",
+      "bytes": 3017,
+      "lines": 55,
       "tags": [
         "enforcement",
         "hooks",
@@ -3306,8 +3321,8 @@
       "mode": "living",
       "orient": false,
       "updated": "",
-      "body_sha": "07ca5fb21e203141b135508d4776c96846a3ea60d5e0a321e36b7870f93266d6",
-      "summary_sha": "55964931f62203d75600a4539f339d72aadef060dd2b1cc04a7a6280e4960774",
+      "body_sha": "3ef9f272d7badae2d35aae018b7c42603c93cd83caaf69fbbd0a83f263fc90cf",
+      "summary_sha": "a66eb93bc34e3cb6f432c1e8a1c24ea85f33c31eb1e63a50a8d58121c881015c",
       "summary_state": "current",
       "links": {
         "out": [],
@@ -3335,8 +3350,8 @@
       "key": "codex-cli lifecycle hooks contract.md",
       "title": "codex-cli lifecycle hooks contract",
       "summary": "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. CRITICAL (memento-ryr.31): codex declares hooks INLINE only — `hooks` must be a HooksToml struct ([[hooks.<Event>]] array-of-tables); the path-indirection form `hooks = \\\"hooks.json\\\"` is REJECTED at config load (`invalid type: string, expected struct HooksToml`), so memento ships no hooks.json. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences.",
-      "bytes": 15384,
-      "lines": 249,
+      "bytes": 18234,
+      "lines": 291,
       "tags": [
         "agents",
         "codex",
@@ -3365,6 +3380,11 @@
           "level": 2,
           "text": "ask IS supported (resolves the vault_discovery_ambiguous fallback)",
           "slug": "ask-is-supported-resolves-the-vault_discovery_ambiguous-fallback"
+        },
+        {
+          "level": 2,
+          "text": "PreToolUse never fires for shell writes — codex enforcement is apply_patch-only (memento-ryr.39)",
+          "slug": "pretooluse-never-fires-for-shell-writes-codex-enforcement-is-apply_patch-only-memento-ryr39"
         },
         {
           "level": 2,
@@ -3412,7 +3432,7 @@
       "updated": "",
       "body_sha": "ee0ab551572edba172b17267abaa1667ea65f904fe7c422f46f6cab0d07b775c",
       "summary_sha": "e203a34d81e1b25309d4a10d3f7f0f9b2c6a8cf0b0cdf9a66f778a90f043e692",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
@@ -3446,7 +3466,12 @@
             "resolved": false
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
