@@ -42,9 +42,31 @@ func TestEvaluateMode(t *testing.T) {
 				if got.Message != "" {
 					t.Fatalf("EvaluateMode Message = %q, want empty on allow", got.Message)
 				}
-			} else if !strings.Contains(got.Message, key) {
-				t.Fatalf("EvaluateMode Message = %q, want it to name key %q", got.Message, key)
+			} else {
+				if !strings.Contains(got.Message, key) {
+					t.Fatalf("EvaluateMode Message = %q, want it to name key %q", got.Message, key)
+				}
+				assertLooseningStance(t, got.Message)
 			}
 		})
+	}
+}
+
+// assertLooseningStance pins the deny-message stance from memento-ryr.32: a mode
+// denial must frame loosening as needing the user's explicit authorisation (a task
+// instruction is not authorisation), tell the agent to stop and confirm rather than
+// self-loosen, and name both authorised mechanisms — never present them as a casual
+// fix-it. Pinned so the copy cannot silently regress to an escape-hatch framing.
+func assertLooseningStance(t *testing.T, msg string) {
+	t.Helper()
+	for _, want := range []string{
+		"not authorisation to loosen",
+		"Stop and confirm",
+		"memento unlock",
+		"memento write-mode",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("deny message = %q, want it to contain %q", msg, want)
+		}
 	}
 }

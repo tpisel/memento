@@ -43,7 +43,10 @@ func EvaluateMode(key string, mode markdown.WriteMode, op Operation) Decision {
 	case markdown.ModeReadOnly:
 		return Decision{
 			ReasonCode: ReasonReadOnly,
-			Message:    fmt.Sprintf("%s is read-only", key),
+			Message: fmt.Sprintf(
+				"read-only note %s: writes are denied. Loosening the mode needs the user's explicit say-so — being told to do the task is not authorisation to loosen the note. "+
+					"Stop and confirm with the user; only once they authorise it, run `memento unlock %s --justification <reason>` for a one-off edit or `memento write-mode %s living --justification <reason>` for a permanent change.",
+				key, key, key),
 		}
 	case markdown.ModeLiving:
 		return Decision{Allow: true}
@@ -54,7 +57,10 @@ func EvaluateMode(key string, mode markdown.WriteMode, op Operation) Decision {
 		if op == OpOverwrite {
 			return Decision{
 				ReasonCode: ReasonAppendOnlyOverwrite,
-				Message:    fmt.Sprintf("%s is append-only; overwrite is not permitted", key),
+				Message: fmt.Sprintf(
+					"append-only note %s: overwrite is denied (append is allowed). Overwriting means loosening the mode, which needs the user's explicit say-so — being told to do the task is not authorisation to loosen the note. "+
+						"Stop and confirm with the user; only once they authorise it, run `memento unlock %s --justification <reason>` for a one-off edit or `memento write-mode %s living --justification <reason>` for a permanent change.",
+					key, key, key),
 			}
 		}
 		return Decision{Allow: true}

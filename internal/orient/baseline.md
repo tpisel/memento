@@ -15,7 +15,7 @@ Memento is a thin retrieval and write-enforcement layer over a human-curated mar
 
 ## How writes happen
 
-There is no `write` verb. Author notes with your native file tools (Write/Edit/Bash on Claude, `apply_patch`/shell on codex). A PreToolUse `check-write` hook enforces the note's `mode` before the bytes land. First-draft (unratified) authoring is never walled, and new notes are created by a normal native write; modes bite only after a note's first commit. To loosen a frozen note, route the change through `write-mode` (or `unlock` for a one-off), and confirm with the user before thawing a `read-only` note.
+There is no `write` verb. Author notes with your native file tools (Write/Edit/Bash on Claude, `apply_patch`/shell on codex). A PreToolUse `check-write` hook enforces the note's `mode` before the bytes land. First-draft (unratified) authoring is never walled, and new notes are created by a normal native write; modes bite only after a note's first commit. A note's mode is a deliberate constraint, not an obstacle to route around: if `read-only` or an `append-only` overwrite blocks your write, stop. Loosening — `unlock` for a one-off authorised edit, `write-mode` for a permanent change — needs the user's explicit say-so; being told to do the task is not authorisation to loosen a note. Surface the block and re-confirm before loosening, even when the instruction seems to imply it.
 
 ## Write Modes
 

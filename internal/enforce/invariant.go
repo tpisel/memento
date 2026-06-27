@@ -36,9 +36,10 @@ func EvaluatePrefixInvariant(key string, mode markdown.WriteMode, old, new []byt
 		return Decision{
 			ReasonCode: ReasonReadOnly,
 			Message: fmt.Sprintf(
-				"read-only note %s: edits are denied and the identical write will be denied again. "+
-					"Ask the user before changing it; if they agree, run `memento unlock %s --justification <reason>` for a one-off edit.",
-				key, key),
+				"read-only note %s: this write is denied and the identical write will be denied again. "+
+					"Its mode blocks edits, and loosening that mode is a deliberate act that needs the user's explicit say-so — being told to do the task is not authorisation to loosen the note. "+
+					"Stop and confirm with the user; only once they authorise the loosening, run `memento unlock %s --justification <reason>` for a one-off edit or `memento write-mode %s living --justification <reason>` for a permanent change.",
+				key, key, key),
 		}
 	case markdown.ModeLiving:
 		return Decision{Allow: true}
@@ -53,8 +54,10 @@ func EvaluatePrefixInvariant(key string, mode markdown.WriteMode, old, new []byt
 			ReasonCode: brokenReason,
 			Message: fmt.Sprintf(
 				"append-only note %s: this write drops or rewrites existing content, so it is denied and the identical write will be denied again. "+
-					"Re-do it as an append that keeps the current content as a prefix, or run `memento write-mode %s living --justification <reason>` to allow overwrites.",
-				key, key),
+					"Re-do it as an append that keeps the current content as a prefix. "+
+					"Overwriting instead means loosening the mode — a deliberate act that needs the user's explicit say-so, not something to self-authorise to get unblocked; being told to do the task is not authorisation to loosen the note. "+
+					"Stop and confirm with the user; only once they authorise it, run `memento unlock %s --justification <reason>` for a one-off edit or `memento write-mode %s living --justification <reason>` for a permanent change.",
+				key, key, key),
 		}
 	}
 }

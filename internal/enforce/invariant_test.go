@@ -52,6 +52,7 @@ func TestEvaluatePrefixInvariant(t *testing.T) {
 			if !strings.Contains(got.Message, "denied again") {
 				t.Fatalf("Message = %q, want it to warn the identical write will be denied again", got.Message)
 			}
+			assertLooseningStance(t, got.Message)
 		})
 	}
 }
