@@ -4,7 +4,8 @@ reusing score.py's behaviour rubric and leak cross-reference.
 
 ADR-0031 brought codex into scope for *enforcement*, not just adherence: codex-cli
 ships a lifecycle-hooks engine whose deny contract is byte-identical to Claude's,
-so the W (write-verb build) and H (hooks-only build) arms both run on codex. Codex
+so codex runs the H (hooks-only) arm under real enforcement (the W write-verb build
+stays available ad-hoc but is off the default plan). Codex
 edits via `apply_patch` (file_change items) and shell (`command_execution` items);
 file_change is its native-write surface, the leak equivalent of Claude's
 Write/Edit. We normalise both into the evidence dict score.py knows how to score,

@@ -2761,9 +2761,9 @@
     {
       "key": "a-uat/test-matrix.md",
       "title": "A-UAT test matrix",
-      "summary": "Post-ADR-0031 manual A-UAT matrix for the validation gate. Two whole-build arms (W, the pre-removal write-verb build = leak-rate control; H, the branch-tip hooks-only build) run five native-write behaviours (N1-N5) plus a codex orient-injection check (N6) on Claude and codex. Defines the disposable probe prompts, the upgraded evidence model (cross-reference the b19 check-write decision log against a post-run vault git diff; a b11 drift alarm is a replay-fidelity finding), and the three pre-registered decision rules that turn observed leaks into the ADR-0031 ship/skip call.",
-      "bytes": 15448,
-      "lines": 170,
+      "summary": "Post-ADR-0031 manual A-UAT matrix for the validation gate. One shipping arm (H, the branch-tip hooks-only build) runs the native-write behaviours (N1-N5) plus a codex orient-injection check (N6); opus runs the full set, sonnet a single N4 spot check, codex N1-N6. Defines the disposable probe prompts, the upgraded evidence model (cross-reference the b19 check-write decision log against a post-run vault git diff; a b11 drift alarm is a replay-fidelity finding), and the three pre-registered decision rules — rule 1 is now an absolute leak bar on H (~0 hard-bypass / silent-leak), not a non-regression vs the dropped W control — that turn observed leaks into the ADR-0031 ship/skip call.",
+      "bytes": 17683,
+      "lines": 172,
       "tags": [
         "a-uat",
         "agents",
@@ -2779,13 +2779,13 @@
         },
         {
           "level": 2,
-          "text": "Arms (whole builds, not levers)",
-          "slug": "arms-whole-builds-not-levers"
+          "text": "Arm (the whole build, not levers)",
+          "slug": "arm-the-whole-build-not-levers"
         },
         {
           "level": 2,
-          "text": "Model dimension — codex now enforces",
-          "slug": "model-dimension-codex-now-enforces"
+          "text": "Model dimension — codex now enforces, models split by axis",
+          "slug": "model-dimension-codex-now-enforces-models-split-by-axis"
         },
         {
           "level": 2,
@@ -2856,8 +2856,8 @@
       "mode": "living",
       "orient": false,
       "updated": "",
-      "body_sha": "110f0af47850a4b5764927ebc3c8de357d2a3a4ffcdfb1f0dc08daf80d4cd835",
-      "summary_sha": "fc186294186a7c143689e7e7ffacf340d4056778604f64cd4334757570f59dd5",
+      "body_sha": "8b8be57bfa9a6666ea26418265cd2009086fac4d2b296373897f6043dcf66e51",
+      "summary_sha": "0a6bb8a65125cf786cb1276182b4c6508bb10984822a24d0d367aaf24e3382dc",
       "summary_state": "current",
       "links": {
         "out": [
