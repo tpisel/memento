@@ -19,8 +19,9 @@ import (
 // authorisation carve-outs check-write composes:
 //
 //   - granted — an active unlock grant re-opens the edit window, so any change is
-//     allowed (the grant is the user's recorded authorisation). The caller reads
-//     the grant sidecar BEFORE prepare-commit-msg clears it.
+//     allowed (the grant is the user's recorded authorisation). In the pre-commit
+//     tier the caller reads the grant sidecar BEFORE `memento clear-grants` (which
+//     runs later in the same hook) clears it.
 //   - a pure write-mode change — a mode: edit is legitimate only through the
 //     write-mode verb, which touches the mode line alone. Re-normalising both HEAD
 //     and disk to one mode and comparing isolates that: byte-equal after

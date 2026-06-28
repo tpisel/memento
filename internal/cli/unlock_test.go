@@ -20,7 +20,7 @@ func TestUnlockHelp(t *testing.T) {
 		for _, want := range []string{
 			"memento unlock <key> --justification <reason>",
 			"until the next commit",
-			"Memento-Unlock commit trailer",
+			"not persisted past the grant",
 		} {
 			if !strings.Contains(stdout.String(), want) {
 				t.Fatalf("Run(unlock %s) stdout =\n%s\nwant %q", helpFlag, stdout.String(), want)

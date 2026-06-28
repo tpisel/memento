@@ -18,16 +18,18 @@ import (
 // needs a read-modify-rewrite that could race with a concurrent verdict.
 const DecisionLogFileName = "decision-log.jsonl"
 
-// The enforcement-visible events the log records (ADR-0031 enumerates exactly
-// these three): outright denials, the drive-by mode-change blocks broken out so
-// they are distinguishable from ordinary content denials, and the writes a
-// temporary unlock grant permitted that would otherwise have been denied. Plain
+// The enforcement-visible events the log records: outright denials, the drive-by
+// mode-change blocks broken out so they are distinguishable from ordinary content
+// denials, the writes a temporary unlock grant permitted that would otherwise have
+// been denied, and durable loosenings via write-mode (ADR-0031, 2026-06-28
+// addendum: loosening justifications persist here, not in a commit trailer). Plain
 // allows are deliberately not recorded: the log is the enforcement audit, not a
 // write journal, so it stays scoped to what enforcement actually did.
 const (
 	EventDeny             = "deny"
 	EventDriveByBlock     = "drive_by_block"
 	EventGrantConsumption = "grant_consumption"
+	EventModeLoosen       = "mode_loosen"
 )
 
 // DecisionLogPath returns the absolute path of the decision log for v.
@@ -35,19 +37,22 @@ func DecisionLogPath(v vault.Vault) string {
 	return filepath.Join(v.MarkerDir, DecisionLogFileName)
 }
 
-// DecisionLogEntry is one structured check-write verdict record. Time is the
-// wall-clock instant the verdict was reached (UTC); Tool names the originating
-// write tool (Write/Edit/MultiEdit/Bash/apply_patch); Key is the vault-relative
-// note the write targeted (empty when the denial fires before a key resolves,
-// e.g. an opaque Bash write); Decision is the harness verdict; ReasonCode is the
-// denial-UX code that drove it.
+// DecisionLogEntry is one structured enforcement record. Time is the wall-clock
+// instant the verdict was reached (UTC); Tool names the originating write tool
+// (Write/Edit/MultiEdit/Bash/apply_patch) or the verb (write-mode) for a loosening;
+// Key is the vault-relative note targeted (empty when a denial fires before a key
+// resolves, e.g. an opaque Bash write); Decision is the harness verdict; ReasonCode
+// is the denial-UX code that drove it; Justification carries the operator's stated
+// reason for a durable loosening (EventModeLoosen), the why that would otherwise be
+// lost to stderr (ADR-0031, 2026-06-28 addendum).
 type DecisionLogEntry struct {
-	Time       time.Time `json:"time"`
-	Event      string    `json:"event"`
-	Tool       string    `json:"tool"`
-	Key        string    `json:"key,omitempty"`
-	Decision   string    `json:"decision"`
-	ReasonCode string    `json:"reason_code,omitempty"`
+	Time          time.Time `json:"time"`
+	Event         string    `json:"event"`
+	Tool          string    `json:"tool"`
+	Key           string    `json:"key,omitempty"`
+	Decision      string    `json:"decision"`
+	ReasonCode    string    `json:"reason_code,omitempty"`
+	Justification string    `json:"justification,omitempty"`
 }
 
 // AppendDecisionLog appends one verdict record to the decision log, creating the

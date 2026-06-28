@@ -137,7 +137,7 @@ Key contract:
   key is a vault-relative .md path naming an existing note. Repo-relative paths and paths prefixed with the vault directory are invalid.
 
 Justification:
-  --justification <reason> is required. The reason is held in a gitignored .memento/unlock-grants.json sidecar and lifted into a Memento-Unlock commit trailer by the prepare-commit-msg hook before the grant is cleared.
+  --justification <reason> is required as deliberate friction — you must state why you are thawing a frozen note. It is held in a gitignored .memento/unlock-grants.json sidecar for the grant's lifetime and surfaced on stderr, but is not persisted past the grant (only durable write-mode loosenings are recorded, in the gitignored .memento/ decision log).
 
 Lifetime:
   The grant covers all writes to the key until the next commit, when it is cleared. There is no TTL and no durable mode change; use write-mode to change a note's mode permanently.

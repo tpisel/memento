@@ -108,8 +108,9 @@ func reportModeViolations(v vault.Vault, stderr io.Writer) (int, error) {
 	if len(changed) == 0 {
 		return 0, nil
 	}
-	// Read the grant sidecar once, BEFORE prepare-commit-msg lifts and clears it
-	// (it runs after pre-commit), so grant-covered changes are correctly waived.
+	// Read the grant sidecar once, BEFORE `memento clear-grants` clears it (it runs
+	// later in the same pre-commit hook, after this compile), so grant-covered
+	// changes are correctly waived.
 	grants, err := enforce.LoadGrants(v)
 	if err != nil {
 		return 0, err

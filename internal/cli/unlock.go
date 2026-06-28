@@ -14,11 +14,13 @@ import (
 )
 
 // runUnlock records a temporary single-key unlock grant (ADR-0031): it re-opens
-// the edit window on a read-only note until the next commit, when the
-// prepare-commit-msg hook lifts the justification into a Memento-Unlock trailer and clears the
-// sidecar. --justification is required — an unlock with no recorded reason is
-// the audit hole the trailer exists to close. The grant is the only artifact;
-// no recompile is needed because the gitignored sidecar is not vault corpus.
+// the edit window on a read-only note until the next commit, when the pre-commit
+// hook clears the grant sidecar (grant deletion is the re-lock). --justification
+// is required as deliberate friction — the agent must state a reason to thaw a
+// frozen note — and is surfaced on stderr, but is intentionally NOT persisted past
+// the grant's lifetime (ADR-0031 2026-06-28 addendum: no commit trailer; only
+// durable write-mode loosenings are logged). The grant is the only artifact; no
+// recompile is needed because the gitignored sidecar is not vault corpus.
 func runUnlock(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("unlock", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)

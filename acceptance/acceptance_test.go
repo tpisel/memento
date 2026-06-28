@@ -151,13 +151,13 @@ func TestUS6_UnratifiedNoteAllowed(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// US7: unlock + trailer + relock. A ratified read-only note is locked; `memento
-// unlock` reopens its window; any commit lifts the justification into a
-// Memento-Unlock trailer and clears the grant; the note re-locks.
-// ADR-0031 ("The unlock grant and its audit trail").
+// US7: unlock + relock. A ratified read-only note is locked; `memento unlock`
+// reopens its window; any commit clears the grant and the note re-locks. The
+// justification is held only for the grant's lifetime — no commit trailer
+// (ADR-0031, 2026-06-28 addendum retires the Memento-Unlock trailer).
 // ---------------------------------------------------------------------------
 
-func TestUS7_UnlockTrailerRelock(t *testing.T) {
+func TestUS7_UnlockRelock(t *testing.T) {
 	f := newFixture(t)
 	f.writeNote("note.md", "---\nmode: read-only\n---\n# Note\n\nFrozen body.\n")
 	f.commit("ratify note")
@@ -177,11 +177,12 @@ func TestUS7_UnlockTrailerRelock(t *testing.T) {
 	reopened := f.preToolUse(f.writePayload("note.md", "---\nmode: read-only\n---\n# Note\n\nEdited body.\n"))
 	reopened.requireAllow(t)
 
-	// Any commit lifts the Memento-Unlock trailer and clears every grant.
+	// Any commit clears every grant (the re-lock); the justification is NOT lifted
+	// into a commit trailer — that mechanism is retired (ADR-0031 2026-06-28 addendum).
 	f.commitAllowEmpty("ordinary work")
 	msg := f.git("log", "-1", "--format=%B")
-	if !strings.Contains(msg, "Memento-Unlock: note.md: fix a typo") {
-		t.Fatalf("commit message = %q, want Memento-Unlock trailer", msg)
+	if strings.Contains(msg, "Memento-Unlock") {
+		t.Fatalf("commit message = %q, want NO Memento-Unlock trailer (retired)", msg)
 	}
 	if _, err := os.Stat(grantsPath); !os.IsNotExist(err) {
 		t.Fatalf("unlock-grants sidecar still present after commit (want cleared); stat err = %v", err)
@@ -212,7 +213,13 @@ func TestUS8_FailClosedWhenBinaryMissing(t *testing.T) {
 		t.Fatalf("exit = %d, want 2 (fail-closed block); stdout = %q stderr = %q", code, stdout, stderr)
 	}
 	v := parseVerdict(t, stdout, stderr, code)
-	v.requireDeny(t, "hook_internal_error")
+	// The fail-closed deny is emitted by the bash wrapper itself, not check-write, so
+	// it carries no reason_code (check-write never ran to log one) — assert the deny
+	// decision and the fail-closed message rather than a code.
+	if v.decision != "deny" {
+		t.Fatalf("decision = %q, want deny (fail-closed block); stdout = %q stderr = %q", v.decision, stdout, stderr)
+	}
+	v.requireReasonContains(t, "could not run", "fail-closed")
 	if stderr == "" {
 		t.Fatalf("stderr empty; want a fail-closed diagnostic for the harness")
 	}
@@ -514,7 +521,47 @@ func (f *fixture) preToolUse(payload string) verdict {
 	f.t.Helper()
 	cmd := f.preToolUseCommand(payload)
 	stdout, stderr, code := runCommand(cmd)
-	return parseVerdict(f.t, stdout, stderr, code)
+	v := parseVerdict(f.t, stdout, stderr, code)
+	// reason_code is NOT on the PreToolUse wire — codex's strict schema rejects
+	// unknown top-level keys, so check-write records the code to the gitignored
+	// decision log instead (ryr.37). Attach the latest logged reason_code so
+	// requireDeny can assert it: a denial always logs an entry, so right after a
+	// deny the log's last entry is this call's verdict.
+	if rc, ok := f.lastDecisionReasonCode(); ok {
+		v.reasonCode = rc
+	}
+	return v
+}
+
+// lastDecisionReasonCode returns the reason_code of the most recent decision-log
+// entry (`<vault>/.memento/decision-log.jsonl`, matching
+// enforce.DecisionLogFileName). ok is false when the log is absent or empty — a
+// verdict that reached no logged event: a plain allow, or the fail-closed wrapper
+// path where check-write never ran to record one.
+func (f *fixture) lastDecisionReasonCode() (string, bool) {
+	f.t.Helper()
+	data, err := os.ReadFile(filepath.Join(f.vault, ".memento", "decision-log.jsonl"))
+	if os.IsNotExist(err) {
+		return "", false
+	}
+	if err != nil {
+		f.t.Fatalf("read decision log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		var e struct {
+			ReasonCode string `json:"reason_code"`
+		}
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			f.t.Fatalf("parse decision-log line %q: %v", line, err)
+		}
+		return e.ReasonCode, true
+	}
+	return "", false
 }
 
 func (f *fixture) preToolUseCommand(payload string) *exec.Cmd {
@@ -613,8 +660,10 @@ func parseVerdict(t *testing.T, stdout, stderr string, code int) verdict {
 	if strings.TrimSpace(stdout) == "" {
 		return v // inert: no verdict emitted
 	}
+	// reason_code is deliberately absent from the wire (ryr.37); only decision and
+	// the human reason ride the verdict JSON. The caller attaches reason_code from
+	// the decision log (see fixture.preToolUse / lastDecisionReasonCode).
 	var parsed struct {
-		ReasonCode         string `json:"reason_code"`
 		HookSpecificOutput struct {
 			PermissionDecision       string `json:"permissionDecision"`
 			PermissionDecisionReason string `json:"permissionDecisionReason"`
@@ -624,7 +673,6 @@ func parseVerdict(t *testing.T, stdout, stderr string, code int) verdict {
 		t.Fatalf("verdict stdout = %q, not valid JSON: %v", stdout, err)
 	}
 	v.decision = parsed.HookSpecificOutput.PermissionDecision
-	v.reasonCode = parsed.ReasonCode
 	v.reason = parsed.HookSpecificOutput.PermissionDecisionReason
 	return v
 }

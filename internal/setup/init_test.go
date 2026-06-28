@@ -1404,14 +1404,14 @@ func TestPreCommitHookSoftSkipsWhenMementoIsAbsentFromPath(t *testing.T) {
 	}
 }
 
-// TestPrepareCommitMsgHookLiftsUnlockTrailerAndClearsGrants exercises US7
-// end-to-end: an unlock reopens a ratified read-only note's window (recording a
-// grant), the next commit lifts that grant's justification into a Memento-Unlock
-// trailer, and the grant sidecar is cleared — the grant deletion is what re-locks
-// the read-only note.
-func TestPrepareCommitMsgHookLiftsUnlockTrailerAndClearsGrants(t *testing.T) {
+// TestPreCommitHookClearsGrantsAndRelocks exercises US7 end-to-end: an unlock
+// reopens a ratified read-only note's window (recording a grant), and the next
+// commit clears the grant sidecar via the pre-commit `memento clear-grants` step —
+// the grant deletion is what re-locks the read-only note. No Memento-Unlock trailer
+// is written (that mechanism is retired; ADR-0031 2026-06-28 addendum).
+func TestPreCommitHookClearsGrantsAndRelocks(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("prepare-commit-msg hook is a POSIX shell script")
+		t.Skip("pre-commit hook is a POSIX shell script")
 	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skipf("git not found: %v", err)
@@ -1442,21 +1442,24 @@ func TestPrepareCommitMsgHookLiftsUnlockTrailerAndClearsGrants(t *testing.T) {
 		t.Fatalf("unlock-grants sidecar missing after unlock: %v", err)
 	}
 
-	// Any commit lifts the trailer and clears every grant.
+	// Any commit clears every grant (the re-lock) and writes no Memento-Unlock trailer.
 	commitWithMemento(t, repo, pathEnv, "ordinary work")
 
 	msg := runSetupGit(t, repo, "log", "-1", "--format=%B")
-	if !strings.Contains(msg, "Memento-Unlock: note.md: fix a typo") {
-		t.Fatalf("commit message = %q, want Memento-Unlock trailer", msg)
+	if strings.Contains(msg, "Memento-Unlock") {
+		t.Fatalf("commit message = %q, want NO Memento-Unlock trailer (retired)", msg)
 	}
 	if _, err := os.Stat(grantsPath); !os.IsNotExist(err) {
 		t.Fatalf("unlock-grants sidecar still present after commit (want cleared); stat err = %v", err)
 	}
 }
 
-func TestPrepareCommitMsgHookLeavesMessageUntouchedWithoutGrants(t *testing.T) {
+// TestPreCommitHookCleanCommitWithoutGrants guards the no-grants fast path: with no
+// unlock sidecar, the pre-commit `memento clear-grants` step is a clean no-op that
+// neither errors the commit nor writes a Memento-Unlock trailer.
+func TestPreCommitHookCleanCommitWithoutGrants(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("prepare-commit-msg hook is a POSIX shell script")
+		t.Skip("pre-commit hook is a POSIX shell script")
 	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skipf("git not found: %v", err)

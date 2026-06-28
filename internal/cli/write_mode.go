@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tpisel/memento/internal/enforce"
 	"github.com/tpisel/memento/internal/markdown"
@@ -84,6 +85,25 @@ func runWriteMode(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stderr, "mode: %s %s -> %s\n", key, oldMode, newMode)
 	if reason != "" {
 		fmt.Fprintf(stderr, "justification: %s\n", reason)
+	}
+
+	// A durable loosening's justification would otherwise be lost to stderr; persist
+	// it to the gitignored decision log so the audit the removed write verb got for
+	// free survives (ADR-0031, 2026-06-28 addendum: the log, not a commit trailer).
+	// Tightening is not logged — it adds restriction, not the risk the audit tracks.
+	// Best-effort: a log-write failure must not fail a mode change already on disk.
+	if modeRank(newMode) > modeRank(oldMode) {
+		entry := enforce.DecisionLogEntry{
+			Time:          time.Now().UTC(),
+			Event:         enforce.EventModeLoosen,
+			Tool:          "write-mode",
+			Key:           key,
+			Decision:      "allow",
+			Justification: reason,
+		}
+		if err := enforce.AppendDecisionLog(v, entry); err != nil {
+			fmt.Fprintf(stderr, "memento write-mode: warning: record loosening in decision log: %v\n", err)
+		}
 	}
 
 	warnings, count, err := writeCompileArtifacts(v)

@@ -17,9 +17,11 @@ import (
 const GrantsFileName = "unlock-grants.json"
 
 // Grant is a single temporary read-only exception (ADR-0031): it re-opens the
-// edit window on one key until the next commit, when the prepare-commit-msg hook
-// lifts its justification into a Memento-Unlock trailer and clears the sidecar. There
-// is no TTL — the grant's lifetime is identical to ratification's edit window.
+// edit window on one key until the next commit, when the pre-commit hook clears
+// the sidecar (grant deletion is the re-lock). There is no TTL — the grant's
+// lifetime is identical to ratification's edit window. The justification is held
+// here for the grant's lifetime only; it is not persisted past the clear
+// (ADR-0031 2026-06-28 addendum: the Memento-Unlock trailer is retired).
 type Grant struct {
 	Justification string    `json:"justification"`
 	GrantedAt     time.Time `json:"granted_at"`
@@ -34,7 +36,8 @@ func GrantsPath(v vault.Vault) string {
 // missing sidecar is not an error — it returns an empty, non-nil map (no grants
 // is the normal steady state). Malformed JSON is an error: a corrupt sidecar
 // must not be silently read as "no exceptions". This is the list helper the
-// prepare-commit-msg hook consumes to lift justifications before clearing.
+// ratification-boundary audit (compile) consumes to waive grant-covered changes
+// before the pre-commit hook clears the grants.
 func LoadGrants(v vault.Vault) (map[string]Grant, error) {
 	data, err := os.ReadFile(GrantsPath(v))
 	if errors.Is(err, os.ErrNotExist) {
@@ -84,8 +87,8 @@ func AddGrant(v vault.Vault, key, justification string, grantedAt time.Time) err
 }
 
 // ClearGrants removes the entire sidecar, dropping every active grant at once.
-// It is the re-lock the prepare-commit-msg hook performs after lifting justifications.
-// A missing sidecar is a no-op: clearing is idempotent.
+// It is the re-lock the pre-commit hook performs (via `memento clear-grants`,
+// after `memento compile`). A missing sidecar is a no-op: clearing is idempotent.
 func ClearGrants(v vault.Vault) error {
 	if err := os.Remove(GrantsPath(v)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("clear unlock grants: %w", err)
