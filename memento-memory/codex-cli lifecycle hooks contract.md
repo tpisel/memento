@@ -1,6 +1,6 @@
 ---
 title: codex-cli lifecycle hooks contract
-summary: "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. CRITICAL (memento-ryr.31): codex declares hooks INLINE only — `hooks` must be a HooksToml struct ([[hooks.<Event>]] array-of-tables); the path-indirection form `hooks = \"hooks.json\"` is REJECTED at config load (`invalid type: string, expected struct HooksToml`), so memento ships no hooks.json. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences."
+summary: "Empirical pin (codex-cli 0.142.2) of lifecycle hooks: Codex hooks must be declared inline in project-local `.codex/config.toml` as `[[hooks.<Event>]]` tables (no hooks.json), PreToolUse supports Claude-shaped allow/deny/ask but only fires for `apply_patch`, shell writes are ungated, and trust is persisted per hook hash. `memento init` defaults to `--agents=detect` (Claude baseline, Codex only if `.codex/` exists), while `--agents=codex` or `--agents=claude,codex` forces Codex staging and init reports created/adopted vault plus agent detect/install/skip status. Also flags that memento's wikilink extractor currently matches double-bracket tokens inside code spans/fences."
 tags:
   - memento
   - codex
@@ -175,9 +175,15 @@ permissionDecision:deny"). Other non-zero exits are not the block path.
   snake_case forms, e.g. `timeout_sec`, `command_windows`).
 - **`init` install note (b16):** install PreToolUse + PostToolUse entries; keep each
   command a dumb pipe to `memento check-write` / `memento compile`.
-- **b16 realized (memento-ryr.16), corrected by memento-ryr.31.** `init` branches per
-  family: Claude is the always-installed baseline; codex is additive, gated on a
-  `.codex/` dir in the repo. The codex install writes **project-local `.codex/`** with
+- **b16 realized (memento-ryr.16), corrected by memento-ryr.31 and the later
+  explicit-agent init flag.** `init` branches per family. In default
+  `--agents=detect` mode, Claude is the always-installed baseline and codex is
+  additive, gated on a `.codex/` dir in the repo. `--agents=codex` or
+  `--agents=claude,codex` overrides detection and creates/stages the project-local
+  Codex integration even when `.codex/` did not already exist; `--agents=none` skips
+  agent hooks. Init prints the vault it created/adopted, the detection/request mode,
+  and the per-family install/skip result so an auto-detection miss is visible. The
+  codex install writes **project-local `.codex/`** with
   the SessionStart/PreToolUse/PostToolUse hooks declared **inline** in `config.toml`
   inside a memento sentinel block — `[[hooks.<Event>]]` array-of-tables, each with a
   `matcher` and a nested `[[hooks.<Event>.hooks]]` command handler pointing at a

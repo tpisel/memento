@@ -2607,8 +2607,8 @@
       "key": "OKF interop and external compatibility.md",
       "title": "OKF interop and external compatibility",
       "summary": "Working notes on aligning memento with Google Cloud's Open Knowledge Format (OKF) v0.1. Records what we can align without harming the Obsidian-as-human-interface commitment, what gap remains, whether to surface OKF support as an explicit mode, and where the OKF spec appears to be heading that we may already be on the path to.",
-      "bytes": 19305,
-      "lines": 157,
+      "bytes": 23983,
+      "lines": 186,
       "tags": [
         "distribution",
         "format",
@@ -2702,6 +2702,31 @@
         },
         {
           "level": 2,
+          "text": "Addendum 2026-06-26: reading the published example bundles",
+          "slug": "addendum-2026-06-26-reading-the-published-example-bundles"
+        },
+        {
+          "level": 3,
+          "text": "Correction: export emits RELATIVE links, not /-absolute",
+          "slug": "correction-export-emits-relative-links-not-absolute"
+        },
+        {
+          "level": 3,
+          "text": "Confirmed by the examples (no change, just now evidenced rather than assumed)",
+          "slug": "confirmed-by-the-examples-no-change-just-now-evidenced-rather-than-assumed"
+        },
+        {
+          "level": 3,
+          "text": "New evidence on \"where OKF is going\"",
+          "slug": "new-evidence-on-where-okf-is-going"
+        },
+        {
+          "level": 3,
+          "text": "Net",
+          "slug": "net"
+        },
+        {
+          "level": 2,
           "text": "Provenance",
           "slug": "provenance"
         }
@@ -2711,7 +2736,7 @@
       "updated": "",
       "body_sha": "ab00fe10efe821426a99726b1121badb252c97a3b63f1d6cc9a38dc5e422b1da",
       "summary_sha": "2ca9b3410ccd5e86f04c0fa082df02bca672b33baa6388e8baacaf4f15a5a889",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
@@ -3396,9 +3421,9 @@
     {
       "key": "codex-cli lifecycle hooks contract.md",
       "title": "codex-cli lifecycle hooks contract",
-      "summary": "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. CRITICAL (memento-ryr.31): codex declares hooks INLINE only — `hooks` must be a HooksToml struct ([[hooks.<Event>]] array-of-tables); the path-indirection form `hooks = \\\"hooks.json\\\"` is REJECTED at config load (`invalid type: string, expected struct HooksToml`), so memento ships no hooks.json. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences.",
-      "bytes": 18549,
-      "lines": 295,
+      "summary": "Empirical pin (codex-cli 0.142.2) of lifecycle hooks: Codex hooks must be declared inline in project-local `.codex/config.toml` as `[[hooks.<Event>]]` tables (no hooks.json), PreToolUse supports Claude-shaped allow/deny/ask but only fires for `apply_patch`, shell writes are ungated, and trust is persisted per hook hash. `memento init` defaults to `--agents=detect` (Claude baseline, Codex only if `.codex/` exists), while `--agents=codex` or `--agents=claude,codex` forces Codex staging and init reports created/adopted vault plus agent detect/install/skip status. Also flags that memento's wikilink extractor currently matches double-bracket tokens inside code spans/fences.",
+      "bytes": 18751,
+      "lines": 301,
       "tags": [
         "agents",
         "codex",
@@ -3477,9 +3502,9 @@
       "mode": "living",
       "orient": false,
       "updated": "",
-      "body_sha": "ee0ab551572edba172b17267abaa1667ea65f904fe7c422f46f6cab0d07b775c",
-      "summary_sha": "e203a34d81e1b25309d4a10d3f7f0f9b2c6a8cf0b0cdf9a66f778a90f043e692",
-      "summary_state": "stale",
+      "body_sha": "d727e848a393d4d09819b486a6fcadfd20b0e618e562e0f5e67a0c7bac064aa1",
+      "summary_sha": "842309d0df3c1d2bdcd1774adf0e49688fd730bc4ca92dcf1bdc0e15d785e3eb",
+      "summary_state": "current",
       "links": {
         "out": [
           {
@@ -3959,8 +3984,8 @@
     {
       "key": "review-audit-doctor faculties.md",
       "title": "Review / audit / doctor — faculty boundaries",
-      "summary": "A carve for three maintenance-shaped verbs that have been blurring together. `doctor` is already assigned the machine/config-health role (ADR-0025), which frees `audit` from the machinery it was straddling. The remaining cut is between `review` (closed-world: judge the vault against itself + world-facts — form, structure, internal consistency) and `audit` (open-world: judge the vault against an external referent — the human's intent and an untampered ground truth). \"Is each note well-formed / is the corpus tidy / is it self-consistent\" is review; \"is this the memory you actually want, and has it been silently rewritten\" is audit. Not decided — records the dividing principle so the review/audit/doctor verb ADRs don't each re-derive it.",
-      "bytes": 7015,
+      "summary": "A carve for three maintenance-shaped verbs that have been blurring together. `doctor` is already assigned the machine/config-health role (ADR-0025), which frees `audit` from the machinery it was straddling. The remaining cut is between `review` (closed-world: judge the vault against itself + world-facts — form, structure, internal consistency) and `audit` (open-world: judge the vault against an external referent — the human's intent and an untampered ground truth). \\\"Is each note well-formed / is the corpus tidy / is it self-consistent\\\" is review; \\\"is this the memory you actually want, and has it been silently rewritten\\\" is audit. Not decided — records the dividing principle so the review/audit/doctor verb ADRs don't each re-derive it.",
+      "bytes": 7021,
       "lines": 74,
       "tags": [
         "audit",
@@ -4012,7 +4037,7 @@
       "orient": false,
       "updated": "",
       "body_sha": "e1b64d34e05d39bdafcbb3a9dc69da019b72ccb4aeae0710e32690281866649d",
-      "summary_sha": "f5e95c7826b6e8d6d8cdcfb04b78b571177b6f8fd34e9bccd93808ad099420f3",
+      "summary_sha": "3cac7c9423b6993f2fce63ff0d6417631d0495402bf63117cf3b1747a5952930",
       "summary_state": "current",
       "links": {
         "out": [

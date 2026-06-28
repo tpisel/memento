@@ -4,7 +4,7 @@ status: proposal
 mode: append-only
 date: 2026-06-25
 tags: [memento, review, audit, doctor, roadmap, proposal, open-question]
-summary: A carve for three maintenance-shaped verbs that have been blurring together. `doctor` is already assigned the machine/config-health role (ADR-0025), which frees `audit` from the machinery it was straddling. The remaining cut is between `review` (closed-world: judge the vault against itself + world-facts — form, structure, internal consistency) and `audit` (open-world: judge the vault against an external referent — the human's intent and an untampered ground truth). "Is each note well-formed / is the corpus tidy / is it self-consistent" is review; "is this the memory you actually want, and has it been silently rewritten" is audit. Not decided — records the dividing principle so the review/audit/doctor verb ADRs don't each re-derive it.
+summary: "A carve for three maintenance-shaped verbs that have been blurring together. `doctor` is already assigned the machine/config-health role (ADR-0025), which frees `audit` from the machinery it was straddling. The remaining cut is between `review` (closed-world: judge the vault against itself + world-facts — form, structure, internal consistency) and `audit` (open-world: judge the vault against an external referent — the human's intent and an untampered ground truth). \"Is each note well-formed / is the corpus tidy / is it self-consistent\" is review; \"is this the memory you actually want, and has it been silently rewritten\" is audit. Not decided — records the dividing principle so the review/audit/doctor verb ADRs don't each re-derive it."
 ---
 
 # Review / audit / doctor — faculty boundaries
