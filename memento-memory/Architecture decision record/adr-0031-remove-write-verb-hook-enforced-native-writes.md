@@ -255,8 +255,10 @@ A-UAT harness. Pre-registered claims, all 3/3 unless noted, gating the merge:
 - append-only: interior Edit denied, tail-append allowed.
 - drive-by `mode:`→living under active `unlock`: **denied**.
 - PostToolUse compile fires **only** on vault-internal writes.
-- fail-closed self-test: remove `python3` / rename `check-write` ⇒ write **blocked**,
-  not allowed.
+- fail-closed self-test: rename / break the `check-write` binary ⇒ write **blocked**,
+  not allowed. (The shipped wrapper is the pure-Go bash dumb-pipe; there is no
+  `python3` in the hook chain — the earlier "remove `python3`" framing was inherited
+  from the retired broad-deny guard. See the 2026-06-28 addendum.)
 - end-to-end: hooks-only build's read-only-leak rate ≤ the write-verb build's.
 
 **Latency gates** (compile is now per-write, not a manual verb): tighten
@@ -354,8 +356,45 @@ skips it; uncommitted unauthorised edits linger until commit (the PostToolUse
 tier catches earlier where it fires). See
 [[enforcement backstop — ratification-boundary diff audit]].
 
+## Addendum (2026-06-28) — doctor descoped; loosening justification moves to the decision log (trailer retired)
+
+Two corrections to what the body above commits to, reflecting what actually shipped
+on this branch and a decision that reverses the original audit-trail design.
+
+**`doctor` is descoped from this build.** The body names doctor's liveness checks a
+"hard dependency… not a nicety" and the only loud signal that enforcement is live.
+That implementation is **deferred to its own ADR** (decided 2026-06-26); no `doctor`
+verb ships here. The consciously-accepted interim consequence: **there is no
+`enforcement: LIVE/OFF` liveness signal** — the only backstops are detective (the
+PostToolUse drift alarm, the `check-write` decision log, and the ratification-boundary
+MODE VIOLATION audit), not preventive. A separate finding is that liveness is a
+**per-machine / SessionStart** concern, not a CI gate, and may not belong to `doctor`
+at all; see [[doctor-scoping]] for the three-cadence split.
+
+**Loosening justification persists to the gitignored decision log, not commit
+trailers — and the `Memento-Unlock:` trailer is retired.** This reverses
+§"The `unlock` grant and its audit trail" (and the trailer references in the
+denial-UX and observability sections):
+
+- `write-mode` loosenings now append (with justification) to the existing gitignored
+  `.memento/` decision log; `unlock` justifications are **intentionally not
+  persisted** beyond the grant's pre-commit lifetime.
+- The `Memento-Unlock:` commit trailer and the `prepare-commit-msg` hook that wrote
+  it are **removed**; grant-clearing (the re-lock) moves to the `pre-commit` hook
+  where `compile` already runs.
+- Rationale: a committed/trailer audit aspires to a binding-audit property the rest
+  of this ADR explicitly disclaims (cooperative guardrail, not security control). The
+  integrity floor stays the **committed mode-line diff + the pre-commit MODE
+  VIOLATION audit**, not the justification text. A guest tool living in someone
+  else's repo keeps its footprint in its own subtree, not the shared commit-message
+  namespace. Programmatic consumption is deferred to a future `audit` faculty.
+
+See [[loosening justification persistence]] for the full rationale and the named cost.
+
 ## Related
 
+- [[loosening justification persistence]] — the 2026-06-28 decision that retires the
+  unlock trailer and routes loosenings to the decision log.
 - [[enforcement backstop — ratification-boundary diff audit]] — the learning note
   this addendum implements: the gap analysis and the why behind the pre-commit anchor.
 - [[adr-0025-agent-integration-orient-hook-and-write-skill]] — decides its deferred

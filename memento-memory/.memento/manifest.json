@@ -2151,8 +2151,8 @@
       "key": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
       "title": "Remove the write verb — native writes under hook-based mode enforcement",
       "summary": "Removes the memento write verb entirely. Agents write note bodies with their native tools (Write/Edit/MultiEdit/Bash on Claude; apply_patch/shell on codex); a PreToolUse check-write hook gives the allow/deny verdict pre-mutate and a PostToolUse compile keeps the manifest coherent and raises a drift alarm. Two verbs survive for the operations native tools can't do — write-mode (durable mode change) and unlock (temporary read-only exception) — plus check-write as hook plumbing. Mode is enforced by the prefix invariant evaluated in Go from the tool payload + disk. Decides the write-side-enforcement item deferred by ADR-0025 and retires its write skill; revisits ADR-0004. Enforcement is an explicit cooperative-agent guardrail, fail-closed on internal hook error but irreducibly fail-open on hook absence — drift detection, not the hook, is the integrity floor.",
-      "bytes": 23204,
-      "lines": 370,
+      "bytes": 25838,
+      "lines": 409,
       "tags": [
         "agents",
         "enforcement",
@@ -2244,6 +2244,11 @@
         },
         {
           "level": 2,
+          "text": "Addendum (2026-06-28) — doctor descoped; loosening justification moves to the decision log (trailer retired)",
+          "slug": "addendum-2026-06-28-doctor-descoped-loosening-justification-moves-to-the-decision-log-trailer-retired"
+        },
+        {
+          "level": 2,
           "text": "Related",
           "slug": "related"
         }
@@ -2300,6 +2305,11 @@
             "target": "enforcement backstop — ratification-boundary diff audit.md",
             "type": "wiki",
             "resolved": true
+          },
+          {
+            "target": "loosening justification persistence.md",
+            "type": "wiki",
+            "resolved": true
           }
         ],
         "in": [
@@ -2321,6 +2331,10 @@
           },
           {
             "source": "enforcement backstop — ratification-boundary diff audit.md",
+            "type": "wiki"
+          },
+          {
+            "source": "loosening justification persistence.md",
             "type": "wiki"
           },
           {
@@ -3330,7 +3344,12 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "loosening justification persistence.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -3610,8 +3629,8 @@
       "key": "doctor-scoping.md",
       "title": "Doctor — scoping list",
       "summary": "Live, exploratory list of candidate checks for the future `memento doctor` verb, consolidated from the ADRs and dogfooding. Doctor owns mechanical plumbing/health (no content judgement, no agent); this note is the running inbox of candidate checks so the eventual doctor ADR doesn't re-derive them. Not a spec — see [[review-audit-doctor faculties]] for the verb-boundary carve.",
-      "bytes": 7019,
-      "lines": 69,
+      "bytes": 9119,
+      "lines": 99,
       "tags": [
         "doctor",
         "memento",
@@ -3629,6 +3648,11 @@
           "level": 2,
           "text": "Write-enforcement liveness ([[adr-0031-remove-write-verb-hook-enforced-native-writes]])",
           "slug": "write-enforcement-liveness-adr-0031-remove-write-verb-hook-enforced-native-writes"
+        },
+        {
+          "level": 2,
+          "text": "Cadence and verb-boundary — \"doctor\" is being asked to span three cadences (2026-06-28)",
+          "slug": "cadence-and-verb-boundary-doctor-is-being-asked-to-span-three-cadences-2026-06-28"
         },
         {
           "level": 2,
@@ -3672,6 +3696,10 @@
           },
           {
             "source": "a-uat/test-matrix.md",
+            "type": "wiki"
+          },
+          {
+            "source": "loosening justification persistence.md",
             "type": "wiki"
           },
           {
@@ -3743,6 +3771,98 @@
         "in": [
           {
             "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "loosening justification persistence.md",
+      "title": "Loosening-justification persistence — decision log, not commit trailers",
+      "summary": "Where the *why* of a mode loosening lives. Decided 2026-06-28: write-mode loosenings append (with justification) to the existing gitignored .memento/ check-write decision log; NO commit trailers; the Memento-Unlock: trailer is RETIRED; unlock justifications are intentionally NOT persisted (we don't care to). Rationale: a committed/trailer audit would aspire to a binding-audit property the rest of the system explicitly disclaims (cooperative guardrail, not security control). The integrity floor stays the committed mode-line diff + the pre-commit MODE VIOLATION audit, not the justification text. Consumption deferred to a future audit faculty.",
+      "bytes": 4675,
+      "lines": 83,
+      "tags": [
+        "audit",
+        "design",
+        "enforcement",
+        "memento",
+        "unlock",
+        "write-mode"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The question",
+          "slug": "the-question"
+        },
+        {
+          "level": 2,
+          "text": "Decision (2026-06-28)",
+          "slug": "decision-2026-06-28"
+        },
+        {
+          "level": 2,
+          "text": "Why gitignored-local is the consistent choice, not a compromise",
+          "slug": "why-gitignored-local-is-the-consistent-choice-not-a-compromise"
+        },
+        {
+          "level": 2,
+          "text": "The cost we accepted, named",
+          "slug": "the-cost-we-accepted-named"
+        },
+        {
+          "level": 2,
+          "text": "Consumption — deferred",
+          "slug": "consumption-deferred"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "b46872a3d2766905b9a20792faa0ad5e0b0b8cca35d0396635701345d6987c9e",
+      "summary_sha": "62c1fd3266a90ed17ada73ae4169fbe1fa31124091b279e3de0dc6893e734626",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write decision log.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "doctor-scoping.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "review-audit-doctor faculties.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "unlock-grant trailer lift runs in prepare-commit-msg.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "unlock-grant trailer lift runs in prepare-commit-msg.md",
             "type": "wiki"
           }
         ]
@@ -3911,6 +4031,10 @@
           {
             "source": "doctor-scoping.md",
             "type": "wiki"
+          },
+          {
+            "source": "loosening justification persistence.md",
+            "type": "wiki"
           }
         ]
       }
@@ -3919,8 +4043,8 @@
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 44670,
-      "lines": 411,
+      "bytes": 46461,
+      "lines": 418,
       "tags": [],
       "headings": [
         {
@@ -4015,8 +4139,8 @@
         },
         {
           "level": 3,
-          "text": "Write stderr contract (v2, ADR-0022)",
-          "slug": "write-stderr-contract-v2-adr-0022"
+          "text": "Write enforcement contract (ADR-0031, supersedes the ADR-0022 write-verb contract)",
+          "slug": "write-enforcement-contract-adr-0031-supersedes-the-adr-0022-write-verb-contract"
         },
         {
           "level": 3,
@@ -4123,8 +4247,8 @@
       "key": "unlock-grant trailer lift runs in prepare-commit-msg.md",
       "title": "unlock-grant trailer lift runs in prepare-commit-msg",
       "summary": "ADR-0031 says 'the pre-commit hook lifts pending grant justifications into a Memento-Unlock: commit trailer before clearing them' — but a git pre-commit hook runs before the commit message exists and cannot write a trailer. The lift+clear is implemented as a prepare-commit-msg hook (memento lift-grants \\\"$1\\\"): the only stage that runs after pre-commit succeeds AND owns the message file. pre-commit still does compile + git add manifest; prepare-commit-msg owns the trailer + grant clear.",
-      "bytes": 3177,
-      "lines": 56,
+      "bytes": 3815,
+      "lines": 66,
       "tags": [
         "enforcement",
         "git",
@@ -4138,7 +4262,7 @@
       "updated": "",
       "body_sha": "54ca67d13e83a7ac5bb89dfbbf177c7238d2593049358846bfacf7874aaa4327",
       "summary_sha": "2640c8750f1956571c9fdbd0f89998377e948c5b5a607ba98b64da801abb77cc",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
@@ -4150,9 +4274,19 @@
             "target": "check-write compile drift handshake.md",
             "type": "wiki",
             "resolved": true
+          },
+          {
+            "target": "loosening justification persistence.md",
+            "type": "wiki",
+            "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "loosening justification persistence.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -4214,7 +4348,7 @@
     "_memento": 2,
     "a-uat": 3,
     "agents": 16,
-    "audit": 1,
+    "audit": 2,
     "beads": 2,
     "bootloader": 2,
     "brief": 4,
@@ -4225,12 +4359,12 @@
     "configuration": 1,
     "convention": 1,
     "conventions": 4,
-    "design": 1,
+    "design": 2,
     "design-philosophy": 1,
     "distribution": 1,
     "doctor": 2,
     "draft": 1,
-    "enforcement": 8,
+    "enforcement": 9,
     "format": 1,
     "frontmatter": 4,
     "git": 2,
@@ -4245,7 +4379,7 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 45,
+    "memento": 46,
     "mode": 5,
     "namespace": 3,
     "observability": 1,
@@ -4276,9 +4410,10 @@
     "theory": 1,
     "thought-bubble": 2,
     "unicode": 1,
-    "unlock": 1,
+    "unlock": 2,
     "vault": 3,
     "write": 12,
+    "write-mode": 1,
     "writing": 1
   }
 }

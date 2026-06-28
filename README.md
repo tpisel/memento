@@ -8,7 +8,7 @@ The notes are markdown files. Obsidian is the authoring/browsing surface; the CL
 
 ## Status
 
-The v0–v2 surface — `init`, `compile`, `brief`, `orient`, `read`, `write` with mode enforcement, link surfaces, and auto-recompile on write — is in active dogfooding use and is the contract agents bind to. Error tokens and exit codes are stable.
+The v0–v2 surface — `init`, `compile`, `brief`, `orient`, `read`, `write-mode`, `unlock`, link surfaces, and hook-enforced native writes (the `write` verb was removed by ADR-0031: agents write note bodies with their native tools, gated by a PreToolUse `check-write` hook) — is in active dogfooding use and is the contract agents bind to. Error tokens and exit codes are stable.
 
 Pre-1.0 means the **manifest schema may break** before 1.0 (a schema bump bumps `schema_version`; older readers refuse with `manifest-schema-unsupported`). The CLI verb surface is unlikely to break. v4 features (agent-driven summarisation worklist, `review` verb, Obsidian-open) are not built yet — see `memento-memory/spec.md` §13.
 
@@ -72,7 +72,7 @@ Open the vault directory itself (e.g. `my-project-memory/`) as an Obsidian vault
 - `memento read <key|@N>` — read a note by vault-relative key, or by the `@N` index from the brief. Supports `<key>#<heading>` for section reads. Stdout is the raw body; stderr carries `binding:` plus role-flattened link lines.
 - `memento convention <name>` — read an operational convention from `_memento/conventions/<name>.md`, printing its body without frontmatter. Conventions are surfaced by `memento orient`, not the brief.
 - `memento write-mode <key> <append-only|living|read-only> [--justification <reason>]` — durably change a note's frontmatter mode, then auto-recompile. Loosening requires `--justification`; tightening accepts it as optional self-documentation.
-- `memento unlock <key> --justification <reason>` — record a temporary single-key exception re-opening a read-only note's edit window until the next commit. The reason is held in a gitignored `.memento/unlock-grants.json` sidecar and lifted into a `Memento-Unlock:` commit trailer by the pre-commit hook.
+- `memento unlock <key> --justification <reason>` — record a temporary single-key exception re-opening a read-only note's edit window until the next commit. The reason is held in a gitignored `.memento/unlock-grants.json` sidecar for the grant's lifetime; the pre-commit hook clears the grant (the re-lock). Durable loosenings via `write-mode` are recorded in the gitignored `.memento/` decision log; unlock reasons are not persisted past the grant (ADR-0031).
 
 CLI errors start with stable tokens (`unknown-command`, `invalid-arguments`, `manifest-not-found`, `manifest-schema-unsupported`, …); see `memento-memory/spec.md` for the full contract.
 

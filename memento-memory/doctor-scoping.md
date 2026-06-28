@@ -51,6 +51,36 @@ Supersedes the earlier "Write skill installed for the detected agent" check abov
 - **The "interpreter deps present" check is contingent on the wrapper.** It was inherited from the old broad-deny `pre-write-vault-guard.sh`, which used python helpers. If the ADR-0031 wrapper is the pure-Go dumb pipe (`cat | memento check-write`), there is **no `python3` in the runtime hook chain** — this check should target whatever the final wrapper actually needs (bash + the `memento` binary), not python3. (`python3` survives only in the manual A-UAT scorer, which is not on the enforcement path.)
 - **Orphan cleanup needs an interim owner.** `doctor --fix` was to delete the retired write-skill + legacy hook entries. Until doctor exists, a standalone migration bead removes those artifacts in-repo; cross-vault upgrade cleanup waits for doctor.
 
+## Cadence and verb-boundary — "doctor" is being asked to span three cadences (2026-06-28)
+
+The checks accreted onto doctor above do not share a cadence or an audience, and
+the single-verb framing blurs that. Pulling them apart before doctor gets its ADR:
+
+- **Liveness** (PreToolUse gate installed in *this* `.claude/settings.json` / codex
+  config, binary on *this* PATH, live-fire self-test) is a **per-machine, per-clone**
+  property. A CI/CD pre-ship call **cannot** assert it: CI runs in a different
+  environment than the developer/agent machine where the hooks must fire, so "the
+  hook is installed" in CI says nothing about whether enforcement is live where the
+  agent writes. Liveness also wants to be **unmissable**, and a verb you must
+  remember to run is the opposite — its natural home is **ambient / SessionStart**
+  (the orient SessionStart hook already runs on Claude and could emit a loud
+  `enforcement: OFF`), with an on-demand deep self-test as the manual escalation.
+  This is *not* a "doctor as CI gate" responsibility.
+- **Ratification audit** (does committed / about-to-commit content honour modes) is
+  **per-commit**, and is **already homed on `compile`** (PostToolUse + the git
+  pre-commit hook, with `MEMENTO_STRICT_COMMIT` as the opt-in hard gate). It was
+  never doctor's job and should not migrate to one. This *is* CI-able.
+- **Static hygiene** (config validity, manifest freshness, orphaned write-skill /
+  legacy hook artifacts, malformed conventions) is **occasional** and CI-able. This
+  is the genuine doctor — closed-world machine/config health, mechanical, no agent.
+
+So: `doctor` is the right name for the static-hygiene bucket and the **wrong** name
+for liveness (ambient/SessionStart, not CI) and for the ratification audit (already
+on `compile`). The urgent-and-missing piece — the liveness signal — probably should
+**not wait on a doctor ADR**: it's a SessionStart concern, and decoupling it lets
+the signal ship without designing the whole health verb. See
+[[review-audit-doctor faculties]] for the review/audit/doctor carve this refines.
+
 ## Discovery / onboarding (from 2026-06-26 second-cloner review)
 
 These close the "a second person clones the repo — what is this `_memento` stuff, and where's the tool?" gap. Install info lives in memento's own README, which does **not** travel into a user's vault.

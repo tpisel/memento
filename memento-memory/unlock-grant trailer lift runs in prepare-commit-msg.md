@@ -14,6 +14,16 @@ date: 2026-06-27
 
 # unlock-grant trailer lift runs in prepare-commit-msg
 
+> **Superseded (2026-06-28).** The `Memento-Unlock:` commit trailer is being
+> **retired** — see [[loosening justification persistence]] and the ADR-0031
+> 2026-06-28 addendum. Loosening justifications now go to the gitignored
+> `.memento/` decision log (`write-mode`) or are intentionally not persisted
+> (`unlock`); the `prepare-commit-msg` hook is removed and grant-clearing (the
+> re-lock) moves to `pre-commit`. The note below records the now-historical
+> mechanism and *why* `prepare-commit-msg` was needed *while the trailer existed*;
+> the re-lock semantics it documents still hold, only the hook that performs them
+> changes.
+
 ADR-0031 §"The `unlock` grant and its audit trail" states the **pre-commit hook**
 lifts pending grant justifications into a `Memento-Unlock:` commit trailer before
 clearing them. That is a factual impossibility in git: a `pre-commit` hook fires
