@@ -312,8 +312,52 @@ process cold-start, the larger hot-path cost the working agreement undercounted.
 - **Frontmatter reads (orthogonal).** An optional `read <key>#…` analog for
   frontmatter fields is not part of this decision.
 
+## Addendum (2026-06-28) — ratification-boundary diff-audit backstop
+
+The "fail-open by default unless the fail-closed-on-error mitigation is built"
+trade-off above is leakier than the gate alone can fix: A-UAT proved three write
+paths fail open **silently** (no deny, no drift alarm, no log) — codex `exec`
+shell writes (codex fires PreToolUse only for `apply_patch`), untrusted codex
+hooks (the whole gate no-ops until trusted), and Claude opaque shell
+(`$(...)`/`eval`/`python -c`). All three are at the **tool boundary**, which is
+inherently path-specific.
+
+The catch-all is a **post-hoc audit of the on-disk diff against ratified (git
+HEAD) state.** The diff is path-agnostic — it inspects end-state, so it does not
+care how the bytes arrived. It reuses the existing pure verdict
+`EvaluatePrefixInvariant`; the only new capability is sourcing `old` from **git
+HEAD** rather than the pending-writes ledger. For each ratified note (present at
+HEAD) changed on disk it recomputes the verdict with `old = HEAD`, `new = disk`,
+honouring the same authorisation context check-write composes — an active unlock
+grant waives it, and a pure `write-mode` change (only the mode: line differs,
+isolated by re-normalising both sides to one mode) is exempt. Brand-new notes
+(absent at HEAD) and compile's own manifest/brief rewrites are excluded by
+auditing only ratified writable note keys. A violation with no covering grant
+emits a NEW, distinct alarm class — `memento compile: MODE VIOLATION: <key> …` —
+separate from the gated-handshake `DRIFT ALARM`.
+
+It is hosted in `memento compile`, so it fires in **two tiers**: the PostToolUse
+compile (early, where the hook fires) and — the true catch-all — the **git
+pre-commit hook**, which already runs `memento compile`. The pre-commit anchor is
+a git hook, independent of codex's lifecycle-hook trust model, sitting exactly at
+**ratification**: it stops an unauthorised change from becoming permanent even if
+it briefly lived on disk. Default is **DETECTION** (loud alarm; compile stays
+exit-0 like the drift alarm so it never breaks an unrelated compile);
+**MITIGATION** (exit non-zero → block the commit) is opt-in behind
+`MEMENTO_STRICT_COMMIT`, default off because nothing is ratified pre-commit and a
+surprise hard failure is worse than the alarm.
+
+Posture shift: "codex enforcement is `apply_patch`-scoped" stops being a silent
+gap and becomes **`apply_patch` gated in real-time, everything else caught at
+commit.** Honest limits: commit-time not real-time; `git commit --no-verify`
+skips it; uncommitted unauthorised edits linger until commit (the PostToolUse
+tier catches earlier where it fires). See
+[[enforcement backstop — ratification-boundary diff audit]].
+
 ## Related
 
+- [[enforcement backstop — ratification-boundary diff audit]] — the learning note
+  this addendum implements: the gap analysis and the why behind the pre-commit anchor.
 - [[adr-0025-agent-integration-orient-hook-and-write-skill]] — decides its deferred
   write-side-enforcement item and retires its write skill; its orient hook stands.
 - [[adr-0015-write-mode-taxonomy]] — the three-mode lattice this enforces; this ADR

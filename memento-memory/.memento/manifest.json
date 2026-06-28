@@ -2151,8 +2151,8 @@
       "key": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
       "title": "Remove the write verb — native writes under hook-based mode enforcement",
       "summary": "Removes the memento write verb entirely. Agents write note bodies with their native tools (Write/Edit/MultiEdit/Bash on Claude; apply_patch/shell on codex); a PreToolUse check-write hook gives the allow/deny verdict pre-mutate and a PostToolUse compile keeps the manifest coherent and raises a drift alarm. Two verbs survive for the operations native tools can't do — write-mode (durable mode change) and unlock (temporary read-only exception) — plus check-write as hook plumbing. Mode is enforced by the prefix invariant evaluated in Go from the tool payload + disk. Decides the write-side-enforcement item deferred by ADR-0025 and retires its write skill; revisits ADR-0004. Enforcement is an explicit cooperative-agent guardrail, fail-closed on internal hook error but irreducibly fail-open on hook absence — drift detection, not the hook, is the integrity floor.",
-      "bytes": 20297,
-      "lines": 326,
+      "bytes": 23204,
+      "lines": 370,
       "tags": [
         "agents",
         "enforcement",
@@ -2239,6 +2239,11 @@
         },
         {
           "level": 2,
+          "text": "Addendum (2026-06-28) — ratification-boundary diff-audit backstop",
+          "slug": "addendum-2026-06-28-ratification-boundary-diff-audit-backstop"
+        },
+        {
+          "level": 2,
           "text": "Related",
           "slug": "related"
         }
@@ -2288,6 +2293,11 @@
           },
           {
             "target": "doctor-scoping.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "enforcement backstop — ratification-boundary diff audit.md",
             "type": "wiki",
             "resolved": true
           }
@@ -3730,7 +3740,12 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
