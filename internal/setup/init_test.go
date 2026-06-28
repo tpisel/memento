@@ -521,7 +521,7 @@ func assertCodexInlineHook(t *testing.T, config, event, matcher, command string,
 		`matcher = "` + matcher + `"`,
 		"[[hooks." + event + ".hooks]]",
 		`type = "command"`,
-		`command = "` + command + `"`,
+		"command = " + tomlBasicString(command),
 		fmt.Sprintf("timeout_sec = %d", timeoutSec),
 	}
 	cursor := 0

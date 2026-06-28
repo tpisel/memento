@@ -1,0 +1,4 @@
+# Shell scripts must stay LF on every platform. CRLF breaks the bash shebang
+# and makes the on-disk canonical scripts drift from their go:embed copies,
+# which the init drift tests assert byte-for-byte (Windows CI).
+*.sh text eol=lf
