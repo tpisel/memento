@@ -193,3 +193,31 @@ func TestBindingForReadTargetFailsWhenGitDisappearsAfterWorkTreeCheck(t *testing
 		t.Fatalf("BindingForReadTarget() error = %q, want ratification context", err.Error())
 	}
 }
+
+func initGit(t *testing.T, root string) {
+	t.Helper()
+
+	runGit(t, root, "init")
+}
+
+func commitAll(t *testing.T, root string) {
+	t.Helper()
+
+	runGit(t, root, "add", ".")
+	runGit(t, root,
+		"-c", "user.name=Memento Test",
+		"-c", "user.email=memento-test@example.invalid",
+		"commit", "--no-gpg-sign", "-m", "initial",
+	)
+}
+
+func runGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, string(output))
+	}
+}

@@ -1,0 +1,1 @@
+Replace the entire contents of `memento-memory/what makes a good summary.md` with a tightened version that says the same thing more concisely. Overwrite the file in place.

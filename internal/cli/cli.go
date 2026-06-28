@@ -11,8 +11,6 @@ import (
 
 var version = "dev"
 
-var writeCompileArtifactsAfterWrite = writeCompileArtifacts
-
 const helpText = `memento
 
 Usage:
@@ -24,7 +22,8 @@ Usage:
   memento orient
   memento read <key|@N>
   memento convention <name>
-  memento write [--overwrite] <key>
+  memento write-mode <key> <append-only|living|read-only> [--justification <reason>]
+  memento unlock <key> --justification <reason>
 
 Commands:
   help        Show this help text.
@@ -35,7 +34,8 @@ Commands:
   orient      Print tool-usage orientation and project overlays.
   read        Read a memory note by key or @N entry reference.
   convention  Read an operational convention by name from _memento/conventions.
-  write       Create, append to, or overwrite a memory note from stdin, then compile.
+  write-mode  Durably change a note's frontmatter mode, then compile.
+  unlock      Temporarily re-open a read-only note's edit window until the next commit.
 `
 
 // Run dispatches the CLI and returns a process-style exit code.
@@ -69,8 +69,19 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		return runRead(args[1:], stdout, stderr)
 	case "convention":
 		return runConvention(args[1:], stdout, stderr)
-	case "write":
-		return runWrite(args[1:], stdin, stdout, stderr)
+	case "write-mode":
+		return runWriteMode(args[1:], stdout, stderr)
+	case "unlock":
+		return runUnlock(args[1:], stdout, stderr)
+	case "check-write":
+		// Hook plumbing (ADR-0031), deliberately absent from help: the
+		// PreToolUse verdict engine, fed the raw payload on stdin.
+		return runCheckWrite(stdin, stdout, stderr)
+	case "clear-grants":
+		// Hook plumbing (ADR-0031), deliberately absent from help: the pre-commit
+		// step that drops all unlock grants (the "any commit re-locks" semantics),
+		// run after `memento compile` so its audit still sees the grants first.
+		return runClearGrants(args[1:], stdout, stderr)
 	default:
 		printRootError(stderr, fmt.Errorf("%w %q", ErrUnknownCommand, args[0]))
 		return 2

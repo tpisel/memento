@@ -100,29 +100,50 @@ Errors:
 For the deeper picture, run: memento orient
 `
 
-const writeHelpText = `memento write
+const writeModeHelpText = `memento write-mode
 
 Usage:
-  memento write [--overwrite] [--force-with-reason <reason>] <key>
+  memento write-mode <key> <append-only|living|read-only> [--justification <reason>]
 
-Create, append to, or overwrite a vault note from stdin, then recompile the vault.
+Durably rewrite a note's frontmatter mode: line, then recompile the vault. This is the only path that changes an existing note's mode.
 
 Key contract:
   key is a vault-relative .md path. Repo-relative paths and paths prefixed with the vault directory are invalid.
 
-Flags:
-  --overwrite                   Replace the full note body with stdin. Without this flag, write appends by default.
-  --force-with-reason <reason>  Override a ratified mode rejection. Reason must be non-empty.
+Modes:
+  append-only  accepts appends, rejects overwrites once ratified.
+  living       accepts appends and overwrites.
+  read-only    rejects writes once ratified.
+  An unknown mode value is rejected, not defaulted.
 
-Mode interaction:
-  append-only is the default when mode: is absent; ratified notes accept appends and reject overwrites.
-  living accepts appends and overwrites.
-  read-only rejects writes after ratification.
-  Unratified notes are still in their edit window and accept appends and overwrites regardless of mode.
+Justification:
+  Loosening toward living requires --justification <reason>.
+  Tightening toward read-only accepts --justification as optional self-documentation.
 
 Stderr:
-  On success, stderr includes wrote: <abs path> (<byte count>, <append|overwrite>) before the compile result.
-  Forced writes also include forced: true and reason: <reason>.
+  On success, stderr includes mode: <key> <old> -> <new> before the compile result.
+
+For the deeper picture, run: memento orient
+`
+
+const unlockHelpText = `memento unlock
+
+Usage:
+  memento unlock <key> --justification <reason>
+
+Record a temporary single-key exception that re-opens the edit window on a read-only note until the next commit.
+
+Key contract:
+  key is a vault-relative .md path naming an existing note. Repo-relative paths and paths prefixed with the vault directory are invalid.
+
+Justification:
+  --justification <reason> is required as deliberate friction — you must state why you are thawing a frozen note. It is held in a gitignored .memento/unlock-grants.json sidecar for the grant's lifetime and surfaced on stderr, but is not persisted past the grant (only durable write-mode loosenings are recorded, in the gitignored .memento/ decision log).
+
+Lifetime:
+  The grant covers all writes to the key until the next commit, when it is cleared. There is no TTL and no durable mode change; use write-mode to change a note's mode permanently.
+
+Stderr:
+  On success, stderr includes unlocked: <key> until next commit and justification: <reason>.
 
 For the deeper picture, run: memento orient
 `

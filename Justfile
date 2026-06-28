@@ -22,6 +22,10 @@ build:
 bench:
     go test -bench=. -benchmem ./internal/cli/
 
+# Fixture tests for the A-UAT scorer (decision-log + vault-diff cross-reference).
+test-a-uat:
+    python3 scripts/a-uat/test_score.py
+
 run *args:
     go run ./cmd/memento {{ args }}
 

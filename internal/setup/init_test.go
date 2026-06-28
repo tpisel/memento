@@ -3,12 +3,15 @@ package setup
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/tpisel/memento/internal/enforce"
 )
 
 func TestInitDerivesDefaultVaultDirFromGitRemote(t *testing.T) {
@@ -371,84 +374,402 @@ esac
 	}
 }
 
-func TestInitInstallsClaudeWriteSkillFromVaultSource(t *testing.T) {
-	repo := t.TempDir()
-	source := "---\nname: memento-write\n---\n# Custom write skill\n\nRead the local guide first.\n"
-	writeSetupFile(t, repo, "memory/_memento/skills/write.md", source)
-	writeSetupFile(t, repo, ".claude/skills/other/SKILL.md", "# Other skill\n")
-	writeSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md", "# Old generated skill\n")
-
-	if _, err := Init(repo, "memory"); err != nil {
-		t.Fatalf("Init() error = %v, want nil", err)
-	}
-
-	got := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
-	if got != source {
-		t.Fatalf("installed write skill = %q, want vault source %q", got, source)
-	}
-	if other := readSetupFile(t, repo, ".claude/skills/other/SKILL.md"); other != "# Other skill\n" {
-		t.Fatalf("unrelated skill changed to %q", other)
-	}
-}
-
-func TestInitScaffoldsDefaultWriteSkillSource(t *testing.T) {
+func TestInitInstallsClaudeWriteEnforcementHooks(t *testing.T) {
 	repo := t.TempDir()
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
 	}
 
-	source := readSetupFile(t, repo, "memory/_memento/skills/write.md")
-	installed := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
-	if source != installed {
-		t.Fatalf("installed write skill differs from source\nsource:\n%s\ninstalled:\n%s", source, installed)
+	hooks := settingsObject(t, readClaudeSettings(t, repo), "hooks")
+
+	preCommand := filepath.Join(repo, ".claude", "memento-pre-write-vault-guard.sh")
+	assertManagedHook(t, hooks, "PreToolUse", "Write|Edit|MultiEdit|Bash", preCommand)
+	postCommand := filepath.Join(repo, ".claude", "memento-post-write-compile.sh")
+	assertManagedHook(t, hooks, "PostToolUse", "Write|Edit|MultiEdit|Bash", postCommand)
+
+	// The SessionStart orient hook survives the ADR-0031 rework.
+	orientCommand := filepath.Join(repo, ".claude", "memento-orient-session-start.sh")
+	if !settingsJSONContainsCommand(settingsArray(t, hooks, "SessionStart"), orientCommand) {
+		t.Fatalf("SessionStart hooks = %#v, want orient command %q preserved", hooks["SessionStart"], orientCommand)
 	}
-	for _, want := range []string{
-		"name: memento-write",
-		"Before authoring a vault write:",
-		"memento convention writing",
-		"_memento/conventions/writing.md",
-		"memento write",
-	} {
-		if !strings.Contains(source, want) {
-			t.Fatalf("_memento/skills/write.md = %q, want it to contain %q", source, want)
+
+	pre := readSetupFile(t, repo, ".claude/memento-pre-write-vault-guard.sh")
+	if !strings.Contains(pre, "check-write") || !strings.Contains(pre, "fail-closed") {
+		t.Fatalf("pre-write hook script = %q, want a fail-closed check-write delegate", pre)
+	}
+	post := readSetupFile(t, repo, ".claude/memento-post-write-compile.sh")
+	if !strings.Contains(post, "memento compile") || !strings.Contains(post, "DRIFT ALARM") {
+		t.Fatalf("post-write hook script = %q, want a compile + drift-alarm wrapper", post)
+	}
+
+	if runtime.GOOS != "windows" {
+		for _, rel := range []string{".claude/memento-pre-write-vault-guard.sh", ".claude/memento-post-write-compile.sh"} {
+			info, err := os.Stat(filepath.Join(repo, filepath.FromSlash(rel)))
+			if err != nil {
+				t.Fatalf("stat %s: %v", rel, err)
+			}
+			if info.Mode().Perm()&0o111 == 0 {
+				t.Fatalf("%s mode = %v, want executable bit set", rel, info.Mode().Perm())
+			}
 		}
-	}
-	for _, unwanted := range []string{
-		"memento read _memento/writing",
-		"`_memento/writing.md`",
-	} {
-		if strings.Contains(source, unwanted) {
-			t.Fatalf("_memento/skills/write.md = %q, want no legacy writing-guide reference %q", source, unwanted)
-		}
-	}
-	manifest := readSetupFile(t, repo, "memory/.memento/manifest.json")
-	if strings.Contains(manifest, `_memento/skills/write.md`) {
-		t.Fatalf("manifest = %q, want write skill source excluded from the normal manifest", manifest)
 	}
 }
 
-func TestInitWriteSkillInstallIsIdempotent(t *testing.T) {
+func TestInitInstalledWriteHooksMatchCanonicalScripts(t *testing.T) {
 	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	repoRoot := setupRepoRoot(t)
+	cases := map[string]string{
+		".claude/memento-pre-write-vault-guard.sh": "scripts/agent-hooks/pre-write-vault-guard.sh",
+		".claude/memento-post-write-compile.sh":    "scripts/agent-hooks/post-write-compile.sh",
+	}
+	for installed, canonical := range cases {
+		got := readSetupFile(t, repo, installed)
+		want := readSetupFile(t, repoRoot, canonical)
+		if got != want {
+			t.Fatalf("%s drifted from canonical %s:\ninstalled:\n%s\ncanonical:\n%s", installed, canonical, got, want)
+		}
+	}
+}
+
+func TestInitDoesNotInstallWriteSkill(t *testing.T) {
+	repo := t.TempDir()
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	// ADR-0031 retired the write verb the skill routed through; init must not
+	// scaffold the skill source nor install the Claude skill.
+	for _, rel := range []string{
+		"memory/_memento/skills/write.md",
+		".claude/skills/memento-write/SKILL.md",
+	} {
+		if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(rel))); !os.IsNotExist(err) {
+			t.Fatalf("%s stat err = %v, want file not to exist", rel, err)
+		}
+	}
+}
+
+func TestInitWriteEnforcementHooksAreIdempotent(t *testing.T) {
+	repo := t.TempDir()
+	writeSetupFile(t, repo, ".claude/settings.json", `{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "/keep/pre.sh"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Edit", "hooks": [{"type": "command", "command": "/keep/post.sh"}]}
+    ]
+  }
+}
+`)
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("first Init() error = %v, want nil", err)
 	}
-	firstSource := readSetupFile(t, repo, "memory/_memento/skills/write.md")
-	firstInstalled := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
+	first := readSetupFile(t, repo, ".claude/settings.json")
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("second Init() error = %v, want nil", err)
 	}
-	secondSource := readSetupFile(t, repo, "memory/_memento/skills/write.md")
-	secondInstalled := readSetupFile(t, repo, ".claude/skills/memento-write/SKILL.md")
+	second := readSetupFile(t, repo, ".claude/settings.json")
 
-	if secondSource != firstSource {
-		t.Fatalf("_memento/skills/write.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstSource, secondSource)
+	if second != first {
+		t.Fatalf(".claude/settings.json changed on rerun:\nfirst:\n%s\nsecond:\n%s", first, second)
 	}
-	if secondInstalled != firstInstalled {
-		t.Fatalf(".claude/skills/memento-write/SKILL.md changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstInstalled, secondInstalled)
+
+	hooks := settingsObject(t, readClaudeSettings(t, repo), "hooks")
+	preCommand := filepath.Join(repo, ".claude", "memento-pre-write-vault-guard.sh")
+	if count := settingsJSONCommandCount(settingsArray(t, hooks, "PreToolUse"), preCommand); count != 1 {
+		t.Fatalf("PreToolUse memento command count = %d, want 1; hooks = %#v", count, hooks["PreToolUse"])
 	}
+	postCommand := filepath.Join(repo, ".claude", "memento-post-write-compile.sh")
+	if count := settingsJSONCommandCount(settingsArray(t, hooks, "PostToolUse"), postCommand); count != 1 {
+		t.Fatalf("PostToolUse memento command count = %d, want 1; hooks = %#v", count, hooks["PostToolUse"])
+	}
+	// Unrelated hooks the user already had are preserved.
+	if !settingsJSONContainsCommand(settingsArray(t, hooks, "PreToolUse"), "/keep/pre.sh") {
+		t.Fatalf("PreToolUse hooks = %#v, want unrelated /keep/pre.sh preserved", hooks["PreToolUse"])
+	}
+	if !settingsJSONContainsCommand(settingsArray(t, hooks, "PostToolUse"), "/keep/post.sh") {
+		t.Fatalf("PostToolUse hooks = %#v, want unrelated /keep/post.sh preserved", hooks["PostToolUse"])
+	}
+}
+
+func markCodexRepo(t *testing.T, repo string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(repo, ".codex"), 0o755); err != nil {
+		t.Fatalf("mkdir .codex: %v", err)
+	}
+}
+
+// assertCodexInlineHook fails unless config declares the memento hook for event as
+// an inline `[[hooks.<event>]]` array-of-tables entry (codex-cli 0.142.2's HooksToml
+// shape) carrying the matcher, a nested command handler with command, and the
+// timeout budget — all in source order. memento has no TOML parser dependency, so
+// this is a positional substring check over the written file.
+func assertCodexInlineHook(t *testing.T, config, event, matcher, command string, timeoutSec int) {
+	t.Helper()
+	want := []string{
+		"[[hooks." + event + "]]",
+		`matcher = "` + matcher + `"`,
+		"[[hooks." + event + ".hooks]]",
+		`type = "command"`,
+		`command = "` + command + `"`,
+		fmt.Sprintf("timeout_sec = %d", timeoutSec),
+	}
+	cursor := 0
+	for _, fragment := range want {
+		at := strings.Index(config[cursor:], fragment)
+		if at == -1 {
+			t.Fatalf(".codex/config.toml = %q, want %q for the %s hook in source order after offset %d", config, fragment, event, cursor)
+		}
+		cursor += at + len(fragment)
+	}
+}
+
+func TestInitInstallsCodexHooksWhenCodexDetected(t *testing.T) {
+	repo := t.TempDir()
+	markCodexRepo(t, repo)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	// Hooks are declared INLINE in config.toml: codex-cli 0.142.2 rejects the
+	// path-indirection form (`hooks = "hooks.json"`) at config load, so there is no
+	// parallel hooks.json (memento-ryr.31).
+	config := readSetupFile(t, repo, ".codex/config.toml")
+	for _, want := range []string{"# memento:start", "# memento:end"} {
+		if !strings.Contains(config, want) {
+			t.Fatalf(".codex/config.toml = %q, want it to contain %q", config, want)
+		}
+	}
+	if strings.Contains(config, `hooks = "hooks.json"`) {
+		t.Fatalf(".codex/config.toml = %q, want NOT the rejected path-indirection form", config)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".codex", "hooks.json")); !os.IsNotExist(err) {
+		t.Fatalf(".codex/hooks.json stat err = %v, want it not to exist (inline form)", err)
+	}
+
+	// timeout_sec rides on every codex handler (b15 schema): the gate gets the
+	// tight budget, the compile-backed hooks a wider one.
+	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
+	assertCodexInlineHook(t, config, "PreToolUse", codexWriteHookMatcher, preCommand, codexGateTimeoutSec)
+	postCommand := filepath.Join(repo, ".codex", "memento-post-write-compile.sh")
+	assertCodexInlineHook(t, config, "PostToolUse", codexWriteHookMatcher, postCommand, codexCompileTimeoutSec)
+	orientCommand := filepath.Join(repo, ".codex", "memento-orient-session-start.sh")
+	assertCodexInlineHook(t, config, "SessionStart", codexOrientHookMatcher, orientCommand, codexCompileTimeoutSec)
+
+	// Pin the literal matcher values (memento-ryr.40): codex matches EXACT tool
+	// names and EXACT SessionStart sources, not regex. The write gate is
+	// apply_patch-only ("Shell" never matched — PreToolUse does not fire for shell
+	// writes, ryr.39), and SessionStart must list `clear` or orient is skipped on a
+	// clear-triggered session.
+	if codexWriteHookMatcher != "apply_patch" {
+		t.Errorf("codexWriteHookMatcher = %q, want %q", codexWriteHookMatcher, "apply_patch")
+	}
+	if codexOrientHookMatcher != "startup|resume|clear|compact" {
+		t.Errorf("codexOrientHookMatcher = %q, want %q", codexOrientHookMatcher, "startup|resume|clear|compact")
+	}
+
+	if runtime.GOOS != "windows" {
+		for _, rel := range []string{
+			".codex/memento-pre-write-vault-guard.sh",
+			".codex/memento-post-write-compile.sh",
+			".codex/memento-orient-session-start.sh",
+		} {
+			info, err := os.Stat(filepath.Join(repo, filepath.FromSlash(rel)))
+			if err != nil {
+				t.Fatalf("stat %s: %v", rel, err)
+			}
+			if info.Mode().Perm()&0o111 == 0 {
+				t.Fatalf("%s mode = %v, want executable bit set", rel, info.Mode().Perm())
+			}
+		}
+	}
+}
+
+func TestInitSkipsCodexWhenUndetected(t *testing.T) {
+	repo := t.TempDir()
+
+	// No .codex dir: the additive invariant says an undetectable family degrades
+	// discoverability (no codex gate) but never the CLI nor the baseline Claude
+	// install.
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	for _, rel := range []string{".codex/hooks.json", ".codex/config.toml"} {
+		if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(rel))); !os.IsNotExist(err) {
+			t.Fatalf("%s stat err = %v, want file not to exist", rel, err)
+		}
+	}
+	// Claude (the baseline family) is still wired.
+	hooks := settingsObject(t, readClaudeSettings(t, repo), "hooks")
+	preCommand := filepath.Join(repo, ".claude", "memento-pre-write-vault-guard.sh")
+	assertManagedHook(t, hooks, "PreToolUse", "Write|Edit|MultiEdit|Bash", preCommand)
+}
+
+func TestInitCodexScriptsMatchCanonicalScripts(t *testing.T) {
+	repo := t.TempDir()
+	markCodexRepo(t, repo)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	// codex reuses the dumb-pipe scripts verbatim — check-write's PreToolUse verdict
+	// JSON is byte-identical-valid on codex (b15 spike), so the installed codex copy
+	// must equal both the canonical script and the Claude-installed one.
+	repoRoot := setupRepoRoot(t)
+	cases := map[string]string{
+		".codex/memento-pre-write-vault-guard.sh": "scripts/agent-hooks/pre-write-vault-guard.sh",
+		".codex/memento-post-write-compile.sh":    "scripts/agent-hooks/post-write-compile.sh",
+	}
+	for installed, canonical := range cases {
+		got := readSetupFile(t, repo, installed)
+		want := readSetupFile(t, repoRoot, canonical)
+		if got != want {
+			t.Fatalf("%s drifted from canonical %s:\ninstalled:\n%s\ncanonical:\n%s", installed, canonical, got, want)
+		}
+		claudeName := strings.Replace(installed, ".codex/", ".claude/", 1)
+		if claudeGot := readSetupFile(t, repo, claudeName); claudeGot != got {
+			t.Fatalf("%s differs from %s; want both families to install the same script", installed, claudeName)
+		}
+	}
+}
+
+func TestInitCodexHooksAreIdempotent(t *testing.T) {
+	repo := t.TempDir()
+	markCodexRepo(t, repo)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("first Init() error = %v, want nil", err)
+	}
+	firstConfig := readSetupFile(t, repo, ".codex/config.toml")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("second Init() error = %v, want nil", err)
+	}
+	secondConfig := readSetupFile(t, repo, ".codex/config.toml")
+
+	if secondConfig != firstConfig {
+		t.Fatalf(".codex/config.toml changed on rerun:\nfirst:\n%s\nsecond:\n%s", firstConfig, secondConfig)
+	}
+
+	// The rerun replaces the sentinel block in place rather than appending a second
+	// copy: exactly one block and one PreToolUse command entry.
+	if count := strings.Count(secondConfig, "# memento:start"); count != 1 {
+		t.Fatalf(".codex/config.toml start sentinel count = %d, want 1; contents = %q", count, secondConfig)
+	}
+	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
+	if count := strings.Count(secondConfig, `command = "`+preCommand+`"`); count != 1 {
+		t.Fatalf(".codex/config.toml PreToolUse command count = %d, want 1; contents = %q", count, secondConfig)
+	}
+}
+
+func TestInitSurfacesCodexHookTrustStep(t *testing.T) {
+	repo := t.TempDir()
+	markCodexRepo(t, repo)
+
+	var notices bytes.Buffer
+	if _, err := InitWithOptions(repo, "memory", InitOptions{NoticeWriter: &notices}); err != nil {
+		t.Fatalf("InitWithOptions() error = %v, want nil", err)
+	}
+
+	got := notices.String()
+	for _, want := range []string{"untrusted", "fail-open", "trust", "--dangerously-bypass-hook-trust"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("codex notice = %q, want it to mention %q", got, want)
+		}
+	}
+}
+
+func TestInitDoesNotSurfaceCodexTrustWhenCodexUndetected(t *testing.T) {
+	repo := t.TempDir()
+
+	var notices bytes.Buffer
+	if _, err := InitWithOptions(repo, "memory", InitOptions{NoticeWriter: &notices}); err != nil {
+		t.Fatalf("InitWithOptions() error = %v, want nil", err)
+	}
+
+	if strings.Contains(notices.String(), "codex") {
+		t.Fatalf("notice = %q, want no codex guidance without a codex repo", notices.String())
+	}
+}
+
+func TestInitPreservesForeignCodexHooksDeclaration(t *testing.T) {
+	repo := t.TempDir()
+	markCodexRepo(t, repo)
+	existing := "[model]\nname = \"gpt\"\n\nhooks = \"./mine.json\"\n"
+	writeSetupFile(t, repo, ".codex/config.toml", existing)
+
+	var notices bytes.Buffer
+	if _, err := InitWithOptions(repo, "memory", InitOptions{NoticeWriter: &notices}); err != nil {
+		t.Fatalf("InitWithOptions() error = %v, want nil", err)
+	}
+
+	// memento must not corrupt a user-authored hooks declaration; it leaves the
+	// config untouched and tells the user to wire the gate themselves.
+	if got := readSetupFile(t, repo, ".codex/config.toml"); got != existing {
+		t.Fatalf(".codex/config.toml changed to %q, want it left untouched", got)
+	}
+	if !strings.Contains(notices.String(), "already declares hooks") {
+		t.Fatalf("notice = %q, want a manual-wiring notice", notices.String())
+	}
+}
+
+func TestInitPreservesUnrelatedCodexConfig(t *testing.T) {
+	repo := t.TempDir()
+	markCodexRepo(t, repo)
+	// Memento's inline hook tables are array-of-tables headers, which must sit after
+	// every top-level key. Appending the block at the end leaves the user's existing
+	// [model] table untouched and nothing for the hook tables to capture.
+	existing := "[model]\nname = \"gpt\"\n"
+	writeSetupFile(t, repo, ".codex/config.toml", existing)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, ".codex/config.toml")
+	if !strings.HasPrefix(got, "[model]\nname = \"gpt\"") {
+		t.Fatalf(".codex/config.toml = %q, want existing table preserved at the top", got)
+	}
+	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
+	assertCodexInlineHook(t, got, "PreToolUse", codexWriteHookMatcher, preCommand, codexGateTimeoutSec)
+	// The memento block is appended after the user's table.
+	if strings.Index(got, "[model]") > strings.Index(got, "# memento:start") {
+		t.Fatalf(".codex/config.toml = %q, want the memento block appended after the [model] table", got)
+	}
+}
+
+func TestInitPreservesLeadingMultiLineArrayCodexConfig(t *testing.T) {
+	repo := t.TempDir()
+	markCodexRepo(t, repo)
+	// A config that opens with a top-level multi-line array followed by a table.
+	// Appending memento's hook tables at the end preserves both verbatim — the old
+	// top-insertion logic that could split such an array is gone (memento-ryr.31).
+	existing := "deny = [\n  [\"shell\"],\n]\n\n[model]\nname = \"gpt\"\n"
+	writeSetupFile(t, repo, ".codex/config.toml", existing)
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	got := readSetupFile(t, repo, ".codex/config.toml")
+	if !strings.HasPrefix(got, existing) {
+		t.Fatalf(".codex/config.toml = %q, want the existing array and table preserved verbatim at the top", got)
+	}
+	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
+	assertCodexInlineHook(t, got, "PreToolUse", codexWriteHookMatcher, preCommand, codexGateTimeoutSec)
 }
 
 func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {
@@ -476,6 +797,8 @@ func TestInitWritesObsidianGitignoreStanzaIdempotently(t *testing.T) {
 		"**/.obsidian/workspace*",
 		"**/.obsidian/cache",
 		"**/_memento/brief.md",
+		"**/.memento/" + enforce.PendingFileName,
+		"**/.memento/" + enforce.DecisionLogFileName,
 		"# memento:gitignore:end",
 	} {
 		if !strings.Contains(second, want) {
@@ -505,6 +828,12 @@ func TestInitWritesBriefIgnoreEntriesForGreenfieldVault(t *testing.T) {
 	}
 	if hasSetupLine(gitignore, "memory/_memento/brief.md") || hasSetupLine(gitignore, "memory/_memento/") {
 		t.Fatalf(".gitignore = %q, want no folder-wide _memento ignore entry", gitignore)
+	}
+	if !hasSetupLine(gitignore, "**/.memento/unlock-grants.json") {
+		t.Fatalf(".gitignore = %q, want file-scoped unlock-grants sidecar ignore entry", gitignore)
+	}
+	if hasSetupLine(gitignore, "**/.memento/") || hasSetupLine(gitignore, "**/.memento/manifest.json") {
+		t.Fatalf(".gitignore = %q, want manifest/config under .memento to stay tracked", gitignore)
 	}
 
 	mementoignore := readSetupFile(t, repo, "memory/.mementoignore")
@@ -1075,6 +1404,118 @@ func TestPreCommitHookSoftSkipsWhenMementoIsAbsentFromPath(t *testing.T) {
 	}
 }
 
+// TestPreCommitHookClearsGrantsAndRelocks exercises US7 end-to-end: an unlock
+// reopens a ratified read-only note's window (recording a grant), and the next
+// commit clears the grant sidecar via the pre-commit `memento clear-grants` step —
+// the grant deletion is what re-locks the read-only note. No Memento-Unlock trailer
+// is written (that mechanism is retired; ADR-0031 2026-06-28 addendum).
+func TestPreCommitHookClearsGrantsAndRelocks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pre-commit hook is a POSIX shell script")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not found: %v", err)
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skipf("go not found: %v", err)
+	}
+
+	repo := t.TempDir()
+	runSetupGit(t, repo, "init")
+	binDir := t.TempDir()
+	buildSetupMementoBinary(t, binDir)
+	pathEnv := append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	// Ratify a read-only note so an unlock is the only way to reopen its window.
+	writeSetupFile(t, repo, "memory/note.md", "---\nmode: read-only\n---\n\n# Note\n\nFrozen body.\n")
+	runSetupGit(t, repo, "add", "AGENTS.md", ".gitignore", "memory")
+	commitWithMemento(t, repo, pathEnv, "ratify note")
+
+	// Unlock reopens the edit window and records the justification in the sidecar.
+	runMementoInRepo(t, repo, filepath.Join(binDir, "memento"), pathEnv, "unlock", "note.md", "--justification", "fix a typo")
+	grantsPath := filepath.Join(repo, "memory", ".memento", "unlock-grants.json")
+	if _, err := os.Stat(grantsPath); err != nil {
+		t.Fatalf("unlock-grants sidecar missing after unlock: %v", err)
+	}
+
+	// Any commit clears every grant (the re-lock) and writes no Memento-Unlock trailer.
+	commitWithMemento(t, repo, pathEnv, "ordinary work")
+
+	msg := runSetupGit(t, repo, "log", "-1", "--format=%B")
+	if strings.Contains(msg, "Memento-Unlock") {
+		t.Fatalf("commit message = %q, want NO Memento-Unlock trailer (retired)", msg)
+	}
+	if _, err := os.Stat(grantsPath); !os.IsNotExist(err) {
+		t.Fatalf("unlock-grants sidecar still present after commit (want cleared); stat err = %v", err)
+	}
+}
+
+// TestPreCommitHookCleanCommitWithoutGrants guards the no-grants fast path: with no
+// unlock sidecar, the pre-commit `memento clear-grants` step is a clean no-op that
+// neither errors the commit nor writes a Memento-Unlock trailer.
+func TestPreCommitHookCleanCommitWithoutGrants(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pre-commit hook is a POSIX shell script")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not found: %v", err)
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skipf("go not found: %v", err)
+	}
+
+	repo := t.TempDir()
+	runSetupGit(t, repo, "init")
+	binDir := t.TempDir()
+	buildSetupMementoBinary(t, binDir)
+	pathEnv := append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+	runSetupGit(t, repo, "add", "AGENTS.md", ".gitignore", "memory")
+	commitWithMemento(t, repo, pathEnv, "steady-state commit")
+
+	msg := runSetupGit(t, repo, "log", "-1", "--format=%B")
+	if strings.Contains(msg, "Memento-Unlock") {
+		t.Fatalf("commit message = %q, want no Memento-Unlock trailer with no grants", msg)
+	}
+}
+
+func commitWithMemento(t *testing.T, repo string, pathEnv []string, message string) {
+	t.Helper()
+
+	cmd := exec.Command(
+		"git",
+		"-c", "user.name=Memento Test",
+		"-c", "user.email=memento@example.invalid",
+		"commit", "--no-gpg-sign", "--allow-empty", "-m", message,
+	)
+	cmd.Dir = repo
+	cmd.Env = pathEnv
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git commit failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+	}
+}
+
+func runMementoInRepo(t *testing.T, repo, mementoBin string, pathEnv []string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command(mementoBin, args...)
+	cmd.Dir = repo
+	cmd.Env = pathEnv
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("memento %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+}
+
 func assertHookCommandsInsideMementoGuard(t *testing.T, got string) {
 	t.Helper()
 
@@ -1275,6 +1716,26 @@ func settingsArray(t *testing.T, parent map[string]any, key string) []any {
 		t.Fatalf("%s = %#v, want array", key, parent[key])
 	}
 	return value
+}
+
+// assertManagedHook checks that event holds a memento-managed hook entry whose
+// matcher equals wantMatcher and whose nested command equals wantCommand.
+func assertManagedHook(t *testing.T, hooks map[string]any, event, wantMatcher, wantCommand string) {
+	t.Helper()
+
+	for _, entry := range settingsArray(t, hooks, event) {
+		object, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		if object["matcher"] != wantMatcher {
+			continue
+		}
+		if settingsJSONContainsCommand(object["hooks"], wantCommand) {
+			return
+		}
+	}
+	t.Fatalf("%s hooks = %#v, want entry with matcher %q and command %q", event, hooks[event], wantMatcher, wantCommand)
 }
 
 func settingsJSONContainsCommand(value any, command string) bool {

@@ -26,7 +26,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	v, err := setup.Init(wd, *dir)
+	v, err := setup.InitWithOptions(wd, *dir, setup.InitOptions{NoticeWriter: stdout})
 	if err != nil {
 		printCLIError(stderr, "init", err)
 		return 1

@@ -58,6 +58,44 @@ func TestBaselineFramesBriefAsOnDemand(t *testing.T) {
 	}
 }
 
+func TestBaselineDocumentsNativeWriteEnforcement(t *testing.T) {
+	got := string(Baseline())
+	// Surviving mode-management verbs must stay listed (ADR-0031).
+	for _, want := range []string{
+		"write-mode",
+		"unlock",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Baseline() =\n%s\nwant it to contain surviving verb %q", got, want)
+		}
+	}
+	// Native-write guidance must explain there is no write verb and that the
+	// check-write hook enforces modes on native file tools.
+	for _, want := range []string{
+		"There is no `write` verb",
+		"native",
+		"check-write",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("Baseline() =\n%s\nwant it to contain native-write guidance %q", got, want)
+		}
+	}
+	// The removed write verb must not reappear in any verb-reference form.
+	for _, unwanted := range []string{
+		"memento write ",
+		"write [",
+		"write <key>",
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("Baseline() =\n%s\nwant no restored write verb reference %q", got, unwanted)
+		}
+	}
+	// check-write is hidden plumbing: it may appear in prose but never as a verb bullet.
+	if strings.Contains(got, "- `check-write`") {
+		t.Fatalf("Baseline() =\n%s\nwant check-write only in prose, not as a verb bullet", got)
+	}
+}
+
 func TestRenderSubstitutesBriefDisclosure(t *testing.T) {
 	v := testVault(t)
 	m := manifest.Manifest{

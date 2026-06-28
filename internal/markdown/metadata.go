@@ -31,9 +31,6 @@ const (
 	ModeReadOnly   WriteMode = "read-only"
 
 	DefaultWriteMode = ModeAppendOnly
-
-	ModeSectionReplace WriteMode = "section-replace"
-	ModeKeyedUpsert    WriteMode = "keyed-upsert"
 )
 
 type Metadata struct {
@@ -424,11 +421,71 @@ func parseBool(value string) (bool, error) {
 
 func validMode(mode WriteMode) bool {
 	switch mode {
-	case ModeAppendOnly, ModeLiving, ModeSectionReplace, ModeKeyedUpsert, ModeReadOnly:
+	case ModeAppendOnly, ModeLiving, ModeReadOnly:
 		return true
 	default:
 		return false
 	}
+}
+
+// ParseWriteMode validates s as one of the three write modes (ADR-0015) and
+// returns it. Unknown values are rejected with ErrInvalidMode rather than
+// defaulted, closing ADR-0015's typo open-question for the write-mode verb.
+func ParseWriteMode(s string) (WriteMode, error) {
+	mode := WriteMode(strings.TrimSpace(s))
+	if !validMode(mode) {
+		return "", fmt.Errorf("%w: %q", ErrInvalidMode, s)
+	}
+	return mode, nil
+}
+
+// SetMode returns source with its frontmatter mode: line set to mode. An
+// existing mode line is rewritten in place; otherwise a mode line is inserted
+// (creating a frontmatter block when source has none). Every other frontmatter
+// line and the body are preserved verbatim. It is the durable mutation behind
+// the write-mode verb, the only path that may change an existing note's mode.
+func SetMode(source []byte, mode WriteMode) []byte {
+	front, body, ok := SplitFrontmatter(source)
+	if !ok {
+		var b bytes.Buffer
+		b.WriteString("---\nmode: ")
+		b.WriteString(string(mode))
+		b.WriteString("\n---\n")
+		b.Write(source)
+		return b.Bytes()
+	}
+
+	lines := strings.Split(string(front), "\n")
+	replaced := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		key, _, found := strings.Cut(trimmed, ":")
+		if !found || strings.TrimSpace(key) != "mode" {
+			continue
+		}
+		lines[i] = "mode: " + string(mode)
+		replaced = true
+		break
+	}
+	if !replaced {
+		// front always ends with a trailing newline, so the last split element is
+		// an empty string; insert the mode line before it to keep the block clean.
+		insertAt := len(lines)
+		if insertAt > 0 && lines[insertAt-1] == "" {
+			insertAt--
+		}
+		lines = append(lines[:insertAt], append([]string{"mode: " + string(mode)}, lines[insertAt:]...)...)
+	}
+
+	var b bytes.Buffer
+	b.WriteString("---\n")
+	b.WriteString(strings.Join(lines, "\n"))
+	b.WriteString("---\n")
+	b.Write(body)
+	return b.Bytes()
 }
 
 func cleanScalar(value string) string {

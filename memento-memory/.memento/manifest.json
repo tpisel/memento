@@ -157,7 +157,16 @@
       "summary_state": "current",
       "links": {
         "out": [],
-        "in": []
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
@@ -855,7 +864,15 @@
             "type": "wiki"
           },
           {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
             "source": "Note states.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
             "type": "wiki"
           }
         ]
@@ -985,6 +1002,10 @@
           },
           {
             "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
             "type": "wiki"
           },
           {
@@ -1344,6 +1365,14 @@
           {
             "source": "Architecture decision record/adr-0023-summary-staleness-in-ledger.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "check-write compile drift handshake.md",
+            "type": "wiki"
           }
         ]
       }
@@ -1697,6 +1726,14 @@
           {
             "source": "Architecture decision record/adr-0028-obsidian-managed-skills.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
+            "type": "wiki"
           }
         ]
       }
@@ -1777,11 +1814,19 @@
             "type": "wiki"
           },
           {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
             "source": "a-uat/run-report.md",
             "type": "wiki"
           },
           {
             "source": "a-uat/test-matrix.md",
+            "type": "wiki"
+          },
+          {
+            "source": "codex-cli lifecycle hooks contract.md",
             "type": "wiki"
           }
         ]
@@ -2097,6 +2142,207 @@
         "in": [
           {
             "source": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+      "title": "Remove the write verb — native writes under hook-based mode enforcement",
+      "summary": "Removes the memento write verb entirely. Agents write note bodies with their native tools (Write/Edit/MultiEdit/Bash on Claude; apply_patch/shell on codex); a PreToolUse check-write hook gives the allow/deny verdict pre-mutate and a PostToolUse compile keeps the manifest coherent and raises a drift alarm. Two verbs survive for the operations native tools can't do — write-mode (durable mode change) and unlock (temporary read-only exception) — plus check-write as hook plumbing. Mode is enforced by the prefix invariant evaluated in Go from the tool payload + disk. Decides the write-side-enforcement item deferred by ADR-0025 and retires its write skill; revisits ADR-0004. Enforcement is an explicit cooperative-agent guardrail, fail-closed on internal hook error but irreducibly fail-open on hook absence — drift detection, not the hook, is the integrity floor.",
+      "bytes": 25838,
+      "lines": 409,
+      "tags": [
+        "agents",
+        "enforcement",
+        "hooks",
+        "memento",
+        "mode",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "What this supersedes / amends",
+          "slug": "what-this-supersedes-amends"
+        },
+        {
+          "level": 2,
+          "text": "Enforcement model",
+          "slug": "enforcement-model"
+        },
+        {
+          "level": 3,
+          "text": "The prefix invariant (the generative rule)",
+          "slug": "the-prefix-invariant-the-generative-rule"
+        },
+        {
+          "level": 3,
+          "text": "check-write is pre-mutate, and reads disk itself",
+          "slug": "check-write-is-pre-mutate-and-reads-disk-itself"
+        },
+        {
+          "level": 3,
+          "text": "New-bytes derivation — and the replay caveat",
+          "slug": "new-bytes-derivation-and-the-replay-caveat"
+        },
+        {
+          "level": 3,
+          "text": "Bash: deny unless provably append — and honestly fail-open beyond that",
+          "slug": "bash-deny-unless-provably-append-and-honestly-fail-open-beyond-that"
+        },
+        {
+          "level": 3,
+          "text": "Drive-by mode-change defense",
+          "slug": "drive-by-mode-change-defense"
+        },
+        {
+          "level": 3,
+          "text": "The unlock grant and its audit trail",
+          "slug": "the-unlock-grant-and-its-audit-trail"
+        },
+        {
+          "level": 2,
+          "text": "Denial UX — the productive wall",
+          "slug": "denial-ux-the-productive-wall"
+        },
+        {
+          "level": 2,
+          "text": "Trust model and failure posture",
+          "slug": "trust-model-and-failure-posture"
+        },
+        {
+          "level": 2,
+          "text": "Multi-agent",
+          "slug": "multi-agent"
+        },
+        {
+          "level": 2,
+          "text": "Validation gate (owned by ADR-0026)",
+          "slug": "validation-gate-owned-by-adr-0026"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Open questions / deferred",
+          "slug": "open-questions-deferred"
+        },
+        {
+          "level": 2,
+          "text": "Addendum (2026-06-28) — ratification-boundary diff-audit backstop",
+          "slug": "addendum-2026-06-28-ratification-boundary-diff-audit-backstop"
+        },
+        {
+          "level": 2,
+          "text": "Addendum (2026-06-28) — doctor descoped; loosening justification moves to the decision log (trailer retired)",
+          "slug": "addendum-2026-06-28-doctor-descoped-loosening-justification-moves-to-the-decision-log-trailer-retired"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "455b684536a051be725f6e4ad326027aacfbc938fbaab498b0ddc9c86174b174",
+      "summary_sha": "10fdd4daa517fdc927f225b51505c0f07f7411132babc567ce7f272e255f971b",
+      "summary_state": "stale",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0004-v0-write-scope.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0015-write-mode-taxonomy.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0017-pre-commit-edit-window.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0022-auto-compile-after-write.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "codex-cli lifecycle hooks contract.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "doctor-scoping.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "enforcement backstop — ratification-boundary diff audit.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "loosening justification persistence.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "a-uat/test-matrix.md",
+            "type": "wiki"
+          },
+          {
+            "source": "check-write compile drift handshake.md",
+            "type": "wiki"
+          },
+          {
+            "source": "codex-cli lifecycle hooks contract.md",
+            "type": "wiki"
+          },
+          {
+            "source": "doctor-scoping.md",
+            "type": "wiki"
+          },
+          {
+            "source": "enforcement backstop — ratification-boundary diff audit.md",
+            "type": "wiki"
+          },
+          {
+            "source": "loosening justification persistence.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
+            "type": "wiki"
+          },
+          {
+            "source": "unlock-grant trailer lift runs in prepare-commit-msg.md",
             "type": "wiki"
           }
         ]
@@ -2499,8 +2745,8 @@
       "key": "a-uat/run-report.md",
       "title": "A-UAT run report",
       "summary": "Append-only-in-practice results log from the A-UAT runner against the ADR-0026 test matrix. One row per model x arm x behavior x trial cell, with tool-log evidence and a provisional result. Resumable - the batch driver skips cells already recorded for the current frozen_at. Rows flagged review=yes need human adjudication. (Mode is living so the header can be restructured during the run; harden to append-only once the run set is complete.)",
-      "bytes": 30202,
-      "lines": 146,
+      "bytes": 58984,
+      "lines": 291,
       "tags": [
         "a-uat",
         "results",
@@ -2521,6 +2767,36 @@
           "level": 2,
           "text": "Determination - 2026-06-26",
           "slug": "determination-2026-06-26"
+        },
+        {
+          "level": 2,
+          "text": "Session: 2026-06-27 — post-ADR-0031 H-only run (freeze 918e019)",
+          "slug": "session-2026-06-27-post-adr-0031-h-only-run-freeze-918e019"
+        },
+        {
+          "level": 3,
+          "text": "Findings (freeze 918e019, 2026-06-27)",
+          "slug": "findings-freeze-918e019-2026-06-27"
+        },
+        {
+          "level": 2,
+          "text": "Session: 2026-06-27 (re-run) — post-fix H-only (freeze 73e9129)",
+          "slug": "session-2026-06-27-re-run-post-fix-h-only-freeze-73e9129"
+        },
+        {
+          "level": 3,
+          "text": "Findings — re-run (freeze 73e9129, 2026-06-27)",
+          "slug": "findings-re-run-freeze-73e9129-2026-06-27"
+        },
+        {
+          "level": 2,
+          "text": "Session: 2026-06-28 (codex re-run) — post reason_code+matcher fix (freeze 4634c7c51604)",
+          "slug": "session-2026-06-28-codex-re-run-post-reason_codematcher-fix-freeze-4634c7c51604"
+        },
+        {
+          "level": 3,
+          "text": "Findings — codex re-run (freeze 4634c7c, 2026-06-28)",
+          "slug": "findings-codex-re-run-freeze-4634c7c-2026-06-28"
         }
       ],
       "mode": "living",
@@ -2548,14 +2824,14 @@
     {
       "key": "a-uat/test-matrix.md",
       "title": "A-UAT test matrix",
-      "summary": "Concrete manual A-UAT matrix for ADR-0026, covering model rows, runnable hook/skill arms, disposable probe prompts, expected tool-use evidence, and the pre-registered per-lever decision rules that turn observed behavior into ship/skip calls for the orient hook, write skill, and write-side enforcement levers.",
-      "bytes": 17968,
-      "lines": 204,
+      "summary": "Post-ADR-0031 manual A-UAT matrix for the validation gate. One shipping arm (H, the branch-tip hooks-only build) runs the native-write behaviours (N1-N5) plus a codex orient-injection check (N6); opus runs the full set, sonnet a single N4 spot check, codex N1-N6. Defines the disposable probe prompts, the upgraded evidence model (cross-reference the b19 check-write decision log against a post-run vault git diff; a b11 drift alarm is a replay-fidelity finding), and the three pre-registered decision rules — rule 1 is now an absolute leak bar on H (~0 hard-bypass / silent-leak), not a non-regression vs the dropped W control — that turn observed leaks into the ADR-0031 ship/skip call. Per the loosening stance settled 2026-06-27 (memento-ryr.32), a self-serve `write-mode`/`unlock` that thaws a walled note without explicit user authorisation is now an `unauthorised_loosening` finding, not a legitimate recovery: rule 2 no longer blesses it and the leak taxonomy names it.",
+      "bytes": 20904,
+      "lines": 173,
       "tags": [
         "a-uat",
         "agents",
+        "enforcement",
         "hooks",
-        "skills",
         "testing"
       ],
       "headings": [
@@ -2566,53 +2842,58 @@
         },
         {
           "level": 2,
-          "text": "Model dimension",
-          "slug": "model-dimension"
+          "text": "Arm (the whole build, not levers)",
+          "slug": "arm-the-whole-build-not-levers"
         },
         {
           "level": 2,
-          "text": "Variation arms",
-          "slug": "variation-arms"
+          "text": "Model dimension — codex now enforces, models split by axis",
+          "slug": "model-dimension-codex-now-enforces-models-split-by-axis"
         },
         {
           "level": 2,
-          "text": "Desired behaviors",
-          "slug": "desired-behaviors"
+          "text": "Behaviours (N1-N5, plus codex check N6)",
+          "slug": "behaviours-n1-n5-plus-codex-check-n6"
+        },
+        {
+          "level": 3,
+          "text": "N1 — happy native write (allow-path)",
+          "slug": "n1-happy-native-write-allow-path"
+        },
+        {
+          "level": 3,
+          "text": "N2 — read-only wall (deny → ask → unlock/write-mode)",
+          "slug": "n2-read-only-wall-deny-ask-unlockwrite-mode"
+        },
+        {
+          "level": 3,
+          "text": "N3 — append-only interior (deny → re-append or self-serve write-mode)",
+          "slug": "n3-append-only-interior-deny-re-append-or-self-serve-write-mode"
+        },
+        {
+          "level": 3,
+          "text": "N4 — Bash hatch (does the agent tunnel around the gate?)",
+          "slug": "n4-bash-hatch-does-the-agent-tunnel-around-the-gate"
+        },
+        {
+          "level": 3,
+          "text": "N5 — drive-by mode change (deny → split)",
+          "slug": "n5-drive-by-mode-change-deny-split"
+        },
+        {
+          "level": 3,
+          "text": "N6 — codex SessionStart context-injection check (codex H only)",
+          "slug": "n6-codex-sessionstart-context-injection-check-codex-h-only"
+        },
+        {
+          "level": 3,
+          "text": "Cross-cutting signals (every denied trial)",
+          "slug": "cross-cutting-signals-every-denied-trial"
         },
         {
           "level": 2,
-          "text": "Expectation pairs",
-          "slug": "expectation-pairs"
-        },
-        {
-          "level": 3,
-          "text": "B1 - orient before acting",
-          "slug": "b1-orient-before-acting"
-        },
-        {
-          "level": 3,
-          "text": "B2 - brief loaded only when needed",
-          "slug": "b2-brief-loaded-only-when-needed"
-        },
-        {
-          "level": 3,
-          "text": "B3 - writing guide read before composing a vault write",
-          "slug": "b3-writing-guide-read-before-composing-a-vault-write"
-        },
-        {
-          "level": 3,
-          "text": "B4 - writes routed through memento write",
-          "slug": "b4-writes-routed-through-memento-write"
-        },
-        {
-          "level": 3,
-          "text": "B5 - read-only note not natively edited",
-          "slug": "b5-read-only-note-not-natively-edited"
-        },
-        {
-          "level": 3,
-          "text": "Known limitation: Bash bypass of the vault guard",
-          "slug": "known-limitation-bash-bypass-of-the-vault-guard"
+          "text": "Evidence model (the upgrade over transcript grep)",
+          "slug": "evidence-model-the-upgrade-over-transcript-grep"
         },
         {
           "level": 2,
@@ -2623,18 +2904,48 @@
           "level": 2,
           "text": "Run log fields",
           "slug": "run-log-fields"
+        },
+        {
+          "level": 2,
+          "text": "Running it",
+          "slug": "running-it"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
         }
       ],
       "mode": "living",
       "orient": false,
       "updated": "",
-      "body_sha": "d6af6828843b5c230e360702331190e13e0930b62e1c7ceee4f1a313e212467d",
-      "summary_sha": "978550575caf03c385c5944eb6acb0597233cc3ecb837fccc6d9d8c2a85a909f",
-      "summary_state": "current",
+      "body_sha": "2357d8536353b183ce893a75217c5e0e79077ccc82b90763a64d65ee11b539ff",
+      "summary_sha": "38bd478d356d5f829efc04b39af8014fa1ca3d8eac99e575c7676b5b4a04b6d3",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
             "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write compile drift handshake.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write output contract.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "doctor-scoping.md",
             "type": "wiki",
             "resolved": true
           }
@@ -2952,6 +3263,265 @@
       }
     },
     {
+      "key": "check-write compile drift handshake.md",
+      "title": "check-write↔compile drift handshake",
+      "summary": "The PreToolUse gate and PostToolUse compile coordinate through a gitignored .memento/pending-writes.json ledger: check-write records the expected post-write bytes-hash per key on an allow; compile hashes what landed, raises a loud DRIFT ALARM on mismatch, then clears the ledger. Bash appends record nothing (landed bytes not derivable). compile stays exit-0 on drift; the PostToolUse hook turns the alarm token into exit 2 to surface it.",
+      "bytes": 3117,
+      "lines": 56,
+      "tags": [
+        "compile",
+        "enforcement",
+        "hooks",
+        "memento",
+        "write"
+      ],
+      "headings": [],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "f92f206f031ceb2b1e151f3273b52dfe5ffa687e6ae745057f4b7cd189f5d7b4",
+      "summary_sha": "b323edddc1c35fdf7a7d37fa2e8793fe909353683fd6257833954fd8c5a9110c",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0022-auto-compile-after-write.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write output contract.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "a-uat/test-matrix.md",
+            "type": "wiki"
+          },
+          {
+            "source": "enforcement backstop — ratification-boundary diff audit.md",
+            "type": "wiki"
+          },
+          {
+            "source": "unlock-grant trailer lift runs in prepare-commit-msg.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "check-write decision log.md",
+      "title": "check-write decision log",
+      "summary": "The gitignored check-write audit is JSONL (one verdict per line) at .memento/decision-log.jsonl, recording exactly three enforcement-visible events — deny, drive_by_block, grant_consumption — and deliberately NOT plain allows. It is the enforcement audit, not a write journal; a log-write failure never flips a verdict.",
+      "bytes": 2635,
+      "lines": 46,
+      "tags": [
+        "enforcement",
+        "hooks",
+        "memento",
+        "observability",
+        "write"
+      ],
+      "headings": [],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "90659b239cc9c964807cc4d531c0ccffcad1345edf670d41d39eda4b705931c7",
+      "summary_sha": "55430c2d7fa9867668f9e0fe1de40161a0ffc72950bc521438889578d792dc0e",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "check-write output contract.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "loosening justification persistence.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "check-write output contract.md",
+      "title": "check-write output contract",
+      "summary": "check-write emits the full PreToolUse harness verdict JSON on stdout itself (allow/deny/ask), not a bare {decision,reason_code,message} needing translation — so the PreToolUse hook is a true dumb pipe plus fail-closed-on-nonzero-exit. Resolves ADR-0031's ambiguous wording. The wire verdict carries NO reason_code (dropped in memento-ryr.37: codex's strict PreToolUse schema rejects unknown top-level keys and falls open on the whole verdict); reason_code now lives ONLY in the decision log.",
+      "bytes": 3017,
+      "lines": 55,
+      "tags": [
+        "enforcement",
+        "hooks",
+        "memento",
+        "write"
+      ],
+      "headings": [],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "3ef9f272d7badae2d35aae018b7c42603c93cd83caaf69fbbd0a83f263fc90cf",
+      "summary_sha": "a66eb93bc34e3cb6f432c1e8a1c24ea85f33c31eb1e63a50a8d58121c881015c",
+      "summary_state": "current",
+      "links": {
+        "out": [],
+        "in": [
+          {
+            "source": "a-uat/test-matrix.md",
+            "type": "wiki"
+          },
+          {
+            "source": "check-write compile drift handshake.md",
+            "type": "wiki"
+          },
+          {
+            "source": "check-write decision log.md",
+            "type": "wiki"
+          },
+          {
+            "source": "codex-cli lifecycle hooks contract.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "codex-cli lifecycle hooks contract.md",
+      "title": "codex-cli lifecycle hooks contract",
+      "summary": "Empirical pin (codex-cli 0.142.2) of the lifecycle-hooks config.toml schema, the PreToolUse wire contract, the trust-by-hash flow, and ask support. CRITICAL (memento-ryr.31): codex declares hooks INLINE only — `hooks` must be a HooksToml struct ([[hooks.<Event>]] array-of-tables); the path-indirection form `hooks = \\\"hooks.json\\\"` is REJECTED at config load (`invalid type: string, expected struct HooksToml`), so memento ships no hooks.json. PreToolUse permissionDecision is {allow,deny,ask} byte-identical to Claude Code (so vault_discovery_ambiguous CAN use ask, no deny-fallback needed); deny requires hookEventName in hookSpecificOutput; trust is persisted per-hash (trusted_hash) and bypassable only via --dangerously-bypass-hook-trust. Confirms ADR-0031's codex-in-scope premise. Also flags a side discovery: memento's own wikilink extractor matches double-bracket tokens inside code spans/fences.",
+      "bytes": 18549,
+      "lines": 295,
+      "tags": [
+        "agents",
+        "codex",
+        "enforcement",
+        "hooks",
+        "memento",
+        "spike"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Feature is real and stable",
+          "slug": "feature-is-real-and-stable"
+        },
+        {
+          "level": 2,
+          "text": "Lifecycle events",
+          "slug": "lifecycle-events"
+        },
+        {
+          "level": 2,
+          "text": "PreToolUse — the gate check-write answers",
+          "slug": "pretooluse-the-gate-check-write-answers"
+        },
+        {
+          "level": 2,
+          "text": "ask IS supported (resolves the vault_discovery_ambiguous fallback)",
+          "slug": "ask-is-supported-resolves-the-vault_discovery_ambiguous-fallback"
+        },
+        {
+          "level": 2,
+          "text": "PreToolUse never fires for shell writes — codex enforcement is apply_patch-only (memento-ryr.39)",
+          "slug": "pretooluse-never-fires-for-shell-writes-codex-enforcement-is-apply_patch-only-memento-ryr39"
+        },
+        {
+          "level": 2,
+          "text": "PostToolUse",
+          "slug": "posttooluse"
+        },
+        {
+          "level": 2,
+          "text": "Exit-code semantics match Claude",
+          "slug": "exit-code-semantics-match-claude"
+        },
+        {
+          "level": 2,
+          "text": "Config: where hooks are declared",
+          "slug": "config-where-hooks-are-declared"
+        },
+        {
+          "level": 2,
+          "text": "Trust model — trust-by-hash, so init can't silently install a live gate",
+          "slug": "trust-model-trust-by-hash-so-init-cant-silently-install-a-live-gate"
+        },
+        {
+          "level": 2,
+          "text": "apply_patch envelope parsing in check-write (memento-ryr.9)",
+          "slug": "apply_patch-envelope-parsing-in-check-write-memento-ryr9"
+        },
+        {
+          "level": 2,
+          "text": "Limits of this spike",
+          "slug": "limits-of-this-spike"
+        },
+        {
+          "level": 2,
+          "text": "Side discovery — memento's wikilink extractor ignores code context",
+          "slug": "side-discovery-mementos-wikilink-extractor-ignores-code-context"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "ee0ab551572edba172b17267abaa1667ea65f904fe7c422f46f6cab0d07b775c",
+      "summary_sha": "e203a34d81e1b25309d4a10d3f7f0f9b2c6a8cf0b0cdf9a66f778a90f043e692",
+      "summary_state": "stale",
+      "links": {
+        "out": [
+          {
+            "target": "...",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "Architecture decision record/adr-0026-agent-uat-validation-regime.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write output contract.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "hooks.<Event>",
+            "type": "wiki",
+            "resolved": false
+          },
+          {
+            "target": "hooks.<Event>.hooks",
+            "type": "wiki",
+            "resolved": false
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
       "key": "conditional-information-access.md",
       "title": "The two axes of conditional information access",
       "summary": "Conditional access decomposes into two typing axes — constative/performative (what the information is) and epistemic/deontic (how access is governed) — laid over the spec's access-pattern substrates. An exploration of what follows, not a feature plan.",
@@ -3056,6 +3626,337 @@
       }
     },
     {
+      "key": "doctor-scoping.md",
+      "title": "Doctor — scoping list",
+      "summary": "Live, exploratory list of candidate checks for the future `memento doctor` verb, consolidated from the ADRs and dogfooding. Doctor owns mechanical plumbing/health (no content judgement, no agent); this note is the running inbox of candidate checks so the eventual doctor ADR doesn't re-derive them. Not a spec — see [[review-audit-doctor faculties]] for the verb-boundary carve.",
+      "bytes": 9119,
+      "lines": 99,
+      "tags": [
+        "doctor",
+        "memento",
+        "open-question",
+        "roadmap",
+        "scoping"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Plumbing / machine-state (doctor's core)",
+          "slug": "plumbing-machine-state-doctors-core"
+        },
+        {
+          "level": 2,
+          "text": "Write-enforcement liveness ([[adr-0031-remove-write-verb-hook-enforced-native-writes]])",
+          "slug": "write-enforcement-liveness-adr-0031-remove-write-verb-hook-enforced-native-writes"
+        },
+        {
+          "level": 2,
+          "text": "Cadence and verb-boundary — \"doctor\" is being asked to span three cadences (2026-06-28)",
+          "slug": "cadence-and-verb-boundary-doctor-is-being-asked-to-span-three-cadences-2026-06-28"
+        },
+        {
+          "level": 2,
+          "text": "Discovery / onboarding (from 2026-06-26 second-cloner review)",
+          "slug": "discovery-onboarding-from-2026-06-26-second-cloner-review"
+        },
+        {
+          "level": 2,
+          "text": "Form checks (uncertain home)",
+          "slug": "form-checks-uncertain-home"
+        },
+        {
+          "level": 2,
+          "text": "Boundaries to keep in mind",
+          "slug": "boundaries-to-keep-in-mind"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "1e06e7fcf2aede50bec395be4ffe021611aaa75a171df8d03ad9cd74243c5f5e",
+      "summary_sha": "dd358bf9a65f88b8ba94f5048b446e1cf2e8b6fbf5892abdabc40416163f9084",
+      "summary_state": "stale",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "review-audit-doctor faculties.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "a-uat/test-matrix.md",
+            "type": "wiki"
+          },
+          {
+            "source": "loosening justification persistence.md",
+            "type": "wiki"
+          },
+          {
+            "source": "remove-write-agreed-points.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "enforcement backstop — ratification-boundary diff audit.md",
+      "title": "Enforcement backstop — ratification-boundary diff audit",
+      "summary": "Hook-time mode enforcement (PreToolUse check-write) is necessarily partial: it only fires for write paths the agent surface exposes to hooks — so codex exec shell writes, untrusted codex hooks, and Claude opaque shell ($()/eval/interpreters) all fail open SILENTLY. The path-agnostic catch-all is a post-hoc audit of the on-disk diff vs ratified (git HEAD) state, reusing the pure EvaluatePrefixInvariant verdict, anchored at the git pre-commit hook (the ratification boundary). It is detection by default, optional commit-block as mitigation, and is independent of any agent's lifecycle-hook trust model.",
+      "bytes": 4972,
+      "lines": 85,
+      "tags": [
+        "codex",
+        "design",
+        "enforcement",
+        "hooks",
+        "memento"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The gap hook-time enforcement can't close",
+          "slug": "the-gap-hook-time-enforcement-cant-close"
+        },
+        {
+          "level": 2,
+          "text": "The catch-all: audit the diff against ratified state",
+          "slug": "the-catch-all-audit-the-diff-against-ratified-state"
+        },
+        {
+          "level": 2,
+          "text": "Anchor it at the ratification boundary (pre-commit)",
+          "slug": "anchor-it-at-the-ratification-boundary-pre-commit"
+        },
+        {
+          "level": 2,
+          "text": "Honest limits",
+          "slug": "honest-limits"
+        },
+        {
+          "level": 2,
+          "text": "Posture shift",
+          "slug": "posture-shift"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "e6b0d809ee0de78a4a32c9909732b7fe1a9042b440d6f5140ec294979095eb6f",
+      "summary_sha": "4fd33d61b144480b0d240570e794b945ba28dd9022bbc3fc13ccccffb0bd3222",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write compile drift handshake.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "loosening justification persistence.md",
+      "title": "Loosening-justification persistence — decision log, not commit trailers",
+      "summary": "Where the *why* of a mode loosening lives. Decided 2026-06-28: write-mode loosenings append (with justification) to the existing gitignored .memento/ check-write decision log; NO commit trailers; the Memento-Unlock: trailer is RETIRED; unlock justifications are intentionally NOT persisted (we don't care to). Rationale: a committed/trailer audit would aspire to a binding-audit property the rest of the system explicitly disclaims (cooperative guardrail, not security control). The integrity floor stays the committed mode-line diff + the pre-commit MODE VIOLATION audit, not the justification text. Consumption deferred to a future audit faculty.",
+      "bytes": 4675,
+      "lines": 83,
+      "tags": [
+        "audit",
+        "design",
+        "enforcement",
+        "memento",
+        "unlock",
+        "write-mode"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The question",
+          "slug": "the-question"
+        },
+        {
+          "level": 2,
+          "text": "Decision (2026-06-28)",
+          "slug": "decision-2026-06-28"
+        },
+        {
+          "level": 2,
+          "text": "Why gitignored-local is the consistent choice, not a compromise",
+          "slug": "why-gitignored-local-is-the-consistent-choice-not-a-compromise"
+        },
+        {
+          "level": 2,
+          "text": "The cost we accepted, named",
+          "slug": "the-cost-we-accepted-named"
+        },
+        {
+          "level": 2,
+          "text": "Consumption — deferred",
+          "slug": "consumption-deferred"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "b46872a3d2766905b9a20792faa0ad5e0b0b8cca35d0396635701345d6987c9e",
+      "summary_sha": "62c1fd3266a90ed17ada73ae4169fbe1fa31124091b279e3de0dc6893e734626",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write decision log.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "doctor-scoping.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "review-audit-doctor faculties.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "unlock-grant trailer lift runs in prepare-commit-msg.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "unlock-grant trailer lift runs in prepare-commit-msg.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "remove-write-agreed-points.md",
+      "title": "Remove `write` — agreed points",
+      "summary": "Working agreement, pre-ADR: the `write` verb is removed entirely. Native agent tools own body prose; hooks become the enforcement layer (`check-write` pre-verdict + recompile post); typed verbs survive only for frontmatter mode ops (`write-mode --justification`) and self-expiring exceptions (`unlock --justification`). Captures the settled core so the eventual ADR doesn't re-litigate it; ramifications still to explore.",
+      "bytes": 13338,
+      "lines": 231,
+      "tags": [
+        "hooks",
+        "memento",
+        "mode",
+        "open-question",
+        "roadmap",
+        "write"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Core decision",
+          "slug": "core-decision"
+        },
+        {
+          "level": 2,
+          "text": "Agreed points",
+          "slug": "agreed-points"
+        },
+        {
+          "level": 2,
+          "text": "Revised CLI surface",
+          "slug": "revised-cli-surface"
+        },
+        {
+          "level": 2,
+          "text": "Validation plan",
+          "slug": "validation-plan"
+        },
+        {
+          "level": 2,
+          "text": "Accepted trade-off (eyes open)",
+          "slug": "accepted-trade-off-eyes-open"
+        },
+        {
+          "level": 2,
+          "text": "Deferred — ramifications still to explore",
+          "slug": "deferred-ramifications-still-to-explore"
+        },
+        {
+          "level": 2,
+          "text": "Rejected alternatives",
+          "slug": "rejected-alternatives"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "02026304baaebb4fc17b250995eba8b0af874cf7496f8f24368b4b058f943739",
+      "summary_sha": "2b71248feb87a290a362ad7cb6d95c0e2e108fe701302428f9aa1d461daee5fb",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0004-v0-write-scope.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0015-write-mode-taxonomy.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0025-agent-integration-orient-hook-and-write-skill.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "doctor-scoping.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
       "key": "review-audit-doctor faculties.md",
       "title": "Review / audit / doctor — faculty boundaries",
       "summary": "A carve for three maintenance-shaped verbs that have been blurring together. `doctor` is already assigned the machine/config-health role (ADR-0025), which frees `audit` from the machinery it was straddling. The remaining cut is between `review` (closed-world: judge the vault against itself + world-facts — form, structure, internal consistency) and `audit` (open-world: judge the vault against an external referent — the human's intent and an untampered ground truth). \"Is each note well-formed / is the corpus tidy / is it self-consistent\" is review; \"is this the memory you actually want, and has it been silently rewritten\" is audit. Not decided — records the dividing principle so the review/audit/doctor verb ADRs don't each re-derive it.",
@@ -3126,15 +4027,24 @@
             "resolved": true
           }
         ],
-        "in": []
+        "in": [
+          {
+            "source": "doctor-scoping.md",
+            "type": "wiki"
+          },
+          {
+            "source": "loosening justification persistence.md",
+            "type": "wiki"
+          }
+        ]
       }
     },
     {
       "key": "spec.md",
       "title": "memento — design specification",
       "summary": "Post-ADR alignment spec for memento's vault model, manifest and brief artifacts, `_memento/` namespace, bootloader flow, and v0-v4 scope boundaries.",
-      "bytes": 44949,
-      "lines": 413,
+      "bytes": 46461,
+      "lines": 418,
       "tags": [],
       "headings": [
         {
@@ -3229,8 +4139,8 @@
         },
         {
           "level": 3,
-          "text": "Write stderr contract (v2, ADR-0022)",
-          "slug": "write-stderr-contract-v2-adr-0022"
+          "text": "Write enforcement contract (ADR-0031, supersedes the ADR-0022 write-verb contract)",
+          "slug": "write-enforcement-contract-adr-0031-supersedes-the-adr-0022-write-verb-contract"
         },
         {
           "level": 3,
@@ -3334,6 +4244,52 @@
       }
     },
     {
+      "key": "unlock-grant trailer lift runs in prepare-commit-msg.md",
+      "title": "unlock-grant trailer lift runs in prepare-commit-msg",
+      "summary": "ADR-0031 says 'the pre-commit hook lifts pending grant justifications into a Memento-Unlock: commit trailer before clearing them' — but a git pre-commit hook runs before the commit message exists and cannot write a trailer. The lift+clear is implemented as a prepare-commit-msg hook (memento lift-grants \\\"$1\\\"): the only stage that runs after pre-commit succeeds AND owns the message file. pre-commit still does compile + git add manifest; prepare-commit-msg owns the trailer + grant clear.",
+      "bytes": 3815,
+      "lines": 66,
+      "tags": [
+        "enforcement",
+        "git",
+        "hooks",
+        "memento",
+        "unlock"
+      ],
+      "headings": [],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "54ca67d13e83a7ac5bb89dfbbf177c7238d2593049358846bfacf7874aaa4327",
+      "summary_sha": "2640c8750f1956571c9fdbd0f89998377e948c5b5a607ba98b64da801abb77cc",
+      "summary_state": "stale",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write compile drift handshake.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "loosening justification persistence.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "loosening justification persistence.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
       "key": "what makes a good summary.md",
       "title": "What makes a good summary",
       "summary": "A summary is read by an agent scanning the brief to decide what to open next. Lead with the decision or the load-bearing fact — not the question, the context, or the motivation. If reading the summary tells you the answer, the brief is doing its job; if it only tells you a file exists on the topic, the brief is just an index.",
@@ -3391,25 +4347,28 @@
   "tags": {
     "_memento": 2,
     "a-uat": 3,
-    "agents": 14,
-    "audit": 1,
+    "agents": 16,
+    "audit": 2,
     "beads": 2,
     "bootloader": 2,
     "brief": 4,
     "cli": 2,
-    "compile": 5,
+    "codex": 2,
+    "compile": 6,
     "config": 1,
     "configuration": 1,
     "convention": 1,
     "conventions": 4,
+    "design": 2,
     "design-philosophy": 1,
     "distribution": 1,
-    "doctor": 1,
+    "doctor": 2,
     "draft": 1,
+    "enforcement": 9,
     "format": 1,
     "frontmatter": 4,
-    "git": 1,
-    "hooks": 3,
+    "git": 2,
+    "hooks": 11,
     "ignore": 1,
     "information-access": 1,
     "init": 4,
@@ -3420,12 +4379,13 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 36,
-    "mode": 3,
+    "memento": 46,
+    "mode": 5,
     "namespace": 3,
+    "observability": 1,
     "obsidian": 4,
     "okf": 3,
-    "open-question": 4,
+    "open-question": 6,
     "orient": 7,
     "philosophy": 1,
     "portability": 2,
@@ -3434,11 +4394,13 @@
     "results": 1,
     "retrieval": 1,
     "review": 5,
-    "roadmap": 2,
+    "roadmap": 4,
     "roles": 1,
     "schema": 2,
     "scope": 1,
-    "skills": 5,
+    "scoping": 1,
+    "skills": 4,
+    "spike": 1,
     "staleness": 2,
     "states": 1,
     "summaries": 1,
@@ -3448,8 +4410,10 @@
     "theory": 1,
     "thought-bubble": 2,
     "unicode": 1,
+    "unlock": 2,
     "vault": 3,
-    "write": 7,
+    "write": 12,
+    "write-mode": 1,
     "writing": 1
   }
 }

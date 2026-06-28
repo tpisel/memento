@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/tpisel/memento/internal/convention"
+	"github.com/tpisel/memento/internal/enforce"
 	"github.com/tpisel/memento/internal/ignore"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/markdown"
@@ -59,7 +60,7 @@ func errorToken(err error) string {
 		return "manifest-schema-unsupported"
 	case errors.Is(err, manifest.ErrStale):
 		return "manifest-stale"
-	case errors.Is(err, note.ErrVaultPrefixedKey):
+	case errors.Is(err, enforce.ErrVaultPrefixedKey):
 		return "invalid-key"
 	case errors.Is(err, note.ErrInvalidKey):
 		return "invalid-key"
@@ -73,10 +74,6 @@ func errorToken(err error) string {
 		return "convention-not-found"
 	case errors.Is(err, convention.ErrInvalid):
 		return "invalid-convention"
-	case errors.Is(err, note.ErrUnsupportedWriteOperation):
-		return "unsupported-write-operation"
-	case errors.Is(err, note.ErrReadOnly):
-		return "mode-rejects-write"
 	case errors.Is(err, ignore.ErrUnsupportedNegation),
 		errors.Is(err, ignore.ErrEmptyPattern),
 		errors.Is(err, ignore.ErrEmptySegment),

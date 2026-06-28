@@ -2,6 +2,8 @@ package agenthooks_test
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,203 +12,171 @@ import (
 	"testing"
 )
 
-func TestPreWriteVaultGuardDeniesVaultWrite(t *testing.T) {
-	repo := t.TempDir()
-	vaultRoot := filepath.Join(repo, "memento-memory")
-	mkdir(t, filepath.Join(vaultRoot, ".memento"))
+// These tests pin the PreToolUse wrapper's contract under ADR-0031: it is a dumb
+// pipe to `memento check-write` that fails CLOSED. They do not re-test the mode
+// lattice (that lives in internal/cli and internal/enforce); they assert only
+// that check-write's verdict reaches the harness unchanged, that out-of-vault
+// targets stay silent, and that an unrunnable check-write becomes a deny.
 
-	tests := []struct {
-		name     string
-		toolName string
-		path     string
-	}{
-		{
-			name:     "write",
-			toolName: "Write",
-			path:     filepath.Join(vaultRoot, "spec.md"),
-		},
-		{
-			name:     "edit",
-			toolName: "Edit",
-			path:     filepath.Join(vaultRoot, "Architecture decision record", "adr.md"),
-		},
-		{
-			name:     "multiedit",
-			toolName: "MultiEdit",
-			path:     filepath.Join(vaultRoot, "_memento", "writing.md"),
-		},
-	}
+// mementoBin is the path to the check-write-capable memento binary built once for
+// the whole package in TestMain.
+var mementoBin string
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			payload := `{"tool_name":` + quoteJSON(tt.toolName) + `,"tool_input":{"file_path":` + quoteJSON(tt.path) + `}}`
-			stdout, stderr, err := runGuard(t, repo, vaultRoot, payload)
-			if err != nil {
-				t.Fatalf("guard command error = %v; stderr = %s", err, stderr)
-			}
-			assertDenied(t, stdout)
-			if stderr != "" {
-				t.Fatalf("stderr = %q, want empty", stderr)
-			}
-		})
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "memento-agenthooks")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mktemp: %v\n", err)
+		os.Exit(1)
 	}
+	bin := filepath.Join(dir, "memento")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/memento")
+	build.Dir = repoRoot()
+	if out, buildErr := build.CombinedOutput(); buildErr != nil {
+		fmt.Fprintf(os.Stderr, "build memento: %v\n%s", buildErr, out)
+		os.RemoveAll(dir)
+		os.Exit(1)
+	}
+	mementoBin = bin
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
-func TestPreWriteVaultGuardAllowsNonVaultWrite(t *testing.T) {
-	repo := t.TempDir()
-	vaultRoot := filepath.Join(repo, "memento-memory")
-	mkdir(t, filepath.Join(vaultRoot, ".memento"))
-	target := filepath.Join(repo, "README.md")
+// TestGuardPassesThroughDeny: a write check-write denies reaches the harness as a
+// deny on stdout with a clean exit. Uses a Bash truncating redirect into the
+// vault (bash_opaque_write) — a deny independent of git ratification.
+func TestGuardPassesThroughDeny(t *testing.T) {
+	repo := newVault(t)
+	target := filepath.Join(repo, "spec.md")
 
-	stdout, stderr, err := runGuard(t, repo, vaultRoot, `{"tool_name":"Edit","tool_input":{"file_path":`+quoteJSON(target)+`}}`)
-	if err != nil {
-		t.Fatalf("guard command error = %v; stderr = %s", err, stderr)
+	payload := bashPayload(t, "printf x > "+shellQuote(target))
+	stdout, stderr, code := runGuard(t, repo, payload)
+
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0; stderr = %s", code, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	assertDecision(t, stdout, "deny")
+}
+
+// TestGuardPassesThroughAllow: an allowed in-vault write (creating a new note)
+// reaches the harness as an allow verdict on stdout.
+func TestGuardPassesThroughAllow(t *testing.T) {
+	repo := newVault(t)
+	target := filepath.Join(repo, "fresh.md")
+	content := "---\nmode: append-only\n---\n# Fresh\n\nBody.\n"
+
+	payload := writePayload(t, target, content)
+	stdout, stderr, code := runGuard(t, repo, payload)
+
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0; stderr = %s", code, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	assertDecision(t, stdout, "allow")
+}
+
+// TestGuardSilentOutsideVault: a write to a target outside the vault produces no
+// verdict and no output — normal permission flow governs the rest of the repo.
+func TestGuardSilentOutsideVault(t *testing.T) {
+	repo := newVault(t)
+	outside := filepath.Join(t.TempDir(), "README.md")
+
+	payload := writePayload(t, outside, "hello\n")
+	stdout, stderr, code := runGuard(t, repo, payload)
+
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0; stderr = %s", code, stderr)
 	}
 	if stdout != "" || stderr != "" {
-		t.Fatalf("stdout = %q, stderr = %q; want both empty for allow", stdout, stderr)
+		t.Fatalf("stdout = %q, stderr = %q; want both empty for silent allow", stdout, stderr)
 	}
 }
 
-func TestPreWriteVaultGuardDiscoversVaultRoot(t *testing.T) {
-	repo := t.TempDir()
-	vaultRoot := filepath.Join(repo, "notes")
-	mkdir(t, filepath.Join(vaultRoot, ".memento"))
-	target := filepath.Join(vaultRoot, "Architecture decision record", "adr.md")
+// TestGuardFailsClosedOnMissingBinary is the US8 fail-closed self-test: with the
+// check-write binary unreachable, an in-vault write is BLOCKED (deny, exit 2),
+// not allowed to fall through. This is the "rename check-write => write blocked"
+// guarantee that buys back the old verb's loud-failure property.
+func TestGuardFailsClosedOnMissingBinary(t *testing.T) {
+	repo := newVault(t)
+	target := filepath.Join(repo, "spec.md")
 
-	cmd := guardCommand(t, repo, `{"tool_name":"MultiEdit","tool_input":{"file_path":`+quoteJSON(target)+`}}`)
-	cmd.Env = append(os.Environ(), "MEMENTO_REPO_ROOT="+repo)
+	cmd := guardCommand(t, repo, writePayload(t, target, "anything\n"))
+	cmd.Env = append(os.Environ(), "MEMENTO_BIN="+filepath.Join(t.TempDir(), "absent-memento"))
 
-	stdout, stderr, err := runCommand(cmd)
-	if err != nil {
-		t.Fatalf("guard command error = %v; stderr = %s", err, stderr)
+	stdout, stderr, code := runCommand(cmd)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2 (fail-closed block); stdout = %q stderr = %q", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, `"permissionDecision":"deny"`) {
-		t.Fatalf("stdout = %q, want deny decision", stdout)
-	}
-}
-
-func TestPreWriteVaultGuardDeniesObviousBashWritesIntoVault(t *testing.T) {
-	repo := t.TempDir()
-	vaultRoot := filepath.Join(repo, "notes")
-	mkdir(t, filepath.Join(vaultRoot, ".memento"))
-
-	tests := []struct {
-		name    string
-		command string
-	}{
-		{
-			name:    "redirect truncate",
-			command: "printf hi > " + shellQuote(filepath.Join(vaultRoot, "direct.md")),
-		},
-		{
-			name:    "redirect append relative",
-			command: "printf hi >> notes/direct.md",
-		},
-		{
-			name:    "tee",
-			command: "printf hi | tee " + shellQuote(filepath.Join(vaultRoot, "tee.md")),
-		},
-		{
-			name:    "cp",
-			command: "cp README.md " + shellQuote(filepath.Join(vaultRoot, "copied.md")),
-		},
-		{
-			name:    "mv",
-			command: "mv scratch.md " + shellQuote(filepath.Join(vaultRoot, "moved.md")),
-		},
-		{
-			name:    "sed in place",
-			command: "sed -i '' 's/a/b/' " + shellQuote(filepath.Join(vaultRoot, "spec.md")),
-		},
-		{
-			name:    "perl in place",
-			command: "perl -pi -e 's/a/b/' " + shellQuote(filepath.Join(vaultRoot, "spec.md")),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			payload := `{"tool_name":"Bash","tool_input":{"command":` + quoteJSON(tt.command) + `}}`
-			stdout, stderr, err := runGuard(t, repo, vaultRoot, payload)
-			if err != nil {
-				t.Fatalf("guard command error = %v; stderr = %s", err, stderr)
-			}
-			assertDenied(t, stdout)
-			if stderr != "" {
-				t.Fatalf("stderr = %q, want empty", stderr)
-			}
-		})
+	assertDecision(t, stdout, "deny")
+	if stderr == "" {
+		t.Fatalf("stderr empty; want a fail-closed diagnostic for the harness")
 	}
 }
 
-func TestPreWriteVaultGuardAllowsBashOutsideVaultAndMementoCommands(t *testing.T) {
-	repo := t.TempDir()
-	vaultRoot := filepath.Join(repo, "notes")
-	mkdir(t, filepath.Join(vaultRoot, ".memento"))
+// TestGuardFailsClosedOnUnparseablePayload: a payload check-write cannot parse
+// makes check-write exit non-zero; the wrapper must deny, not fall through.
+func TestGuardFailsClosedOnUnparseablePayload(t *testing.T) {
+	repo := newVault(t)
 
-	tests := []struct {
-		name    string
-		command string
-	}{
-		{
-			name:    "redirect outside vault",
-			command: "printf hi > README.md",
-		},
-		{
-			name:    "cp outside vault",
-			command: "cp notes/spec.md README.md",
-		},
-		{
-			name:    "memento read",
-			command: "go run ./cmd/memento read spec.md",
-		},
-		{
-			name:    "memento brief",
-			command: "memento brief",
-		},
-		{
-			name:    "memento orient",
-			command: "memento orient",
-		},
-		{
-			name:    "memento compile",
-			command: "go run ./cmd/memento compile",
-		},
-		{
-			name:    "memento write",
-			command: "memento write discoveries/example.md",
-		},
+	stdout, stderr, code := runGuard(t, repo, "this is not json")
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2 (fail-closed block); stdout = %q stderr = %q", code, stdout, stderr)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			payload := `{"tool_name":"Bash","tool_input":{"command":` + quoteJSON(tt.command) + `}}`
-			stdout, stderr, err := runGuard(t, repo, vaultRoot, payload)
-			if err != nil {
-				t.Fatalf("guard command error = %v; stderr = %s", err, stderr)
-			}
-			if stdout != "" || stderr != "" {
-				t.Fatalf("stdout = %q, stderr = %q; want both empty for allow", stdout, stderr)
-			}
-		})
-	}
+	assertDecision(t, stdout, "deny")
 }
 
-func runGuard(t *testing.T, dir, vaultRoot, stdin string) (string, string, error) {
+// --- helpers ---
+
+// newVault creates a tempdir vault (a .memento marker at its root) and returns
+// the root. The directory doubles as the working directory passed to the guard,
+// so check-write discovers this single vault from its cwd.
+func newVault(t *testing.T) string {
 	t.Helper()
-	cmd := guardCommand(t, dir, stdin)
-	cmd.Env = append(os.Environ(), "MEMENTO_VAULT_ROOT="+vaultRoot)
+	repo := t.TempDir()
+	mkdir(t, filepath.Join(repo, ".memento"))
+	return repo
+}
+
+func writePayload(t *testing.T, path, content string) string {
+	t.Helper()
+	return marshalPayload(t, "Write", map[string]any{"file_path": path, "content": content})
+}
+
+func bashPayload(t *testing.T, command string) string {
+	t.Helper()
+	return marshalPayload(t, "Bash", map[string]any{"command": command})
+}
+
+func marshalPayload(t *testing.T, tool string, input map[string]any) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{"tool_name": tool, "tool_input": input})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	return string(b)
+}
+
+// runGuard runs the wrapper with the built memento binary, the vault as its
+// working directory, and the payload on stdin.
+func runGuard(t *testing.T, workdir, stdin string) (string, string, int) {
+	t.Helper()
+	cmd := guardCommand(t, workdir, stdin)
+	cmd.Env = append(os.Environ(), "MEMENTO_BIN="+mementoBin)
 	return runCommand(cmd)
 }
 
-func assertDenied(t *testing.T, stdout string) {
+// assertDecision checks stdout carries the harness verdict envelope with the
+// expected permissionDecision.
+func assertDecision(t *testing.T, stdout, decision string) {
 	t.Helper()
 	for _, want := range []string{
 		`"hookEventName":"PreToolUse"`,
-		`"permissionDecision":"deny"`,
-		"memento write",
-		"protected note",
-		"--force-with-reason",
+		`"permissionDecision":"` + decision + `"`,
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("stdout = %q, want it to contain %q", stdout, want)
@@ -216,27 +186,27 @@ func assertDenied(t *testing.T, stdout string) {
 
 func guardCommand(t *testing.T, dir, stdin string) *exec.Cmd {
 	t.Helper()
-
-	_, testFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(testFile), "..", ".."))
-	script := filepath.Join(repoRoot, "scripts", "agent-hooks", "pre-write-vault-guard.sh")
-
+	script := filepath.Join(repoRoot(), "scripts", "agent-hooks", "pre-write-vault-guard.sh")
 	cmd := exec.Command("bash", script)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(stdin)
 	return cmd
 }
 
-func runCommand(cmd *exec.Cmd) (string, string, error) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+func runCommand(cmd *exec.Cmd) (string, string, int) {
+	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return stdout.String(), stderr.String(), err
+	_ = cmd.Run()
+	return stdout.String(), stderr.String(), cmd.ProcessState.ExitCode()
+}
+
+func repoRoot() string {
+	_, testFile, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("runtime.Caller failed")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(testFile), "..", ".."))
 }
 
 func mkdir(t *testing.T, path string) {
@@ -244,10 +214,6 @@ func mkdir(t *testing.T, path string) {
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", path, err)
 	}
-}
-
-func quoteJSON(value string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(value) + `"`
 }
 
 func shellQuote(value string) string {

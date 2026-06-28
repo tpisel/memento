@@ -4,22 +4,46 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
 
+	"github.com/tpisel/memento/internal/enforce"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/vault"
 )
 
 const (
-	ConfigFileName          = "config.toml"
-	agentsInstructionsFile  = "AGENTS.md"
-	claudeInstructionsFile  = "CLAUDE.md"
-	claudeSettingsFile      = ".claude/settings.json"
-	claudeOrientHookScript  = ".claude/memento-orient-session-start.sh"
-	claudeWriteSkillFile    = ".claude/skills/memento-write/SKILL.md"
+	ConfigFileName            = "config.toml"
+	agentsInstructionsFile    = "AGENTS.md"
+	claudeInstructionsFile    = "CLAUDE.md"
+	claudeSettingsFile        = ".claude/settings.json"
+	claudeOrientHookScript    = ".claude/memento-orient-session-start.sh"
+	claudePreWriteHookScript  = ".claude/memento-pre-write-vault-guard.sh"
+	claudePostWriteHookScript = ".claude/memento-post-write-compile.sh"
+	claudeOrientHookMatcher   = "startup|resume|clear|compact"
+	claudeWriteHookMatcher    = "Write|Edit|MultiEdit|Bash"
+
+	codexConfigDirName       = ".codex"
+	codexConfigFile          = ".codex/config.toml"
+	codexOrientHookScript    = ".codex/memento-orient-session-start.sh"
+	codexPreWriteHookScript  = ".codex/memento-pre-write-vault-guard.sh"
+	codexPostWriteHookScript = ".codex/memento-post-write-compile.sh"
+	// codex matches EXACT tool names (the `|` group is exact names, not regex), and
+	// the only confirmed hookable write tool in `codex exec` is apply_patch: the
+	// PreToolUse hook never fires for shell writes (memento-ryr.39), so a `Shell`
+	// entry matched nothing and falsely implied shell was gated. Keep it honest —
+	// apply_patch only. Over-firing is harmless (check-write is inert off-vault,
+	// compile is idempotent), but claiming coverage we don't have is not.
+	codexWriteHookMatcher  = "apply_patch"
+	codexOrientHookMatcher = claudeOrientHookMatcher
+	// PreToolUse is the latency-sensitive gate (the b15 spike used timeout_sec=5);
+	// the compile-backed hooks get a wider budget since compile is whole-vault.
+	codexGateTimeoutSec    = 5
+	codexCompileTimeoutSec = 30
+
 	bootloaderStartSentinel = "<!-- memento:start -->"
 	bootloaderEndSentinel   = "<!-- memento:end -->"
 	hookStartSentinel       = "# memento:start"
@@ -77,26 +101,12 @@ var defaultUsingMementoGuide = strings.Join([]string{
 	"",
 }, "\n")
 
-var defaultWriteSkill = strings.Join([]string{
-	"---",
-	"name: memento-write",
-	"description: Use before creating or updating any note in the memento vault. Loads the project writing guide and the safe-write rules so durable knowledge lands correctly and read-only notes are not corrupted.",
-	"---",
-	"",
-	"# Writing to the memento vault",
-	"",
-	"Before authoring a vault write:",
-	"",
-	"1. **Read the writing guide.** Run `memento convention writing` to load when/what to write, what to keep in the task store instead, and the expected note shape. Do this before composing, not after.",
-	"2. **Write through memento, not native file edits.** Use `memento write` so the mode check (`append-only` / `living` / `read-only`) is applied. A native file edit of a vault note bypasses that check and can silently overwrite a `read-only` note - the read-only guarantee lives in the write verb, not in the file.",
-	"3. **Keep it scannable.** Durable notes should read cleanly from `memento brief`; lead the summary with the load-bearing fact or decision.",
-	"",
-	"This skill is a delivery surface for the `writing` convention (`_memento/conventions/writing.md`) - that file is the source of truth. If the two ever disagree, the convention wins.",
-	"",
-}, "\n")
-
 type InitOptions struct {
 	AgentInstructionsPath string
+	// NoticeWriter receives user-facing post-install guidance that is not an error
+	// — chiefly the codex hook-trust step (codex installs hooks untrusted, so init
+	// cannot silently stand up a live gate). nil discards the notices.
+	NoticeWriter io.Writer
 }
 
 // Init creates or adopts a memory vault under repoRoot.
@@ -150,9 +160,6 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensureMementoIgnore(v); err != nil {
 		return vault.Vault{}, err
 	}
-	if err := ensureWriteSkillSource(v); err != nil {
-		return vault.Vault{}, err
-	}
 	if err := ensureManifest(v); err != nil {
 		return vault.Vault{}, err
 	}
@@ -165,11 +172,40 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensurePreCommitHook(root, v); err != nil {
 		return vault.Vault{}, err
 	}
-	if err := ensureClaudeAgentIntegration(root, v); err != nil {
+	if err := ensureAgentIntegrations(root, opts.NoticeWriter); err != nil {
 		return vault.Vault{}, err
 	}
 
 	return v, nil
+}
+
+// ensureAgentIntegrations installs the memento hooks for every agent family this
+// repo is set up for (ADR-0031 "Multi-agent"). Claude is the baseline family —
+// always installed, matching pre-ADR-0031 behavior and the bootloader that targets
+// AGENTS.md/CLAUDE.md. Codex is additive and detection-gated: it is wired only when
+// a codex config dir is present. A family we cannot detect or install degrades
+// discoverability (no gate fires) but never breaks the CLI — ADR-0025's additive
+// invariant, carried into ADR-0031's multi-agent scope.
+func ensureAgentIntegrations(repoRoot string, notices io.Writer) error {
+	if notices == nil {
+		notices = io.Discard
+	}
+	if err := ensureClaudeAgentIntegration(repoRoot); err != nil {
+		return err
+	}
+	if detectCodex(repoRoot) {
+		if err := ensureCodexAgentIntegration(repoRoot, notices); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// detectCodex reports whether this repo carries a codex config directory. Its
+// absence is not an error — it just means the codex gate is not installed here.
+func detectCodex(repoRoot string) bool {
+	info, err := os.Stat(filepath.Join(repoRoot, codexConfigDirName))
+	return err == nil && info.IsDir()
 }
 
 func resolveInitRoot(repoRoot, dir string) (string, error) {
@@ -293,7 +329,7 @@ var defaultConventionTemplates = []conventionTemplate{
 			"",
 			"Do not record transient task progress, guesses, or details the code already makes clear. If a fact only matters to the task in hand, keep it in your task store, not the vault.",
 			"",
-			"Write through `memento write` so the note's mode check applies; a native file edit can silently overwrite a read-only note.",
+			"Write notes with your normal file tools — there is no write verb. A pre-write hook enforces each note's mode, so an edit that would break a ratified `read-only` or `append-only` note is refused before it lands, and the denial names the one way forward.",
 			"",
 		}, "\n"),
 	},
@@ -388,6 +424,12 @@ func gitignoreBlock() string {
 		"**/.obsidian/cache",
 		"# Memento generated artifacts",
 		"**/" + vault.ToolDirName + "/" + vault.BriefFileName,
+		"# Memento unlock grants (manifest and config beside it stay tracked)",
+		"**/" + vault.MarkerDirName + "/" + enforce.GrantsFileName,
+		"# Memento pending-write ledger (check-write↔compile drift handshake)",
+		"**/" + vault.MarkerDirName + "/" + enforce.PendingFileName,
+		"# Memento check-write decision log (enforcement audit)",
+		"**/" + vault.MarkerDirName + "/" + enforce.DecisionLogFileName,
 		gitignoreEndSentinel,
 	}, "\n")
 }
@@ -419,57 +461,187 @@ func ensurePreCommitHook(repoRoot string, v vault.Vault) error {
 	return nil
 }
 
-func ensureClaudeAgentIntegration(repoRoot string, v vault.Vault) error {
-	if err := ensureClaudeOrientHookScript(repoRoot); err != nil {
-		return err
+// ensureClaudeAgentIntegration installs the three memento hooks into the Claude
+// settings (ADR-0031): the SessionStart orient hook, the PreToolUse check-write
+// gate, and the PostToolUse compile hook, plus the scripts they invoke. It no
+// longer installs a write skill — ADR-0031 retired the write verb the skill
+// routed through. init stays additive-only; doctor --fix owns deleting orphaned
+// write-skill artifacts left by older vaults.
+func ensureClaudeAgentIntegration(repoRoot string) error {
+	if err := ensureHookScript(repoRoot, claudeOrientHookScript, claudeOrientHookScriptContents(repoRoot)); err != nil {
+		return fmt.Errorf("install Claude orient hook script: %w", err)
+	}
+	if err := ensureHookScript(repoRoot, claudePreWriteHookScript, claudePreWriteHookScriptContents()); err != nil {
+		return fmt.Errorf("install Claude PreToolUse check-write hook script: %w", err)
+	}
+	if err := ensureHookScript(repoRoot, claudePostWriteHookScript, claudePostWriteHookScriptContents()); err != nil {
+		return fmt.Errorf("install Claude PostToolUse compile hook script: %w", err)
 	}
 	if err := ensureClaudeSettings(repoRoot); err != nil {
 		return err
 	}
-	if err := ensureClaudeWriteSkill(repoRoot, v); err != nil {
+	return nil
+}
+
+// ensureCodexAgentIntegration wires the same three memento hooks for codex
+// (ADR-0031 "Multi-agent"; schema from the b15 spike — see
+// [[codex-cli lifecycle hooks contract]]). The dumb-pipe scripts are reused
+// verbatim: check-write's PreToolUse verdict JSON is byte-identical-valid on codex,
+// so a codex-family copy of each script is installed under .codex/. The hooks are
+// declared INLINE in config.toml as `[[hooks.<Event>]]` array-of-tables: codex-cli
+// 0.142.2 rejects the path-indirection form (`hooks = "hooks.json"`) with
+// `invalid type: string, expected struct HooksToml`, so there is no parallel
+// hooks.json (memento-ryr.31). codex installs hooks UNTRUSTED (trust-by-hash), so
+// this stages the gate and surfaces the trust step — it cannot stand up a live gate
+// non-interactively.
+func ensureCodexAgentIntegration(repoRoot string, notices io.Writer) error {
+	if err := ensureHookScript(repoRoot, codexOrientHookScript, claudeOrientHookScriptContents(repoRoot)); err != nil {
+		return fmt.Errorf("install codex orient hook script: %w", err)
+	}
+	if err := ensureHookScript(repoRoot, codexPreWriteHookScript, claudePreWriteHookScriptContents()); err != nil {
+		return fmt.Errorf("install codex PreToolUse check-write hook script: %w", err)
+	}
+	if err := ensureHookScript(repoRoot, codexPostWriteHookScript, claudePostWriteHookScriptContents()); err != nil {
+		return fmt.Errorf("install codex PostToolUse compile hook script: %w", err)
+	}
+	if err := ensureCodexConfigHooks(repoRoot, notices); err != nil {
 		return err
 	}
+	emitCodexTrustNotice(repoRoot, notices)
 	return nil
 }
 
-func ensureWriteSkillSource(v vault.Vault) error {
-	path := filepath.Join(v.Root, vault.ToolDirName, "skills", "write.md")
-	if info, err := os.Stat(path); err == nil {
-		if info.IsDir() {
-			return fmt.Errorf("%s already exists as a directory", path)
-		}
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("stat _memento write skill source: %w", err)
-	}
-	if err := writeNewFile(path, []byte(defaultWriteSkill), 0o644); err != nil {
-		return fmt.Errorf("create _memento write skill source: %w", err)
-	}
-	return nil
-}
+// ensureCodexConfigHooks writes memento's lifecycle hooks as an inline
+// `[[hooks.<Event>]]` block in config.toml, kept inside a memento sentinel block so
+// reruns replace it idempotently. The block is appended after any existing content:
+// codex hooks are array-of-tables headers, which (unlike the old bare `hooks = …`
+// key) must sit after every top-level key, and appending leaves nothing for them to
+// capture. If the user already declares a hooks key/table of their own, memento
+// leaves config.toml untouched and degrades to a manual-wiring notice rather than
+// corrupting their config — the additive invariant (never break what exists).
+func ensureCodexConfigHooks(repoRoot string, notices io.Writer) error {
+	path := filepath.Join(repoRoot, filepath.FromSlash(codexConfigFile))
+	block := codexConfigBlock(repoRoot)
 
-func ensureClaudeWriteSkill(repoRoot string, v vault.Vault) error {
-	sourcePath := filepath.Join(v.Root, vault.ToolDirName, "skills", "write.md")
-	source, err := os.ReadFile(sourcePath)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("read _memento write skill source: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := writeNewFile(path, []byte("# codex configuration\n\n"+block+"\n"), 0o644); err != nil {
+				return fmt.Errorf("create codex config.toml: %w", err)
+			}
+			return nil
+		}
+		return fmt.Errorf("read codex config.toml: %w", err)
 	}
 
-	path := filepath.Join(repoRoot, filepath.FromSlash(claudeWriteSkillFile))
-	if err := writeFileIfChanged(path, source, 0o644); err != nil {
-		return fmt.Errorf("install Claude write skill: %w", err)
+	contents := string(data)
+	if !strings.Contains(contents, hookStartSentinel) && codexConfigHasForeignHooks(contents) {
+		emitCodexForeignHooksNotice(notices)
+		return nil
+	}
+
+	updated, err := insertOrReplaceSentinelBlock(contents, block, hookStartSentinel, hookEndSentinel, "codex config.toml", "memento")
+	if err != nil {
+		return err
+	}
+	if updated == contents {
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("write codex config.toml: %w", err)
 	}
 	return nil
 }
 
-func ensureClaudeOrientHookScript(repoRoot string) error {
-	path := filepath.Join(repoRoot, filepath.FromSlash(claudeOrientHookScript))
-	script := claudeOrientHookScriptContents(repoRoot)
+// codexConfigBlock renders memento's three lifecycle hooks as inline TOML
+// array-of-tables (codex-cli 0.142.2's `HooksToml` shape; the `hooks = "path"` form
+// is rejected — memento-ryr.31). Each event gets a `[[hooks.<Event>]]` entry with a
+// matcher plus a nested `[[hooks.<Event>.hooks]]` command handler carrying the
+// absolute script path and the event's timeout budget.
+func codexConfigBlock(repoRoot string) string {
+	type codexHook struct {
+		event      string
+		matcher    string
+		script     string
+		timeoutSec int
+	}
+	hooks := []codexHook{
+		{"SessionStart", codexOrientHookMatcher, codexOrientHookScript, codexCompileTimeoutSec},
+		{"PreToolUse", codexWriteHookMatcher, codexPreWriteHookScript, codexGateTimeoutSec},
+		{"PostToolUse", codexWriteHookMatcher, codexPostWriteHookScript, codexCompileTimeoutSec},
+	}
+
+	lines := []string{
+		hookStartSentinel,
+		"# memento wires codex lifecycle hooks inline (ADR-0031); codex rejects the hooks=\"path\" form.",
+	}
+	for _, h := range hooks {
+		command := filepath.Join(repoRoot, filepath.FromSlash(h.script))
+		lines = append(lines,
+			"",
+			fmt.Sprintf("[[hooks.%s]]", h.event),
+			fmt.Sprintf("matcher = %s", tomlBasicString(h.matcher)),
+			fmt.Sprintf("[[hooks.%s.hooks]]", h.event),
+			`type = "command"`,
+			fmt.Sprintf("command = %s", tomlBasicString(command)),
+			fmt.Sprintf("timeout_sec = %d", h.timeoutSec),
+		)
+	}
+	lines = append(lines, hookEndSentinel)
+	return strings.Join(lines, "\n")
+}
+
+// tomlBasicString renders s as a TOML basic string, escaping the backslash and
+// double-quote a filesystem path can carry. memento has no TOML dependency, so this
+// is the minimal escaping the hook command/matcher values need.
+func tomlBasicString(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return `"` + r.Replace(s) + `"`
+}
+
+// codexConfigHasForeignHooks reports whether config.toml already declares a
+// top-level hooks key (assignment, table, or array-of-tables) that memento did not
+// write. It is a line heuristic, not a TOML parse — memento has no TOML dependency —
+// so it errs toward leaving a user's config alone.
+func codexConfigHasForeignHooks(contents string) bool {
+	for _, line := range strings.Split(contents, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[hooks") || strings.HasPrefix(trimmed, "[[hooks") {
+			return true
+		}
+		if key, _, ok := strings.Cut(trimmed, "="); ok && strings.TrimSpace(key) == "hooks" {
+			return true
+		}
+	}
+	return false
+}
+
+// emitCodexTrustNotice surfaces the codex hook-trust step (b15 spike). codex
+// records trust per content hash and skips untrusted hooks, so the gate this
+// staged is fail-open until the user reviews and trusts it — init cannot make it
+// live non-interactively. When config wiring was skipped (foreign hooks key) the
+// foreign-hooks notice already fired, so the trust line still applies once wired.
+func emitCodexTrustNotice(repoRoot string, notices io.Writer) {
+	fmt.Fprintf(notices, "memento: codex hooks staged in %s (untrusted).\n", displayPath(repoRoot, filepath.Join(repoRoot, filepath.FromSlash(codexConfigFile))))
+	fmt.Fprintln(notices, "codex trusts hooks by content hash and skips untrusted ones, so the memento write-enforcement gate stays fail-open until you review and trust it.")
+	fmt.Fprintln(notices, "Trust it in codex (hooks browser), or pass --dangerously-bypass-hook-trust only for automation that already vets hook sources.")
+}
+
+func emitCodexForeignHooksNotice(notices io.Writer) {
+	fmt.Fprintln(notices, "memento: .codex/config.toml already declares hooks; left unchanged.")
+	fmt.Fprintln(notices, "Wire the gate yourself: add memento's hook scripts under your [hooks] tables (see .codex/memento-*.sh).")
+}
+
+func ensureHookScript(repoRoot, relPath, script string) error {
+	path := filepath.Join(repoRoot, filepath.FromSlash(relPath))
 	if err := writeFileIfChanged(path, []byte(script), 0o755); err != nil {
-		return fmt.Errorf("install Claude orient hook script: %w", err)
+		return err
 	}
 	if err := ensureExecutable(path); err != nil {
-		return fmt.Errorf("make Claude orient hook script executable: %w", err)
+		return fmt.Errorf("make %s executable: %w", relPath, err)
 	}
 	return nil
 }
@@ -519,6 +691,96 @@ func claudeOrientHookScriptContents(repoRoot string) string {
 	}, "\n")
 }
 
+// claudePreWriteHookScriptContents is the PreToolUse gate (ADR-0031): a dumb pipe
+// to `memento check-write` that fails CLOSED. It is byte-identical to the
+// canonical scripts/agent-hooks/pre-write-vault-guard.sh (pinned by a drift test
+// in this package); all verdict logic lives in unit-tested Go.
+func claudePreWriteHookScriptContents() string {
+	return `#!/usr/bin/env bash
+#
+# PreToolUse hook (ADR-0031): a dumb pipe to ` + "`memento check-write`" + `. All verdict
+# logic — the mode lattice, the Bash command parse, every denial message — lives
+# in unit-tested Go (internal/cli, internal/enforce). This wrapper forwards the
+# raw PreToolUse payload on stdin to check-write and does exactly one thing of its
+# own: it fails CLOSED. When check-write cannot return a verdict (binary missing,
+# unparseable payload, IO/git error) it exits non-zero; this script turns that
+# into a deny instead of letting the write through.
+#
+# It is deliberately NOT ` + "`set -euo pipefail`" + `. Under ` + "`set -e`" + ` a non-zero
+# check-write exit would propagate as the script's exit 1, which the harness
+# treats as a *non-blocking* error and ALLOWS the write — the fail-OPEN bug this
+# script exists to fix (ADR-0031, "Trust model and failure posture"). We read the
+# exit code by hand instead.
+#
+# memento init (memento-ryr.12) installs the settings.json entry pointing at this
+# script. Set MEMENTO_BIN to the memento binary if ` + "`memento`" + ` is not on PATH.
+
+memento_bin="${MEMENTO_BIN:-memento}"
+
+# Forward our stdin (the PreToolUse payload) straight to check-write. On a clean
+# run check-write has already written the harness verdict JSON to our stdout, or
+# stayed silent for an out-of-vault / non-write target; either way exit 0 is the
+# verdict and we pass it through untouched.
+"$memento_bin" check-write
+status=$?
+if [ "$status" -eq 0 ]; then
+  exit 0
+fi
+
+# check-write could not produce a verdict. It writes stdout only on the verdict
+# path, so nothing partial sits on our stdout here. Fail closed: emit a deny and
+# exit 2. The harness blocks on exit 2 OR an explicit permissionDecision "deny";
+# we send both so a JSON-only harness and an exit-code-only harness each block.
+printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"memento check-write could not run (missing binary, unparseable payload, or internal error), so this write is blocked fail-closed. Restore the memento hook before writing vault files."}}'
+printf 'memento check-write unavailable (exit %s); blocking write fail-closed.\n' "$status" >&2
+exit 2
+`
+}
+
+// claudePostWriteHookScriptContents is the PostToolUse compile hook (ADR-0031,
+// re-homing ADR-0022's auto-compile): it recompiles after a vault write and turns
+// a DRIFT ALARM into exit 2. It is byte-identical to the canonical
+// scripts/agent-hooks/post-write-compile.sh (pinned by a drift test).
+func claudePostWriteHookScriptContents() string {
+	return `#!/usr/bin/env bash
+#
+# PostToolUse hook (ADR-0031, re-homing ADR-0022's auto-compile off the deleted
+# ` + "`write`" + ` verb). After a vault write lands it runs ` + "`memento compile`" + `, which does
+# two jobs: keep the manifest/brief coherent with disk, and run the compile half
+# of the check-write handshake — compare what landed against the bytes-hash the
+# PreToolUse gate recorded, raise a DRIFT ALARM on mismatch, then clear the
+# ledger.
+#
+# Unlike the PreToolUse guard this hook CANNOT block: by PostToolUse the write
+# has already happened. It is best-effort coherence plus detection, so a compile
+# failure is not fatal here. It does not parse the payload to gate on the target:
+# Bash PostToolUse carries no path, so we always recompile (idempotent); the
+# matcher ` + "`memento init`" + ` installs scopes which tools fire this at all.
+#
+# The one signal worth surfacing is drift. ` + "`memento compile`" + ` prints the alarm on
+# stderr and exits 0 (so it never fails an unrelated ` + "`compile`" + ` or the pre-commit
+# hook). This wrapper watches for the alarm token and, only then, exits 2 — the
+# PostToolUse code that feeds stderr back to the agent — so a detected tamper or
+# replay divergence is loud where it happened, not buried in a transcript.
+#
+# Set MEMENTO_BIN to the memento binary if ` + "`memento`" + ` is not on PATH.
+
+memento_bin="${MEMENTO_BIN:-memento}"
+
+# Capture compile's stderr so we can scan it for the alarm, then re-emit it
+# verbatim. compile writes nothing to stdout, so discarding it loses nothing.
+compile_err="$("$memento_bin" compile 2>&1 1>/dev/null)"
+if [ -n "$compile_err" ]; then
+  printf '%s\n' "$compile_err" >&2
+fi
+
+if printf '%s' "$compile_err" | grep -q 'DRIFT ALARM'; then
+  exit 2
+fi
+exit 0
+`
+}
+
 func ensureClaudeSettings(repoRoot string) error {
 	path := filepath.Join(repoRoot, filepath.FromSlash(claudeSettingsFile))
 	settings := map[string]any{}
@@ -538,13 +800,26 @@ func ensureClaudeSettings(repoRoot string) error {
 	if err != nil {
 		return err
 	}
-	sessionStart, err := arraySetting(hooks, "SessionStart")
-	if err != nil {
-		return err
-	}
 
-	command := filepath.Join(repoRoot, filepath.FromSlash(claudeOrientHookScript))
-	hooks["SessionStart"] = upsertClaudeOrientHook(sessionStart, command)
+	type managedHook struct {
+		event     string
+		matcher   string
+		command   string
+		isManaged func(any) bool
+	}
+	managed := []managedHook{
+		{"SessionStart", claudeOrientHookMatcher, claudeOrientHookScript, isMementoOrientHook},
+		{"PreToolUse", claudeWriteHookMatcher, claudePreWriteHookScript, isMementoPreWriteHook},
+		{"PostToolUse", claudeWriteHookMatcher, claudePostWriteHookScript, isMementoPostWriteHook},
+	}
+	for _, m := range managed {
+		entries, err := arraySetting(hooks, m.event)
+		if err != nil {
+			return err
+		}
+		command := filepath.Join(repoRoot, filepath.FromSlash(m.command))
+		hooks[m.event] = upsertManagedHook(entries, m.matcher, command, m.isManaged)
+	}
 	settings["hooks"] = hooks
 
 	updated, err := json.MarshalIndent(settings, "", "  ")
@@ -587,8 +862,21 @@ func arraySetting(parent map[string]any, key string) ([]any, error) {
 	return array, nil
 }
 
-func upsertClaudeOrientHook(entries []any, command string) []any {
-	managed := claudeOrientHookEntry(command)
+// upsertManagedHook reinstalls memento's managed hook entry for one Claude event
+// idempotently: it strips any prior memento hook (identified by isManaged, which
+// also matches legacy script names so a rerun re-homes them) from existing
+// entries, preserving every unrelated hook, then appends one fresh entry with the
+// given matcher and command.
+func upsertManagedHook(entries []any, matcher, command string, isManaged func(any) bool) []any {
+	return replaceManagedHook(entries, isManaged, managedHookEntry(matcher, command))
+}
+
+// replaceManagedHook strips any prior memento hook (matched by isManaged, which
+// also catches legacy script names so a rerun re-homes them) from existing entries,
+// preserving every unrelated hook, then appends newEntry. It is the family-neutral
+// core of upsertManagedHook, shared by the Claude settings and codex hooks.json
+// installs.
+func replaceManagedHook(entries []any, isManaged func(any) bool, newEntry map[string]any) []any {
 	cleaned := make([]any, 0, len(entries)+1)
 	for _, entry := range entries {
 		object, ok := entry.(map[string]any)
@@ -604,7 +892,7 @@ func upsertClaudeOrientHook(entries []any, command string) []any {
 
 		filtered := make([]any, 0, len(hooks))
 		for _, hook := range hooks {
-			if isMementoOrientHook(hook) {
+			if isManaged(hook) {
 				continue
 			}
 			filtered = append(filtered, hook)
@@ -619,13 +907,13 @@ func upsertClaudeOrientHook(entries []any, command string) []any {
 		object["hooks"] = filtered
 		cleaned = append(cleaned, object)
 	}
-	cleaned = append(cleaned, managed)
+	cleaned = append(cleaned, newEntry)
 	return cleaned
 }
 
-func claudeOrientHookEntry(command string) map[string]any {
+func managedHookEntry(matcher, command string) map[string]any {
 	return map[string]any{
-		"matcher": "startup|resume|compact",
+		"matcher": matcher,
 		"hooks": []any{
 			map[string]any{
 				"type":    "command",
@@ -635,7 +923,10 @@ func claudeOrientHookEntry(command string) map[string]any {
 	}
 }
 
-func isMementoOrientHook(hook any) bool {
+// hookCommandBaseMatches reports whether a hook's command basename is one of the
+// memento-managed names. Both the installed name and the canonical
+// scripts/agent-hooks name are accepted so reruns dedupe across either install.
+func hookCommandBaseMatches(hook any, bases ...string) bool {
 	object, ok := hook.(map[string]any)
 	if !ok {
 		return false
@@ -645,17 +936,41 @@ func isMementoOrientHook(hook any) bool {
 		return false
 	}
 	base := filepath.Base(command)
-	return base == filepath.Base(claudeOrientHookScript) || base == "orient-session-start.sh"
+	for _, want := range bases {
+		if base == want {
+			return true
+		}
+	}
+	return false
+}
+
+func isMementoOrientHook(hook any) bool {
+	return hookCommandBaseMatches(hook, filepath.Base(claudeOrientHookScript), "orient-session-start.sh")
+}
+
+func isMementoPreWriteHook(hook any) bool {
+	return hookCommandBaseMatches(hook, filepath.Base(claudePreWriteHookScript), "pre-write-vault-guard.sh")
+}
+
+func isMementoPostWriteHook(hook any) bool {
+	return hookCommandBaseMatches(hook, filepath.Base(claudePostWriteHookScript), "post-write-compile.sh")
 }
 
 func preCommitHookBlock(repoRoot string, v vault.Vault) string {
 	manifestPath := displayPath(repoRoot, v.ManifestPath)
 
+	// `memento clear-grants` runs AFTER `memento compile`: compile's
+	// ratification-boundary audit reads the unlock grants to waive grant-covered
+	// changes, then clear-grants drops them all (the "any commit re-locks" semantics,
+	// ADR-0031 2026-06-28 addendum). This replaces the retired prepare-commit-msg
+	// trailer-lift hook — unlock justifications are no longer lifted into a commit
+	// trailer; loosening audit lives in the gitignored decision log.
 	return strings.Join([]string{
 		hookStartSentinel,
 		"if command -v memento >/dev/null 2>&1; then",
 		"memento compile",
 		"git add -- " + shellQuote(manifestPath),
+		"memento clear-grants",
 		"else",
 		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
 		"fi",
@@ -793,6 +1108,8 @@ func insertOrReplaceGitignoreBlock(contents, block string) (string, error) {
 	return insertOrReplaceSentinelBlock(contents, block, gitignoreStartSentinel, gitignoreEndSentinel, ".gitignore", "memento gitignore")
 }
 
+// insertOrReplaceSentinelBlock replaces an existing in-place block where it sits
+// and otherwise appends a fresh block at the end of contents.
 func insertOrReplaceSentinelBlock(contents, block, startSentinel, endSentinel, target, blockName string) (string, error) {
 	start := strings.Index(contents, startSentinel)
 	end := strings.Index(contents, endSentinel)
