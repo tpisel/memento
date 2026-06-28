@@ -310,6 +310,7 @@ func TestClaudeOrientHookRunsCompileBeforeOrient(t *testing.T) {
 	}
 
 	repo := t.TempDir()
+	markClaudeRepo(t, repo)
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
 	}
@@ -343,6 +344,7 @@ func TestClaudeOrientHookRunsOrientWhenCompileFails(t *testing.T) {
 	}
 
 	repo := t.TempDir()
+	markClaudeRepo(t, repo)
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
 	}
@@ -376,6 +378,7 @@ esac
 
 func TestInitInstallsClaudeWriteEnforcementHooks(t *testing.T) {
 	repo := t.TempDir()
+	markClaudeRepo(t, repo)
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
@@ -418,6 +421,7 @@ func TestInitInstallsClaudeWriteEnforcementHooks(t *testing.T) {
 
 func TestInitInstalledWriteHooksMatchCanonicalScripts(t *testing.T) {
 	repo := t.TempDir()
+	markClaudeRepo(t, repo)
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
@@ -439,6 +443,7 @@ func TestInitInstalledWriteHooksMatchCanonicalScripts(t *testing.T) {
 
 func TestInitDoesNotInstallWriteSkill(t *testing.T) {
 	repo := t.TempDir()
+	markClaudeRepo(t, repo)
 
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
@@ -499,6 +504,13 @@ func TestInitWriteEnforcementHooksAreIdempotent(t *testing.T) {
 	}
 	if !settingsJSONContainsCommand(settingsArray(t, hooks, "PostToolUse"), "/keep/post.sh") {
 		t.Fatalf("PostToolUse hooks = %#v, want unrelated /keep/post.sh preserved", hooks["PostToolUse"])
+	}
+}
+
+func markClaudeRepo(t *testing.T, repo string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+		t.Fatalf("mkdir .claude: %v", err)
 	}
 }
 
@@ -598,10 +610,10 @@ func TestInitInstallsCodexHooksWhenCodexDetected(t *testing.T) {
 
 func TestInitSkipsCodexWhenUndetected(t *testing.T) {
 	repo := t.TempDir()
+	markClaudeRepo(t, repo)
 
-	// No .codex dir: the additive invariant says an undetectable family degrades
-	// discoverability (no codex gate) but never the CLI nor the baseline Claude
-	// install.
+	// .claude present, no .codex: detection is per-family, so the codex gate is
+	// skipped while the detected Claude family is still wired.
 	if _, err := Init(repo, "memory"); err != nil {
 		t.Fatalf("Init() error = %v, want nil", err)
 	}
@@ -611,7 +623,7 @@ func TestInitSkipsCodexWhenUndetected(t *testing.T) {
 			t.Fatalf("%s stat err = %v, want file not to exist", rel, err)
 		}
 	}
-	// Claude (the baseline family) is still wired.
+	// The detected Claude family is still wired.
 	hooks := settingsObject(t, readClaudeSettings(t, repo), "hooks")
 	preCommand := filepath.Join(repo, ".claude", "memento-pre-write-vault-guard.sh")
 	assertManagedHook(t, hooks, "PreToolUse", "Write|Edit|MultiEdit|Bash", preCommand)
@@ -619,6 +631,7 @@ func TestInitSkipsCodexWhenUndetected(t *testing.T) {
 
 func TestInitCodexScriptsMatchCanonicalScripts(t *testing.T) {
 	repo := t.TempDir()
+	markClaudeRepo(t, repo)
 	markCodexRepo(t, repo)
 
 	if _, err := Init(repo, "memory"); err != nil {
@@ -692,7 +705,7 @@ func TestInitSurfacesCodexHookTrustStep(t *testing.T) {
 	}
 }
 
-func TestInitDoesNotSurfaceCodexTrustWhenCodexUndetected(t *testing.T) {
+func TestInitReportsNoAgentWhenNoneDetected(t *testing.T) {
 	repo := t.TempDir()
 
 	var notices bytes.Buffer
@@ -700,8 +713,46 @@ func TestInitDoesNotSurfaceCodexTrustWhenCodexUndetected(t *testing.T) {
 		t.Fatalf("InitWithOptions() error = %v, want nil", err)
 	}
 
-	if strings.Contains(notices.String(), "codex") {
-		t.Fatalf("notice = %q, want no codex guidance without a codex repo", notices.String())
+	got := notices.String()
+	// Detection is symmetric: a repo with neither .claude/ nor .codex/ wires no
+	// agent. The vault is still created and the notice points at the explicit
+	// flag for a safe re-run.
+	for _, want := range []string{"vault created", "claude=not-detected", "codex=not-detected", "no agent found", "--agents=claude|codex|all"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("notice = %q, want %q", got, want)
+		}
+	}
+	for _, unwanted := range []string{"agent claude installed", "agent codex installed", "codex hooks staged"} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("notice = %q, want no agent wired, but saw %q", got, unwanted)
+		}
+	}
+	// The vault marker exists even though no agent was wired.
+	if _, err := os.Stat(filepath.Join(repo, "memory", ".memento")); err != nil {
+		t.Fatalf("stat vault marker: %v, want vault created despite no agent", err)
+	}
+}
+
+func TestInitExplicitCodexAgentCreatesCodexConfigWhenUndetected(t *testing.T) {
+	repo := t.TempDir()
+
+	var notices bytes.Buffer
+	selection, err := ParseAgentSelection("codex")
+	if err != nil {
+		t.Fatalf("ParseAgentSelection(codex) error = %v, want nil", err)
+	}
+	if _, err := InitWithOptions(repo, "memory", InitOptions{AgentSelection: selection, NoticeWriter: &notices}); err != nil {
+		t.Fatalf("InitWithOptions() error = %v, want nil", err)
+	}
+
+	config := readSetupFile(t, repo, ".codex/config.toml")
+	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
+	assertCodexInlineHook(t, config, "PreToolUse", codexWriteHookMatcher, preCommand, codexGateTimeoutSec)
+	got := notices.String()
+	for _, want := range []string{"agents requested: codex", "codex hooks staged", "agent codex installed"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("notice = %q, want %q", got, want)
+		}
 	}
 }
 

@@ -65,7 +65,7 @@ Open the vault directory itself (e.g. `my-project-memory/`) as an Obsidian vault
 
 - `memento help` — show help text.
 - `memento version` — print the memento version.
-- `memento init [--dir <vault>]` — adopt-or-create a vault and install the bootloader, pre-commit hook, and `.gitignore` stanza.
+- `memento init [--dir <vault>] [--agents detect|none|claude,codex]` — adopt-or-create a vault and install the bootloader, pre-commit hook, `.gitignore` stanza, and selected agent hooks.
 - `memento compile` — walk the vault and emit `<vault>/.memento/manifest.json` and `<vault>/_memento/brief.md`. Sub-second; safe in a pre-commit hook.
 - `memento brief` — print the agent-facing markdown projection of the manifest.
 - `memento orient` — print tool-usage orientation plus any project overlays.

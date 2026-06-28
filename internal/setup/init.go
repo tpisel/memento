@@ -19,6 +19,7 @@ const (
 	ConfigFileName            = "config.toml"
 	agentsInstructionsFile    = "AGENTS.md"
 	claudeInstructionsFile    = "CLAUDE.md"
+	claudeConfigDirName       = ".claude"
 	claudeSettingsFile        = ".claude/settings.json"
 	claudeOrientHookScript    = ".claude/memento-orient-session-start.sh"
 	claudePreWriteHookScript  = ".claude/memento-pre-write-vault-guard.sh"
@@ -103,10 +104,72 @@ var defaultUsingMementoGuide = strings.Join([]string{
 
 type InitOptions struct {
 	AgentInstructionsPath string
+	AgentSelection        AgentSelection
 	// NoticeWriter receives user-facing post-install guidance that is not an error
 	// — chiefly the codex hook-trust step (codex installs hooks untrusted, so init
 	// cannot silently stand up a live gate). nil discards the notices.
 	NoticeWriter io.Writer
+}
+
+type AgentFamily string
+
+const (
+	AgentClaude AgentFamily = "claude"
+	AgentCodex  AgentFamily = "codex"
+)
+
+type AgentSelectionMode string
+
+const (
+	AgentsDetect   AgentSelectionMode = "detect"
+	AgentsNone     AgentSelectionMode = "none"
+	AgentsExplicit AgentSelectionMode = "explicit"
+)
+
+type AgentSelection struct {
+	Mode     AgentSelectionMode
+	Families []AgentFamily
+}
+
+func DefaultAgentSelection() AgentSelection {
+	return AgentSelection{Mode: AgentsDetect}
+}
+
+func ParseAgentSelection(value string) (AgentSelection, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || value == string(AgentsDetect) {
+		return DefaultAgentSelection(), nil
+	}
+	if value == string(AgentsNone) {
+		return AgentSelection{Mode: AgentsNone}, nil
+	}
+	if value == "all" {
+		return AgentSelection{Mode: AgentsExplicit, Families: []AgentFamily{AgentClaude, AgentCodex}}, nil
+	}
+
+	seen := map[AgentFamily]bool{}
+	var families []AgentFamily
+	for _, raw := range strings.Split(value, ",") {
+		name := strings.TrimSpace(raw)
+		var family AgentFamily
+		switch name {
+		case string(AgentClaude):
+			family = AgentClaude
+		case string(AgentCodex):
+			family = AgentCodex
+		default:
+			return AgentSelection{}, fmt.Errorf("invalid agents value %q: use detect, none, claude, codex, or a comma-separated list", value)
+		}
+		if seen[family] {
+			return AgentSelection{}, fmt.Errorf("invalid agents value %q: duplicate %s", value, family)
+		}
+		seen[family] = true
+		families = append(families, family)
+	}
+	if len(families) == 0 {
+		return AgentSelection{}, fmt.Errorf("invalid agents value %q: use detect, none, claude, codex, or a comma-separated list", value)
+	}
+	return AgentSelection{Mode: AgentsExplicit, Families: families}, nil
 }
 
 // Init creates or adopts a memory vault under repoRoot.
@@ -172,37 +235,116 @@ func InitWithOptions(repoRoot, dir string, opts InitOptions) (vault.Vault, error
 	if err := ensurePreCommitHook(root, v); err != nil {
 		return vault.Vault{}, err
 	}
-	if err := ensureAgentIntegrations(root, opts.NoticeWriter); err != nil {
+	emitInitNotice(opts.NoticeWriter, "memento: vault %s: %s", initAction(greenfield), displayPath(root, v.Root))
+	if err := ensureAgentIntegrations(root, opts.NoticeWriter, opts.AgentSelection); err != nil {
 		return vault.Vault{}, err
 	}
 
 	return v, nil
 }
 
-// ensureAgentIntegrations installs the memento hooks for every agent family this
-// repo is set up for (ADR-0031 "Multi-agent"). Claude is the baseline family —
-// always installed, matching pre-ADR-0031 behavior and the bootloader that targets
-// AGENTS.md/CLAUDE.md. Codex is additive and detection-gated: it is wired only when
-// a codex config dir is present. A family we cannot detect or install degrades
-// discoverability (no gate fires) but never breaks the CLI — ADR-0025's additive
-// invariant, carried into ADR-0031's multi-agent scope.
-func ensureAgentIntegrations(repoRoot string, notices io.Writer) error {
+// ensureAgentIntegrations installs the memento hooks for the selected agent
+// families. Detect mode is symmetric: each family is wired only when its config
+// directory (.claude/ or .codex/) is already present, and a repo with neither
+// gets no agent wired — the vault is still created and a notice points at the
+// explicit --agents flag for a safe re-run. Explicit selection overrides
+// detection and may create the agent config directory.
+func ensureAgentIntegrations(repoRoot string, notices io.Writer, selection AgentSelection) error {
 	if notices == nil {
 		notices = io.Discard
 	}
-	if err := ensureClaudeAgentIntegration(repoRoot); err != nil {
-		return err
+	if selection.Mode == "" {
+		selection = DefaultAgentSelection()
 	}
-	if detectCodex(repoRoot) {
-		if err := ensureCodexAgentIntegration(repoRoot, notices); err != nil {
-			return err
+
+	switch selection.Mode {
+	case AgentsDetect:
+		claudeDetected := detectClaude(repoRoot)
+		codexDetected := detectCodex(repoRoot)
+		emitInitNotice(notices, "memento: agents detect: claude=%s codex=%s", detectedWord(claudeDetected), detectedWord(codexDetected))
+		if !claudeDetected && !codexDetected {
+			// Detect found no agent. The vault is already created; wiring is the
+			// only thing skipped. Re-running with an explicit --agents is safe and
+			// idempotent, so this is a notice, not an error.
+			emitInitNotice(notices, "memento: agents detect: no agent found; safe to re-run with --agents=claude|codex|all to wire enforcement")
+			return nil
 		}
+		if claudeDetected {
+			if err := ensureClaudeAgentIntegration(repoRoot); err != nil {
+				return err
+			}
+			emitInitNotice(notices, "memento: agent claude installed")
+		}
+		if codexDetected {
+			if err := ensureCodexAgentIntegration(repoRoot, notices); err != nil {
+				return err
+			}
+			emitInitNotice(notices, "memento: agent codex installed")
+		}
+	case AgentsNone:
+		emitInitNotice(notices, "memento: agents none: skipped agent hook installation")
+	case AgentsExplicit:
+		emitInitNotice(notices, "memento: agents requested: %s", joinAgentFamilies(selection.Families))
+		for _, family := range selection.Families {
+			switch family {
+			case AgentClaude:
+				if err := ensureClaudeAgentIntegration(repoRoot); err != nil {
+					return err
+				}
+				emitInitNotice(notices, "memento: agent claude installed")
+			case AgentCodex:
+				if err := ensureCodexAgentIntegration(repoRoot, notices); err != nil {
+					return err
+				}
+				emitInitNotice(notices, "memento: agent codex installed")
+			default:
+				return fmt.Errorf("unknown agent family %q", family)
+			}
+		}
+	default:
+		return fmt.Errorf("unknown agent selection mode %q", selection.Mode)
 	}
 	return nil
 }
 
-// detectCodex reports whether this repo carries a codex config directory. Its
-// absence is not an error — it just means the codex gate is not installed here.
+func initAction(greenfield bool) string {
+	if greenfield {
+		return "created"
+	}
+	return "adopted"
+}
+
+func emitInitNotice(w io.Writer, format string, args ...any) {
+	if w == nil {
+		return
+	}
+	fmt.Fprintf(w, format+"\n", args...)
+}
+
+func detectedWord(detected bool) string {
+	if detected {
+		return "detected"
+	}
+	return "not-detected"
+}
+
+func joinAgentFamilies(families []AgentFamily) string {
+	parts := make([]string, 0, len(families))
+	for _, family := range families {
+		parts = append(parts, string(family))
+	}
+	return strings.Join(parts, ",")
+}
+
+// detectClaude and detectCodex report whether this repo already carries the
+// respective agent's config directory. Absence is not an error — in detect mode
+// it just means that agent's gate is not installed here. Detection is symmetric:
+// neither family is a baseline, so a repo with no agent dir wires nothing.
+func detectClaude(repoRoot string) bool {
+	info, err := os.Stat(filepath.Join(repoRoot, claudeConfigDirName))
+	return err == nil && info.IsDir()
+}
+
 func detectCodex(repoRoot string) bool {
 	info, err := os.Stat(filepath.Join(repoRoot, codexConfigDirName))
 	return err == nil && info.IsDir()

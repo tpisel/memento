@@ -12,6 +12,7 @@ import (
 func runInit(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	dir := flags.String("dir", "", "memory vault directory")
+	agents := flags.String("agents", "detect", "agent hook integration selection")
 	if ok, code := parseSubcommandFlags(flags, args, stdout, stderr, "init", initHelpText); !ok {
 		return code
 	}
@@ -26,11 +27,17 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	v, err := setup.InitWithOptions(wd, *dir, setup.InitOptions{NoticeWriter: stdout})
+	agentSelection, err := setup.ParseAgentSelection(*agents)
+	if err != nil {
+		printCLIError(stderr, "init", fmt.Errorf("%w: %v", ErrInvalidArguments, err))
+		return 2
+	}
+
+	v, err := setup.InitWithOptions(wd, *dir, setup.InitOptions{AgentSelection: agentSelection, NoticeWriter: stdout})
 	if err != nil {
 		printCLIError(stderr, "init", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "Initialized memento vault: %s\n", v.Root)
+	fmt.Fprintf(stdout, "memento: init complete: %s\n", v.Root)
 	return 0
 }

@@ -16,7 +16,7 @@ const helpText = `memento
 Usage:
   memento help
   memento version
-  memento init [--dir <vault>]
+  memento init [--dir <vault>] [--agents detect|none|claude,codex]
   memento compile
   memento brief
   memento orient

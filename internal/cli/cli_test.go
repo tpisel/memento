@@ -75,9 +75,10 @@ func TestSubcommandHelp(t *testing.T) {
 			verb: "init",
 			want: []string{
 				"Usage:",
-				"memento init [--dir <vault>]",
+				"memento init [--dir <vault>] [--agents detect|none|claude,codex]",
 				"Adopt or create a memory vault",
 				"--dir <vault>",
+				"--agents <value>",
 				"memento orient",
 			},
 		},

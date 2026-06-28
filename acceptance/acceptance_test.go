@@ -436,6 +436,11 @@ func newFixture(t *testing.T) *fixture {
 		"GIT_COMMITTER_EMAIL=acc@example.invalid",
 	)
 
+	// Agent detection is per-family on the presence of the config dir, so create
+	// .claude/ before init to wire the Claude gate scripts this fixture exercises.
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+		t.Fatalf("mkdir .claude: %v", err)
+	}
 	f.git("init")
 	if _, stderr, code := f.memento("init", "--dir", "memory"); code != 0 {
 		t.Fatalf("`memento init` exit = %d; stderr = %q", code, stderr)

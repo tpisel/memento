@@ -34,12 +34,16 @@ For the deeper picture, run: memento orient
 const initHelpText = `memento init
 
 Usage:
-  memento init [--dir <vault>]
+  memento init [--dir <vault>] [--agents detect|none|claude,codex]
 
 Adopt or create a memory vault and install project bootstrapping artifacts.
 
 Flags:
-  --dir <vault>   Vault root to adopt or create. Defaults to <project>-memory/.
+  --dir <vault>     Vault root to adopt or create. Defaults to <project>-memory/.
+  --agents <value>  Agent hook integrations to install. Default: detect.
+                    Values: detect, none, claude, codex, claude,codex.
+
+Init reports the vault it created or adopted, the agent families it detected or was asked to install, and any post-install trust steps.
 
 For the deeper picture, run: memento orient
 `
