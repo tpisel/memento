@@ -2310,6 +2310,10 @@
             "type": "wiki"
           },
           {
+            "source": "enforcement backstop — ratification-boundary diff audit.md",
+            "type": "wiki"
+          },
+          {
             "source": "remove-write-agreed-points.md",
             "type": "wiki"
           },
@@ -2717,8 +2721,8 @@
       "key": "a-uat/run-report.md",
       "title": "A-UAT run report",
       "summary": "Append-only-in-practice results log from the A-UAT runner against the ADR-0026 test matrix. One row per model x arm x behavior x trial cell, with tool-log evidence and a provisional result. Resumable - the batch driver skips cells already recorded for the current frozen_at. Rows flagged review=yes need human adjudication. (Mode is living so the header can be restructured during the run; harden to append-only once the run set is complete.)",
-      "bytes": 49892,
-      "lines": 242,
+      "bytes": 58984,
+      "lines": 291,
       "tags": [
         "a-uat",
         "results",
@@ -2759,6 +2763,16 @@
           "level": 3,
           "text": "Findings — re-run (freeze 73e9129, 2026-06-27)",
           "slug": "findings-re-run-freeze-73e9129-2026-06-27"
+        },
+        {
+          "level": 2,
+          "text": "Session: 2026-06-28 (codex re-run) — post reason_code+matcher fix (freeze 4634c7c51604)",
+          "slug": "session-2026-06-28-codex-re-run-post-reason_codematcher-fix-freeze-4634c7c51604"
+        },
+        {
+          "level": 3,
+          "text": "Findings — codex re-run (freeze 4634c7c, 2026-06-28)",
+          "slug": "findings-codex-re-run-freeze-4634c7c-2026-06-28"
         }
       ],
       "mode": "living",
@@ -3268,6 +3282,10 @@
             "type": "wiki"
           },
           {
+            "source": "enforcement backstop — ratification-boundary diff audit.md",
+            "type": "wiki"
+          },
+          {
             "source": "unlock-grant trailer lift runs in prepare-commit-msg.md",
             "type": "wiki"
           }
@@ -3651,6 +3669,68 @@
             "type": "wiki"
           }
         ]
+      }
+    },
+    {
+      "key": "enforcement backstop — ratification-boundary diff audit.md",
+      "title": "Enforcement backstop — ratification-boundary diff audit",
+      "summary": "Hook-time mode enforcement (PreToolUse check-write) is necessarily partial: it only fires for write paths the agent surface exposes to hooks — so codex exec shell writes, untrusted codex hooks, and Claude opaque shell ($()/eval/interpreters) all fail open SILENTLY. The path-agnostic catch-all is a post-hoc audit of the on-disk diff vs ratified (git HEAD) state, reusing the pure EvaluatePrefixInvariant verdict, anchored at the git pre-commit hook (the ratification boundary). It is detection by default, optional commit-block as mitigation, and is independent of any agent's lifecycle-hook trust model.",
+      "bytes": 4972,
+      "lines": 85,
+      "tags": [
+        "codex",
+        "design",
+        "enforcement",
+        "hooks",
+        "memento"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "The gap hook-time enforcement can't close",
+          "slug": "the-gap-hook-time-enforcement-cant-close"
+        },
+        {
+          "level": 2,
+          "text": "The catch-all: audit the diff against ratified state",
+          "slug": "the-catch-all-audit-the-diff-against-ratified-state"
+        },
+        {
+          "level": 2,
+          "text": "Anchor it at the ratification boundary (pre-commit)",
+          "slug": "anchor-it-at-the-ratification-boundary-pre-commit"
+        },
+        {
+          "level": 2,
+          "text": "Honest limits",
+          "slug": "honest-limits"
+        },
+        {
+          "level": 2,
+          "text": "Posture shift",
+          "slug": "posture-shift"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "e6b0d809ee0de78a4a32c9909732b7fe1a9042b440d6f5140ec294979095eb6f",
+      "summary_sha": "4fd33d61b144480b0d240570e794b945ba28dd9022bbc3fc13ccccffb0bd3222",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "check-write compile drift handshake.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
       }
     },
     {
@@ -4124,21 +4204,22 @@
     "bootloader": 2,
     "brief": 4,
     "cli": 2,
-    "codex": 1,
+    "codex": 2,
     "compile": 6,
     "config": 1,
     "configuration": 1,
     "convention": 1,
     "conventions": 4,
+    "design": 1,
     "design-philosophy": 1,
     "distribution": 1,
     "doctor": 2,
     "draft": 1,
-    "enforcement": 7,
+    "enforcement": 8,
     "format": 1,
     "frontmatter": 4,
     "git": 2,
-    "hooks": 10,
+    "hooks": 11,
     "ignore": 1,
     "information-access": 1,
     "init": 4,
@@ -4149,7 +4230,7 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 44,
+    "memento": 45,
     "mode": 5,
     "namespace": 3,
     "observability": 1,
