@@ -521,7 +521,7 @@ func assertCodexInlineHook(t *testing.T, config, event, matcher, command string,
 		`matcher = "` + matcher + `"`,
 		"[[hooks." + event + ".hooks]]",
 		`type = "command"`,
-		`command = "` + command + `"`,
+		"command = " + tomlBasicString(command),
 		fmt.Sprintf("timeout_sec = %d", timeoutSec),
 	}
 	cursor := 0
@@ -670,7 +670,7 @@ func TestInitCodexHooksAreIdempotent(t *testing.T) {
 		t.Fatalf(".codex/config.toml start sentinel count = %d, want 1; contents = %q", count, secondConfig)
 	}
 	preCommand := filepath.Join(repo, ".codex", "memento-pre-write-vault-guard.sh")
-	if count := strings.Count(secondConfig, `command = "`+preCommand+`"`); count != 1 {
+	if count := strings.Count(secondConfig, "command = "+tomlBasicString(preCommand)); count != 1 {
 		t.Fatalf(".codex/config.toml PreToolUse command count = %d, want 1; contents = %q", count, secondConfig)
 	}
 }

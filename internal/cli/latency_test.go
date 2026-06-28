@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -24,6 +25,9 @@ func TestMain(m *testing.M) {
 		dir, err := os.MkdirTemp("", "memento-latency-bin")
 		if err == nil {
 			bin := filepath.Join(dir, "memento")
+			if runtime.GOOS == "windows" {
+				bin += ".exe"
+			}
 			build := exec.Command("go", "build", "-o", bin, "github.com/tpisel/memento/cmd/memento")
 			if out, berr := build.CombinedOutput(); berr == nil {
 				mementoBinaryPath = bin
