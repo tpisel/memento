@@ -17,6 +17,7 @@ Usage:
   memento help
   memento version
   memento init [--dir <vault>] [--agents detect|none|claude,codex]
+  memento doctor
   memento compile
   memento brief
   memento orient
@@ -29,6 +30,7 @@ Commands:
   help        Show this help text.
   version     Print the memento version.
   init        Adopt or create a memory vault.
+  doctor      Report whether vault write enforcement is live.
   compile     Compile a memory vault manifest.
   brief       Print the agent-facing manifest projection.
   orient      Print tool-usage orientation and project overlays.
@@ -63,6 +65,8 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		return runCompile(args[1:], stdout, stderr)
 	case "init":
 		return runInit(args[1:], stdout, stderr)
+	case "doctor":
+		return runDoctor(args[1:], stdout, stderr)
 	case "orient":
 		return runOrient(args[1:], stdout, stderr)
 	case "read":

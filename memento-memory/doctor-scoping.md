@@ -97,3 +97,48 @@ These close the "a second person clones the repo — what is this `_memento` stu
 - Mechanical only — no content judgement, no agent invocation. Anything needing taste is `review`/`audit`, not doctor.
 - Doctor likely needs no tool-read file (nothing local to opine on; it checks tool-defined state).
 - Output shape, exit-code semantics, and `--fix` affordances are all unscoped.
+
+## v1 `memento doctor` — liveness shipped (2026-06-29, memento-aan)
+
+Liveness-only doctor verb landed (`internal/cli/doctor.go`). Headline `vault write
+enforcement: LIVE/OFF (reason)`, exit 0 = LIVE / 1 = OFF, plus per-check lines.
+Decisions settled while building, so the doctor ADR need not re-derive them:
+
+- **Live-fire fixture = always a throwaway non-git temp vault, never the real
+  vault.** The bead left "synthesise a read-only note to fire against" open. Settled:
+  the probe `os.MkdirTemp`s a vault, writes a `mode: read-only` note, and runs the
+  *real* verdict chokepoint (`computeVaultWriteVerdict`) against a Write that rewrites
+  it, asserting a `read_only` deny. A non-git tree treats every note as ratified (the
+  edit window only opens *inside* a git work tree — `note.IsRatified`), so the probe
+  needs **no commit**. **Rejected: firing against a real ratified read-only ADR.** It
+  would leave residue — `computeVaultWriteVerdict` calls `recordDecision`, appending a
+  synthetic deny to the gitignored `.memento/decision-log.jsonl` the A-UAT scorer
+  reads. The temp vault absorbs that write and is `RemoveAll`'d. This also makes the
+  "no read-only note exists" case moot — the probe is self-contained. The probe proves
+  the verdict *engine* of THIS binary denies; the bash wrapper + binary resolution are
+  covered by the gate (#1) and binary-reachable (#3) checks, so the composite covers
+  the chain.
+- **A family counts only if memento actually wired it** — keyed on the installed
+  `.<agent>/memento-pre-write-vault-guard.sh` script existing, NOT on the agent config
+  dir existing. A bare `.codex/` from another tool (this repo's is a **beads** install:
+  `.codex/config.toml` = `[features] hooks = true` + a `.codex/hooks.json` of `bd
+  codex-hook …` entries, zero memento) must not force a phantom codex gate failure that
+  reports OFF when Claude enforcement is live. The gate check still parses the config
+  and fails loudly if the script is present but unreferenced/non-executable.
+- **Check severities:** PreToolUse gate, binary-reachable (incl. schema), legacy
+  broad-deny, and live-fire deny are `FAIL` → flip OFF. PostToolUse compile-hook
+  missing and stale unlock grants are `WARN` only — the *preventive* gate is still live
+  even if the *detective* drift backstop or grant hygiene is degraded.
+- **Legacy broad-deny discriminator:** the pre-ADR-0031 guard and the current gate
+  share the filename `pre-write-vault-guard.sh`, so detection is by **content**: the
+  ADR-0031 dumb pipe always shells to `check-write`; a script that lacks `check-write`
+  but contains `memento` + `permission_decision` is the legacy broad-deny guard.
+- **Binary reachability** resolves `${MEMENTO_BIN:-memento}` via `exec.LookPath` (what
+  the hook itself shells to) and compares the on-disk manifest `schema_version` against
+  the compiled-in `manifest.CurrentSchemaVersion` (read raw, not via `manifest.Load`,
+  which rejects unsupported versions before we can report them).
+- **Windows:** no execute bit exists, so `hookExecutable` treats existence as runnable
+  there (keeps CI green); the live-fire probe is pure Go + git, no bash.
+- Confirms the cadence note's call: liveness shipped **without** waiting on the doctor
+  ADR. Static-hygiene checks above stay deferred. Next: wire this into the SessionStart
+  orient hook (memento-mbd) so the signal is ambient, not a verb you must remember.

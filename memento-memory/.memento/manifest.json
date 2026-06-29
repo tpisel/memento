@@ -3654,8 +3654,8 @@
       "key": "doctor-scoping.md",
       "title": "Doctor — scoping list",
       "summary": "Live, exploratory list of candidate checks for the future `memento doctor` verb, consolidated from the ADRs and dogfooding. Doctor owns mechanical plumbing/health (no content judgement, no agent); this note is the running inbox of candidate checks so the eventual doctor ADR doesn't re-derive them. Not a spec — see [[review-audit-doctor faculties]] for the verb-boundary carve.",
-      "bytes": 9119,
-      "lines": 99,
+      "bytes": 12554,
+      "lines": 144,
       "tags": [
         "doctor",
         "memento",
@@ -3693,6 +3693,11 @@
           "level": 2,
           "text": "Boundaries to keep in mind",
           "slug": "boundaries-to-keep-in-mind"
+        },
+        {
+          "level": 2,
+          "text": "v1 memento doctor — liveness shipped (2026-06-29, memento-aan)",
+          "slug": "v1-memento-doctor-liveness-shipped-2026-06-29-memento-aan"
         }
       ],
       "mode": "living",
