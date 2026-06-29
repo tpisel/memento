@@ -45,17 +45,36 @@ emit_context() {
   printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$(json_escape "$context")"
 }
 
-compile_note=""
 if command -v memento >/dev/null 2>&1; then
-  if ! compile_output="$(cd "$repo_root" && memento compile 2>&1)"; then
-    compile_note=$'memento compile failed; continuing with memento orient.\n'
-  fi
-  orient_output="$(cd "$repo_root" && memento orient 2>&1)"
+  mem=(memento)
 else
-  if ! compile_output="$(cd "$repo_root" && go run ./cmd/memento compile 2>&1)"; then
-    compile_note=$'memento compile failed; continuing with memento orient.\n'
-  fi
-  orient_output="$(cd "$repo_root" && go run ./cmd/memento orient 2>&1)"
+  mem=(go run ./cmd/memento)
 fi
 
-emit_context "$compile_note$orient_output"
+compile_note=""
+if ! compile_output="$(cd "$repo_root" && "${mem[@]}" compile 2>&1)"; then
+  compile_note=$'memento compile failed; continuing with memento orient.\n'
+fi
+orient_output="$(cd "$repo_root" && "${mem[@]}" orient 2>&1)"
+
+# Write-enforcement liveness (memento-mbd): emit it every SessionStart so
+# 'enforcement: OFF' is unmissable, not something a human must run the verb to
+# see. LIVE collapses to the headline; OFF keeps the full report so the break is
+# actionable in place. A binary too old to know the verb cannot self-check, which
+# is itself an enforcement-uncertainty signal. doctor's live-fire is in-process.
+doctor_output="$(cd "$repo_root" && "${mem[@]}" doctor 2>&1)"
+doctor_status=$?
+case "$doctor_output" in
+  *"vault write enforcement:"*)
+    if [ "$doctor_status" -eq 0 ]; then
+      doctor_note="${doctor_output%%$'\n'*}"$'\n'
+    else
+      doctor_note="$doctor_output"$'\n'
+    fi
+    ;;
+  *)
+    doctor_note=$'memento doctor unavailable; cannot confirm write enforcement is live (upgrade memento).\n'
+    ;;
+esac
+
+emit_context "$doctor_note$compile_note$orient_output"

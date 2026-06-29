@@ -321,6 +321,7 @@ printf '%s\n' "$1" >> "$MEMENTO_TEST_LOG"
 case "$1" in
   compile) exit 0 ;;
   orient) printf 'ORIENT OK\n'; exit 0 ;;
+  doctor) printf 'vault write enforcement: LIVE\n  [ok] live-fire self-test: read-only overwrite denied\n'; exit 0 ;;
   *) exit 2 ;;
 esac
 `)
@@ -330,11 +331,19 @@ esac
 
 	stdout := runClaudeOrientHook(t, repo, binDir, logPath, "")
 	gotLog := readSetupFile(t, filepath.Dir(logPath), filepath.Base(logPath))
-	if gotLog != "compile\norient\n" {
-		t.Fatalf("memento call log = %q, want compile before orient", gotLog)
+	if gotLog != "compile\norient\ndoctor\n" {
+		t.Fatalf("memento call log = %q, want compile, orient, then doctor", gotLog)
 	}
-	if !strings.Contains(hookAdditionalContext(t, stdout), "ORIENT OK") {
+	context := hookAdditionalContext(t, stdout)
+	if !strings.Contains(context, "ORIENT OK") {
 		t.Fatalf("hook stdout = %q, want orient output in additionalContext", stdout)
+	}
+	// LIVE collapses to the one-line headline; the per-check detail is dropped.
+	if !strings.Contains(context, "vault write enforcement: LIVE") {
+		t.Fatalf("additionalContext = %q, want the LIVE liveness headline", context)
+	}
+	if strings.Contains(context, "live-fire self-test") {
+		t.Fatalf("additionalContext = %q, want only the headline when LIVE, not per-check lines", context)
 	}
 }
 
@@ -355,6 +364,7 @@ printf '%s\n' "$1" >> "$MEMENTO_TEST_LOG"
 case "$1" in
   compile) printf 'compile broke\n' >&2; exit 42 ;;
   orient) printf 'ORIENT AFTER FAILURE\n'; exit 0 ;;
+  doctor) printf 'vault write enforcement: LIVE\n'; exit 0 ;;
   *) exit 2 ;;
 esac
 `)
@@ -364,8 +374,8 @@ esac
 
 	stdout := runClaudeOrientHook(t, repo, binDir, logPath, "")
 	gotLog := readSetupFile(t, filepath.Dir(logPath), filepath.Base(logPath))
-	if gotLog != "compile\norient\n" {
-		t.Fatalf("memento call log = %q, want compile failure followed by orient", gotLog)
+	if gotLog != "compile\norient\ndoctor\n" {
+		t.Fatalf("memento call log = %q, want compile failure, orient, then doctor", gotLog)
 	}
 	context := hookAdditionalContext(t, stdout)
 	if !strings.Contains(context, "memento compile failed; continuing with memento orient.") {
@@ -373,6 +383,89 @@ esac
 	}
 	if !strings.Contains(context, "ORIENT AFTER FAILURE") {
 		t.Fatalf("additionalContext = %q, want orient output after compile failure", context)
+	}
+}
+
+// When enforcement is OFF, the ambient signal must be loud: the orient hook keeps
+// doctor's full report (headline + the failing check) in injected context so the
+// break is actionable without remembering to run the verb.
+func TestClaudeOrientHookSurfacesEnforcementOff(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Claude hook is a bash script")
+	}
+
+	repo := t.TempDir()
+	markClaudeRepo(t, repo)
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "calls.log")
+	writeSetupFile(t, binDir, "memento", `#!/bin/sh
+printf '%s\n' "$1" >> "$MEMENTO_TEST_LOG"
+case "$1" in
+  compile) exit 0 ;;
+  orient) printf 'ORIENT OK\n'; exit 0 ;;
+  doctor) printf 'vault write enforcement: OFF (gate command does not resolve)\n  [FAIL] claude PreToolUse gate: gate command does not exist\n'; exit 1 ;;
+  *) exit 2 ;;
+esac
+`)
+	if err := os.Chmod(filepath.Join(binDir, "memento"), 0o755); err != nil {
+		t.Fatalf("chmod fake memento: %v", err)
+	}
+
+	stdout := runClaudeOrientHook(t, repo, binDir, logPath, "")
+	context := hookAdditionalContext(t, stdout)
+	if !strings.Contains(context, "vault write enforcement: OFF (gate command does not resolve)") {
+		t.Fatalf("additionalContext = %q, want the loud OFF headline", context)
+	}
+	// OFF keeps the failing check line so the break is actionable in place.
+	if !strings.Contains(context, "[FAIL] claude PreToolUse gate") {
+		t.Fatalf("additionalContext = %q, want the failing check detail when OFF", context)
+	}
+	// orient still runs; the liveness signal does not displace orientation.
+	if !strings.Contains(context, "ORIENT OK") {
+		t.Fatalf("additionalContext = %q, want orient output alongside the OFF report", context)
+	}
+}
+
+// A binary too old to know the doctor verb cannot self-check. The hook must not
+// inject the raw "unknown command" CLI error; it folds that into a clear
+// enforcement-uncertainty line instead.
+func TestClaudeOrientHookHandlesDoctorlessBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Claude hook is a bash script")
+	}
+
+	repo := t.TempDir()
+	markClaudeRepo(t, repo)
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "calls.log")
+	writeSetupFile(t, binDir, "memento", `#!/bin/sh
+printf '%s\n' "$1" >> "$MEMENTO_TEST_LOG"
+case "$1" in
+  compile) exit 0 ;;
+  orient) printf 'ORIENT OK\n'; exit 0 ;;
+  *) printf 'unknown command "%s"\n' "$1" >&2; exit 1 ;;
+esac
+`)
+	if err := os.Chmod(filepath.Join(binDir, "memento"), 0o755); err != nil {
+		t.Fatalf("chmod fake memento: %v", err)
+	}
+
+	stdout := runClaudeOrientHook(t, repo, binDir, logPath, "")
+	context := hookAdditionalContext(t, stdout)
+	if !strings.Contains(context, "memento doctor unavailable; cannot confirm write enforcement is live") {
+		t.Fatalf("additionalContext = %q, want a clear enforcement-uncertainty line for an old binary", context)
+	}
+	if strings.Contains(context, "unknown command") {
+		t.Fatalf("additionalContext = %q, want the raw CLI error folded away", context)
+	}
+	if !strings.Contains(context, "ORIENT OK") {
+		t.Fatalf("additionalContext = %q, want orient output preserved", context)
 	}
 }
 

@@ -142,3 +142,33 @@ Decisions settled while building, so the doctor ADR need not re-derive them:
 - Confirms the cadence note's call: liveness shipped **without** waiting on the doctor
   ADR. Static-hygiene checks above stay deferred. Next: wire this into the SessionStart
   orient hook (memento-mbd) so the signal is ambient, not a verb you must remember.
+
+## Liveness made ambient — SessionStart orient hook (2026-06-29, memento-mbd)
+
+The liveness signal is now **ambient**: the SessionStart orient hook runs `memento
+doctor` after compile + orient and folds the result into the injected
+`additionalContext`, so `enforcement: OFF` is unmissable without remembering to run
+the verb. Settles the cadence note's call that liveness wants a SessionStart home,
+not a CI gate. Decisions carried forward:
+
+- **Output folding honours the context-injection discipline.** LIVE collapses to the
+  one-line headline (`${doctor_output%%$'\n'*}`); the per-check OK lines are dropped as
+  noise. OFF keeps doctor's **full** report (headline + the failing check) so the break
+  is actionable in place. The full first line is kept verbatim, so codex's LIVE caveat
+  (`LIVE (apply_patch only; …)`) rides through intact.
+- **Codex is wired, not carved out.** The Claude and codex orient scripts share one
+  generator (`claudeOrientHookScriptContents`), so codex gets the same doctor line for
+  free, and `doctor` itself self-reports the apply_patch-only caveat when it detects a
+  codex gate (memento-aan) — no codex-specific hook logic needed. (This repo's `.codex/`
+  is beads-only, so nothing is installed here, but a memento-init'd codex vault gets it.)
+- **A binary too old to know the `doctor` verb is its own uncertainty signal.** The
+  fold matches on the `vault write enforcement:` headline marker; a doctor invocation
+  that errors without producing that marker (old binary, missing verb) is folded into a
+  clear `memento doctor unavailable; cannot confirm write enforcement is live (upgrade
+  memento)` line rather than injecting the raw `unknown command "doctor"` CLI error.
+  Found by dogfooding: the `memento` on PATH in this repo predated the verb.
+- **Three surfaces stay in lockstep:** the init generator (`internal/setup/init.go`),
+  the installed artifact (`.claude/memento-orient-session-start.sh`), and the reference
+  template (`scripts/agent-hooks/orient-session-start.sh`, which keeps the `go run`
+  fallback). The orient script is **not** drift-pinned to the template (only the
+  pre/post-write guards are), so the three are edited together by hand.
