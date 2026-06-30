@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,6 +14,11 @@ import (
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/vault"
 )
+
+// These tests cover the ADR-0032 liveness nodes retrofitted onto the check engine:
+// each failing case asserts the exact wire-value of the canonical token it emits, and
+// the no-vault case proves grant-fresh SKIPS (blocked-by vault-discoverable) rather than
+// reporting a dishonest ok.
 
 // --- fixtures ------------------------------------------------------------
 
@@ -34,15 +38,17 @@ func writeDoctorScript(t *testing.T, repoRoot, rel, content string) string {
 const preWriteScriptBody = "#!/usr/bin/env bash\n\"$memento_bin\" check-write\n"
 const postWriteScriptBody = "#!/usr/bin/env bash\n\"$memento_bin\" compile\n"
 const legacyGuardBody = "#!/usr/bin/env bash\n# routes vault writes through memento write\npermission_decision deny\n"
+const benignScriptBody = "#!/usr/bin/env bash\necho noop\n"
 
-// writeClaudeSettings writes a .claude/settings.json wiring the given hook entries.
+// hookSpec is one (event, matcher, command) settings entry.
 type hookSpec struct {
 	event   string
 	matcher string
 	command string
 }
 
-func writeClaudeSettings(t *testing.T, repoRoot string, specs ...hookSpec) {
+// writeClaudeSettingsFile writes a named .claude settings file wiring the given hooks.
+func writeClaudeSettingsFile(t *testing.T, repoRoot, name string, specs ...hookSpec) {
 	t.Helper()
 	hooks := map[string][]map[string]any{}
 	for _, s := range specs {
@@ -55,7 +61,17 @@ func writeClaudeSettings(t *testing.T, repoRoot string, specs ...hookSpec) {
 	if err != nil {
 		t.Fatalf("marshal settings: %v", err)
 	}
-	writeDoctorScript(t, repoRoot, ".claude/settings.json", string(data))
+	writeDoctorScript(t, repoRoot, ".claude/"+name, string(data))
+}
+
+func writeClaudeSettings(t *testing.T, repoRoot string, specs ...hookSpec) {
+	t.Helper()
+	writeClaudeSettingsFile(t, repoRoot, "settings.json", specs...)
+}
+
+func writeClaudeLocalSettings(t *testing.T, repoRoot string, specs ...hookSpec) {
+	t.Helper()
+	writeClaudeSettingsFile(t, repoRoot, "settings.local.json", specs...)
 }
 
 // liveClaudeRepo builds a repo whose Claude gate is fully wired and live.
@@ -68,6 +84,30 @@ func liveClaudeRepo(t *testing.T) string {
 		hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", pre},
 		hookSpec{"PostToolUse", "Write|Edit|MultiEdit|Bash", post},
 	)
+	return repoRoot
+}
+
+// codexRepo builds a repo whose codex gate is fully wired and live.
+func codexRepo(t *testing.T) string {
+	t.Helper()
+	repoRoot := t.TempDir()
+	pre := writeDoctorScript(t, repoRoot, ".codex/memento-pre-write-vault-guard.sh", preWriteScriptBody)
+	post := writeDoctorScript(t, repoRoot, ".codex/memento-post-write-compile.sh", postWriteScriptBody)
+	config := strings.Join([]string{
+		"# memento:start",
+		"[[hooks.PreToolUse]]",
+		`matcher = "apply_patch"`,
+		"[[hooks.PreToolUse.hooks]]",
+		`type = "command"`,
+		`command = "` + pre + `"`,
+		"[[hooks.PostToolUse]]",
+		`matcher = "apply_patch"`,
+		"[[hooks.PostToolUse.hooks]]",
+		`type = "command"`,
+		`command = "` + post + `"`,
+		"# memento:end",
+	}, "\n")
+	writeDoctorScript(t, repoRoot, ".codex/config.toml", config)
 	return repoRoot
 }
 
@@ -87,8 +127,8 @@ func doctorVault(t *testing.T, repoRoot string, schemaVersion int) vault.Vault {
 	return v
 }
 
-// realBin sets MEMENTO_BIN to a binary exec.LookPath resolves on every platform —
-// the test binary itself (absolute, with the Windows .exe extension already on it).
+// realBin sets MEMENTO_BIN to a binary exec.LookPath resolves on every platform — the
+// test binary itself (absolute, with the Windows .exe extension already on it).
 func realBin(t *testing.T) {
 	t.Helper()
 	exe, err := os.Executable()
@@ -98,18 +138,36 @@ func realBin(t *testing.T) {
 	t.Setenv("MEMENTO_BIN", exe)
 }
 
-func findResult(t *testing.T, results []checkResult, nameSubstr string) checkResult {
+// --- finding assertions --------------------------------------------------
+
+func sole(t *testing.T, fs []finding) finding {
 	t.Helper()
-	for _, r := range results {
-		if strings.Contains(r.name, nameSubstr) {
-			return r
-		}
+	if len(fs) != 1 {
+		t.Fatalf("want exactly one finding, got %d: %+v", len(fs), fs)
 	}
-	t.Fatalf("no check result matching %q in %+v", nameSubstr, results)
-	return checkResult{}
+	return fs[0]
 }
 
-// --- live-fire self-test -------------------------------------------------
+func assertOK(t *testing.T, fs []finding) {
+	t.Helper()
+	f := sole(t, fs)
+	if f.severity != sevOK || f.token != "" {
+		t.Fatalf("want ok finding (empty token), got %+v", f)
+	}
+}
+
+func findToken(t *testing.T, fs []finding, token string) finding {
+	t.Helper()
+	for _, f := range fs {
+		if f.token == token {
+			return f
+		}
+	}
+	t.Fatalf("no finding with token %q in %+v", token, fs)
+	return finding{}
+}
+
+// --- live-fire -----------------------------------------------------------
 
 func TestLiveFireReadOnlyProbeDenies(t *testing.T) {
 	denied, reasonCode, err := liveFireReadOnlyProbe()
@@ -135,106 +193,112 @@ func TestLiveFireCheckLeavesNoResidue(t *testing.T) {
 	}
 }
 
-func TestLiveFireCheckReportsOK(t *testing.T) {
-	r := liveFireCheck()
-	if r.status != statusOK {
-		t.Fatalf("liveFireCheck status = %v, want ok; detail = %q", r.status, r.detail)
+func TestLiveFireFindingsOK(t *testing.T) {
+	assertOK(t, liveFireFindings())
+}
+
+// --- gate-committed-config ----------------------------------------------
+
+func TestGateCommittedFindingVerdicts(t *testing.T) {
+	good := &resolvedHook{command: "guard.sh", exists: true, executable: true, content: preWriteScriptBody}
+	const fullMatcher = "Write|Edit|MultiEdit|Bash"
+	cases := []struct {
+		name      string
+		scan      gateScan
+		wantToken string
+		wantSev   severity
+	}{
+		{"no gate", gateScan{family: "claude", covers: claudeMatcherCovers}, tokGateMissing, sevError},
+		{"unresolved command", gateScan{family: "claude", gate: &resolvedHook{command: "x", exists: false}, gateMatcher: fullMatcher, covers: claudeMatcherCovers}, tokGateUnresolved, sevError},
+		{"not executable", gateScan{family: "claude", gate: &resolvedHook{command: "x", exists: true, executable: false}, gateMatcher: fullMatcher, covers: claudeMatcherCovers}, tokGateUnresolved, sevError},
+		{"matcher misses file tools", gateScan{family: "claude", gate: good, gateMatcher: "Bash", covers: claudeMatcherCovers}, tokGateMissing, sevError},
+		{"matcher partial (no Bash)", gateScan{family: "claude", gate: good, gateMatcher: "Write|Edit|MultiEdit", covers: claudeMatcherCovers}, tokGateMatcherPartial, sevWarning},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := gateCommittedFinding(c.scan)
+			if f.token != c.wantToken || f.severity != c.wantSev {
+				t.Fatalf("got token=%q sev=%v, want token=%q sev=%v", f.token, f.severity, c.wantToken, c.wantSev)
+			}
+		})
+	}
+	if f := gateCommittedFinding(gateScan{family: "claude", gate: good, gateMatcher: fullMatcher, covers: claudeMatcherCovers}); f.severity != sevOK || f.token != "" {
+		t.Fatalf("full matcher want ok finding, got %+v", f)
 	}
 }
 
-// --- gate check (#1) -----------------------------------------------------
+func TestGateCommittedFindingsLive(t *testing.T) {
+	assertOK(t, gateCommittedFindings(liveClaudeRepo(t)))
+}
 
-func TestGateCheckLive(t *testing.T) {
+func TestGateCommittedFindingsNoFamily(t *testing.T) {
+	f := sole(t, gateCommittedFindings(t.TempDir()))
+	if f.token != tokGateMissing || f.severity != sevError {
+		t.Fatalf("no wired family: got %+v, want gate-missing error", f)
+	}
+}
+
+// --- gate-effective-local ------------------------------------------------
+
+func TestGateEffectiveLocalOverride(t *testing.T) {
 	repoRoot := liveClaudeRepo(t)
-	results := gateChecks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)
-	if r := findResult(t, results, "PreToolUse gate"); r.status != statusOK {
-		t.Fatalf("gate status = %v, want ok; detail = %q", r.status, r.detail)
+	noop := writeDoctorScript(t, repoRoot, ".claude/local-noop.sh", benignScriptBody)
+	// settings.local.json replaces the committed PreToolUse gate with a non-gate command.
+	writeClaudeLocalSettings(t, repoRoot, hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", noop})
+
+	f := findToken(t, gateEffectiveLocalFindings(repoRoot), tokGateLocallyOverridden)
+	if f.severity != sevError {
+		t.Fatalf("gate-locally-overridden severity = %v, want error", f.severity)
 	}
-	if r := findResult(t, results, "PostToolUse"); r.status != statusOK {
-		t.Fatalf("post hook status = %v, want ok; detail = %q", r.status, r.detail)
-	}
-	if r := findResult(t, results, "legacy"); r.status != statusOK {
-		t.Fatalf("legacy status = %v, want ok; detail = %q", r.status, r.detail)
-	}
+	// The committed-config node must stay ok: it reads settings.json only.
+	assertOK(t, gateCommittedFindings(repoRoot))
 }
 
-func TestGateCheckMissing(t *testing.T) {
-	repoRoot := t.TempDir()
-	writeClaudeSettings(t, repoRoot) // hooks present but empty
-	results := gateChecks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)
-	if r := findResult(t, results, "PreToolUse gate"); r.status != statusFail {
-		t.Fatalf("gate status = %v, want fail", r.status)
-	}
+func TestGateEffectiveLocalNoLocalOK(t *testing.T) {
+	assertOK(t, gateEffectiveLocalFindings(liveClaudeRepo(t)))
 }
 
-func TestGateCheckCommandUnresolved(t *testing.T) {
-	repoRoot := t.TempDir()
-	missing := filepath.Join(repoRoot, ".claude", "memento-pre-write-vault-guard.sh")
-	writeClaudeSettings(t, repoRoot, hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", missing})
-	results := gateChecks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)
-	r := findResult(t, results, "PreToolUse gate")
-	if r.status != statusFail {
-		t.Fatalf("gate status = %v, want fail (command does not resolve)", r.status)
-	}
-	if !strings.Contains(r.reason, "resolve") {
-		t.Fatalf("gate reason = %q, want it to mention resolve", r.reason)
-	}
+func TestGateEffectiveLocalCodexNoLayer(t *testing.T) {
+	// codex has no machine-local layer, so the node is trivially ok.
+	assertOK(t, gateEffectiveLocalFindings(codexRepo(t)))
 }
 
-func TestGateCheckNotExecutable(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("no execute bit on Windows")
-	}
-	repoRoot := t.TempDir()
-	pre := filepath.Join(repoRoot, ".claude", "memento-pre-write-vault-guard.sh")
-	if err := os.MkdirAll(filepath.Dir(pre), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(pre, []byte(preWriteScriptBody), 0o644); err != nil { // no exec bit
-		t.Fatal(err)
-	}
-	writeClaudeSettings(t, repoRoot, hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", pre})
-	results := gateChecks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)
-	if r := findResult(t, results, "PreToolUse gate"); r.status != statusFail || !strings.Contains(r.reason, "executable") {
-		t.Fatalf("gate = %+v, want fail mentioning executable", r)
-	}
+// --- postwrite-hook-live -------------------------------------------------
+
+func TestPostwriteFindingsLive(t *testing.T) {
+	assertOK(t, postwriteFindings(liveClaudeRepo(t)))
 }
 
-func TestGateCheckMatcherMissesWriteTools(t *testing.T) {
+func TestPostwriteFindingsMissing(t *testing.T) {
 	repoRoot := t.TempDir()
 	pre := writeDoctorScript(t, repoRoot, ".claude/memento-pre-write-vault-guard.sh", preWriteScriptBody)
-	writeClaudeSettings(t, repoRoot, hookSpec{"PreToolUse", "Bash", pre})
-	results := gateChecks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)
-	if r := findResult(t, results, "PreToolUse gate"); r.status != statusFail {
-		t.Fatalf("gate status = %v, want fail (matcher misses write tools)", r.status)
+	writeClaudeSettings(t, repoRoot, hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", pre}) // no PostToolUse
+	f := sole(t, postwriteFindings(repoRoot))
+	if f.token != tokPostwriteHookMissing || f.severity != sevWarning {
+		t.Fatalf("missing post hook: got %+v, want postwrite-hook-missing warning", f)
 	}
 }
 
-func TestGateCheckMatcherPartialWarns(t *testing.T) {
-	repoRoot := t.TempDir()
-	pre := writeDoctorScript(t, repoRoot, ".claude/memento-pre-write-vault-guard.sh", preWriteScriptBody)
-	writeClaudeSettings(t, repoRoot, hookSpec{"PreToolUse", "Write|Edit|MultiEdit", pre}) // no Bash
-	results := gateChecks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)
-	if r := findResult(t, results, "PreToolUse gate"); r.status != statusWarn {
-		t.Fatalf("gate status = %v, want warn (Bash uncovered, file tools covered)", r.status)
-	}
-}
+// --- no-legacy-broad-deny ------------------------------------------------
 
-// --- legacy broad-deny guard (#4) ---------------------------------------
-
-func TestLegacyBroadDenyGuardFails(t *testing.T) {
+func TestLegacyFindingsFails(t *testing.T) {
 	repoRoot := t.TempDir()
 	legacy := writeDoctorScript(t, repoRoot, ".claude/memento-pre-write-vault-guard.sh", legacyGuardBody)
 	writeClaudeSettings(t, repoRoot, hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", legacy})
-	results := gateChecks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)
-	r := findResult(t, results, "legacy")
-	if r.status != statusFail {
-		t.Fatalf("legacy guard status = %v, want fail", r.status)
+
+	f := findToken(t, legacyFindings(repoRoot), tokLegacyBroadDenyWired)
+	if f.severity != sevError {
+		t.Fatalf("legacy guard severity = %v, want error", f.severity)
 	}
 	// The legacy script lacks check-write, so it is not also counted as a live gate.
-	if g := findResult(t, results, "PreToolUse gate"); g.status != statusFail {
-		t.Fatalf("with only a legacy guard, gate status = %v, want fail", g.status)
+	g := sole(t, gateCommittedFindings(repoRoot))
+	if g.token != tokGateMissing {
+		t.Fatalf("with only a legacy guard, committed gate token = %q, want gate-missing", g.token)
 	}
+}
+
+func TestLegacyFindingsClean(t *testing.T) {
+	assertOK(t, legacyFindings(liveClaudeRepo(t)))
 }
 
 func TestIsLegacyBroadDeny(t *testing.T) {
@@ -246,38 +310,24 @@ func TestIsLegacyBroadDeny(t *testing.T) {
 	}
 }
 
-// --- binary reachable + schema (#3) -------------------------------------
+// --- binary-on-path ------------------------------------------------------
 
-func TestBinaryReachableMissing(t *testing.T) {
+func TestBinaryOnPathMissing(t *testing.T) {
 	t.Setenv("MEMENTO_BIN", filepath.Join(t.TempDir(), "does-not-exist-memento"))
-	v := doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion)
-	r := binaryReachableCheck(v, nil)
-	if r.status != statusFail {
-		t.Fatalf("status = %v, want fail (binary not reachable)", r.status)
+	f := sole(t, binaryOnPathFindings())
+	if f.token != tokBinaryNotOnPath || f.severity != sevError {
+		t.Fatalf("missing binary: got %+v, want binary-not-on-path error", f)
 	}
 }
 
-func TestBinaryReachableSchemaTooNew(t *testing.T) {
+func TestBinaryOnPathLive(t *testing.T) {
 	realBin(t)
-	v := doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion+1)
-	r := binaryReachableCheck(v, nil)
-	if r.status != statusFail || !strings.Contains(r.reason, "schema") {
-		t.Fatalf("status/reason = %+v, want fail mentioning schema", r)
-	}
+	assertOK(t, binaryOnPathFindings())
 }
 
-func TestBinaryReachableLive(t *testing.T) {
-	realBin(t)
-	v := doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion)
-	r := binaryReachableCheck(v, nil)
-	if r.status != statusOK {
-		t.Fatalf("status = %v, want ok; detail = %q", r.status, r.detail)
-	}
-}
+// --- grant-fresh ---------------------------------------------------------
 
-// --- stale unlock grants (#5) -------------------------------------------
-
-func TestStaleGrantWarns(t *testing.T) {
+func TestGrantStaleWarns(t *testing.T) {
 	repoRoot := t.TempDir()
 	root := filepath.Join(repoRoot, "memory")
 	marker := filepath.Join(root, vault.MarkerDirName)
@@ -291,9 +341,9 @@ func TestStaleGrantWarns(t *testing.T) {
 	if err := enforce.AddGrant(v, "frozen.md", "test", time.Now()); err != nil {
 		t.Fatalf("add grant: %v", err)
 	}
-	r := staleGrantCheck(v, nil)
-	if r.status != statusWarn || !strings.Contains(r.detail, "frozen.md") {
-		t.Fatalf("stale grant check = %+v, want warn mentioning frozen.md", r)
+	f := findToken(t, grantFreshFindings(v), tokGrantStale)
+	if f.severity != sevWarning || !strings.Contains(f.detail, "frozen.md") {
+		t.Fatalf("stale grant: got %+v, want grant-stale warning mentioning frozen.md", f)
 	}
 }
 
@@ -312,79 +362,73 @@ func TestActiveGrantWithEditNotStale(t *testing.T) {
 	if err := enforce.AddGrant(v, "frozen.md", "test", time.Now()); err != nil {
 		t.Fatalf("add grant: %v", err)
 	}
-	r := staleGrantCheck(v, nil)
-	if r.status != statusOK {
-		t.Fatalf("grant with uncommitted edit = %+v, want ok (not stale)", r)
-	}
+	assertOK(t, grantFreshFindings(v))
 }
 
 func TestNoGrantsOK(t *testing.T) {
-	v := doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion)
-	r := staleGrantCheck(v, nil)
-	if r.status != statusOK {
-		t.Fatalf("no grants = %+v, want ok", r)
+	assertOK(t, grantFreshFindings(doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion)))
+}
+
+// --- vault-discoverable --------------------------------------------------
+
+func TestVaultDiscoverableOK(t *testing.T) {
+	assertOK(t, vaultDiscoverableFindings(nil))
+}
+
+func TestVaultDiscoverableAbsent(t *testing.T) {
+	f := sole(t, vaultDiscoverableFindings(vault.ErrVaultNotFound))
+	if f.token != tokVaultAbsent || f.severity != sevError {
+		t.Fatalf("absent vault: got %+v, want vault-absent error", f)
 	}
 }
 
-// --- full report + exit codes -------------------------------------------
+func TestVaultDiscoverableAmbiguous(t *testing.T) {
+	f := sole(t, vaultDiscoverableFindings(vault.ErrMultipleVaults))
+	if f.token != tokVaultAmbiguous || f.severity != sevError {
+		t.Fatalf("ambiguous vault: got %+v, want vault-ambiguous error", f)
+	}
+}
 
-func TestRunDoctorChecksLive(t *testing.T) {
+// --- full DAG ------------------------------------------------------------
+
+// TestGrantFreshSkipsWithNoVault is the dishonest-OK fix: with no vault, grant-fresh
+// must SKIP blocked-by vault-discoverable, not report ok.
+func TestGrantFreshSkipsWithNoVault(t *testing.T) {
+	outcomes, err := runChecks(doctorNodes(t.TempDir(), vault.Vault{}, vault.ErrVaultNotFound))
+	if err != nil {
+		t.Fatalf("runChecks: %v", err)
+	}
+	gf := outcomeFor(t, outcomes, nodeGrantFresh)
+	if !gf.skipped || gf.blockedBy != nodeVaultDiscoverable {
+		t.Fatalf("grant-fresh outcome = %+v, want skipped blocked-by %s", gf, nodeVaultDiscoverable)
+	}
+	if gf.passed() {
+		t.Fatal("a skipped grant-fresh must not count as passed (not green)")
+	}
+}
+
+func TestDoctorDAGLive(t *testing.T) {
 	repoRoot := liveClaudeRepo(t)
 	realBin(t)
 	v := doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
-	results, caveat := runDoctorChecks(repoRoot, v, nil)
-	if !isLive(results) {
-		t.Fatalf("expected LIVE, got results %+v", results)
+	outcomes, err := runChecks(doctorNodes(repoRoot, v, nil))
+	if err != nil {
+		t.Fatalf("runChecks: %v", err)
 	}
-	if caveat != "" {
-		t.Fatalf("claude-only repo should have no caveat, got %q", caveat)
+	for _, o := range outcomes {
+		if o.skipped || !o.passed() {
+			t.Fatalf("node %q should have run and passed, got skipped=%v findings=%+v", o.node.name, o.skipped, o.findings)
+		}
 	}
-}
-
-func TestRunDoctorChecksOffNoGate(t *testing.T) {
-	repoRoot := t.TempDir()
-	realBin(t)
-	v := doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
-	results, _ := runDoctorChecks(repoRoot, v, nil)
-	if isLive(results) {
-		t.Fatalf("expected OFF with no gate, got LIVE: %+v", results)
-	}
-	if got := firstFailReason(results); !strings.Contains(got, "no memento gate") {
-		t.Fatalf("first fail reason = %q, want it to mention no memento gate", got)
+	if code := computeExitCode(outcomes, ctxSession, false); code != 0 {
+		t.Fatalf("live DAG exit = %d, want 0", code)
 	}
 }
 
-func TestRunDoctorChecksCodexCaveat(t *testing.T) {
-	repoRoot := t.TempDir()
-	realBin(t)
-	pre := writeDoctorScript(t, repoRoot, ".codex/memento-pre-write-vault-guard.sh", preWriteScriptBody)
-	post := writeDoctorScript(t, repoRoot, ".codex/memento-post-write-compile.sh", postWriteScriptBody)
-	config := strings.Join([]string{
-		"# memento:start",
-		"[[hooks.PreToolUse]]",
-		`matcher = "apply_patch"`,
-		"[[hooks.PreToolUse.hooks]]",
-		`type = "command"`,
-		`command = "` + pre + `"`,
-		"[[hooks.PostToolUse]]",
-		`matcher = "apply_patch"`,
-		"[[hooks.PostToolUse.hooks]]",
-		`type = "command"`,
-		`command = "` + post + `"`,
-		"# memento:end",
-	}, "\n")
-	writeDoctorScript(t, repoRoot, ".codex/config.toml", config)
-	v := doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
-	results, caveat := runDoctorChecks(repoRoot, v, nil)
-	if !isLive(results) {
-		t.Fatalf("expected LIVE codex, got %+v", results)
-	}
-	if !strings.Contains(caveat, "apply_patch") {
-		t.Fatalf("codex caveat = %q, want it to mention apply_patch", caveat)
-	}
-}
+// --- runDoctor (headline + exit) ----------------------------------------
 
 func TestRunDoctorExitLive(t *testing.T) {
+	t.Setenv("CI", "")
 	repoRoot := liveClaudeRepo(t)
 	realBin(t)
 	doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
@@ -401,6 +445,7 @@ func TestRunDoctorExitLive(t *testing.T) {
 }
 
 func TestRunDoctorExitOff(t *testing.T) {
+	t.Setenv("CI", "")
 	repoRoot := t.TempDir()
 	t.Setenv("MEMENTO_BIN", filepath.Join(repoRoot, "no-memento"))
 	chdirCLI(t, repoRoot)
@@ -412,6 +457,24 @@ func TestRunDoctorExitOff(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "OFF (") {
 		t.Fatalf("headline = %q, want OFF reason", stdout.String())
+	}
+}
+
+func TestRunDoctorCodexCaveat(t *testing.T) {
+	t.Setenv("CI", "")
+	repoRoot := codexRepo(t)
+	realBin(t)
+	doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
+	chdirCLI(t, repoRoot)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"doctor"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("codex doctor exit = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.HasPrefix(out, "vault write enforcement: LIVE") || !strings.Contains(out, "apply_patch") {
+		t.Fatalf("codex headline = %q, want LIVE with apply_patch caveat", out)
 	}
 }
 

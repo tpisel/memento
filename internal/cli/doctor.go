@@ -10,25 +10,27 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/tpisel/memento/internal/enforce"
-	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/vault"
 )
 
-// doctor is memento's loud write-enforcement liveness signal (ADR-0031 names this
-// a hard dependency; the cadence note [[doctor-scoping]] carves it out of the full
-// doctor verb as the urgent-and-missing piece). Mode enforcement rests entirely on
-// the PreToolUse check-write hook firing, and that failure is SILENT — the harness
-// is fail-open on hook absence, crash, or a missing binary. The commit-time
-// diff-audit backstop is detective, not preventive. doctor is the only loud surface
-// for "is enforcement actually on", so v1 does liveness ONLY: every mechanical check
-// that the gate is wired, the binary is reachable, no legacy guard bricks the vault,
-// and — the one check that proves the CHAIN, not just that parts exist — a live-fire
-// self-test that a read-only overwrite is actually denied. The rest of doctor's
-// candidate checks (config validity, manifest freshness, malformed conventions) stay
-// deferred to the future doctor ADR.
+// doctor is memento's loud write-enforcement liveness signal (ADR-0031 names this a
+// hard dependency). The shipped v1 liveness checks (memento-aan, memento-mbd) are
+// retrofitted here onto the ADR-0032 precondition-DAG engine (doctor_engine.go): each
+// check is a checkNode emitting the canonical ADR-0032 tokens, run through runChecks
+// so a failed precondition SKIPS its dependents (exit-neutral but not green) rather
+// than being dishonestly reported ok. Mode enforcement rests entirely on the
+// PreToolUse check-write hook firing, and that failure is SILENT — the harness is
+// fail-open on hook absence, crash, or a missing binary; the commit-time diff-audit
+// backstop is detective, not preventive. doctor is the only loud surface for "is
+// enforcement actually on", so the liveness-class nodes here prove the gate is wired,
+// the binary is reachable, no legacy guard bricks the vault, and — the one check that
+// proves the CHAIN, not just that parts exist — a live-fire self-test that a read-only
+// overwrite is actually denied. The schema-compat split (binary-schema-compatible /
+// manifest-schema-readable) and the remaining hygiene nodes land in dependent beads.
 
 const doctorHelpText = `memento doctor
 
@@ -36,59 +38,50 @@ Usage:
   memento doctor
 
 Report whether vault write enforcement is LIVE: the PreToolUse check-write gate is
-wired and executable, the memento binary the gate shells to is reachable and not
-older than the on-disk manifest schema, no legacy broad-deny guard bricks the vault,
-and a live-fire self-test confirms a read-only overwrite is actually denied.
+wired and executable, the memento binary the gate shells to is reachable, no legacy
+broad-deny guard bricks the vault, and a live-fire self-test confirms a read-only
+overwrite is actually denied.
 
 Exit status:
-  0   enforcement is LIVE.
-  1   enforcement is OFF (a critical check failed) or doctor could not run.
+  0   no gating finding in this context.
+  1   a gating finding (an error, or a warning under MEMENTO_DOCTOR_STRICT).
+  2   usage error.
 
 No flags.
 
 For the deeper picture, run: memento orient
 `
 
-// checkLevel is a single check's outcome. statusFail is the only level that flips
-// the headline to OFF and the exit code to non-zero; statusWarn keeps enforcement
-// LIVE but surfaces a degraded backstop or hygiene signal.
-type checkLevel int
-
+// Canonical ADR-0032 node names. A node is named for the property it asserts, phrased
+// positively; the DAG and preconditions reference these.
 const (
-	statusOK checkLevel = iota
-	statusWarn
-	statusFail
+	nodeVaultDiscoverable  = "vault-discoverable"
+	nodeGateCommitted      = "gate-committed-config"
+	nodeGateEffectiveLocal = "gate-effective-local"
+	nodePostwriteHook      = "postwrite-hook-live"
+	nodeNoLegacyBroadDeny  = "no-legacy-broad-deny"
+	nodeBinaryOnPath       = "binary-on-path"
+	nodeLiveFire           = "live-fire"
+	nodeGrantFresh         = "grant-fresh"
 )
 
-func (l checkLevel) tag() string {
-	switch l {
-	case statusOK:
-		return "ok"
-	case statusWarn:
-		return "warn"
-	default:
-		return "FAIL"
-	}
-}
-
-// checkResult is one mechanical liveness check. reason is the short clause used to
-// build the OFF headline when status is statusFail; detail is the per-check line.
-type checkResult struct {
-	name   string
-	status checkLevel
-	reason string
-	detail string
-}
-
-// wiredHook is one agent-configured hook command, normalised across families: the
-// Claude settings.json array entries and the codex config.toml `[[hooks.<Event>]]`
-// tables both flatten to (event, matcher, command). doctor classifies a command by
-// reading the script it points at, not by trusting its filename.
-type wiredHook struct {
-	event   string
-	matcher string
-	command string
-}
+// Canonical ADR-0032 failure tokens (the catalog table is the only source of these
+// spellings). A token is the stable wire value of a specific failure a node emits; one
+// node may emit one-to-many distinct tokens. A downstream consumer branches on the
+// token, never on a node name.
+const (
+	tokGateMissing           = "gate-missing"
+	tokGateUnresolved        = "gate-unresolved"
+	tokGateMatcherPartial    = "gate-matcher-partial"
+	tokGateLocallyOverridden = "gate-locally-overridden"
+	tokPostwriteHookMissing  = "postwrite-hook-missing"
+	tokLegacyBroadDenyWired  = "legacy-broad-deny-wired"
+	tokBinaryNotOnPath       = "binary-not-on-path"
+	tokLiveFireNotDenied     = "live-fire-not-denied"
+	tokGrantStale            = "grant-stale"
+	tokVaultAmbiguous        = "vault-ambiguous"
+	tokVaultAbsent           = "vault-absent"
+)
 
 func runDoctor(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
@@ -108,261 +101,360 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 
 	v, vaultErr := resolveVault()
 
-	results, caveat := runDoctorChecks(repoRoot, v, vaultErr)
-	live := isLive(results)
-
-	printDoctorReport(stdout, results, live, caveat)
-	if !live {
+	outcomes, err := runChecks(doctorNodes(repoRoot, v, vaultErr))
+	if err != nil {
+		// A malformed DAG (duplicate node, unknown precondition, cycle) is a
+		// programming error in the node set, not a vault condition.
+		printCLIError(stderr, "doctor", fmt.Errorf("%w: doctor check graph is malformed: %v", ErrIO, err))
 		return 1
 	}
-	return 0
-}
 
-// runDoctorChecks runs every liveness check and returns the per-check results plus
-// any platform caveat (codex gates only apply_patch; raw shell writes are ungated —
-// ryr.39 — so a codex LIVE is never a bare LIVE). vaultErr carries a failed vault
-// resolution: the grant and live-fire checks need a vault, but the gate checks read
-// the agent config under repoRoot and run regardless.
-func runDoctorChecks(repoRoot string, v vault.Vault, vaultErr error) (results []checkResult, caveat string) {
-	// A family counts only if memento actually wired a gate for it — its installed
-	// pre-write script is present. A bare .claude/ or .codex/ from another tool (a
-	// beads-only .codex/config.toml, say) is not a memento-enforced family and must
-	// not force a phantom gate failure. gateChecks still validates that the script is
-	// referenced and executable, so a deleted reference under a present script still
-	// fails loudly.
-	claudeWired := fileExists(filepath.Join(repoRoot, ".claude", "memento-pre-write-vault-guard.sh"))
-	codexWired := fileExists(filepath.Join(repoRoot, ".codex", "memento-pre-write-vault-guard.sh"))
-
-	if !claudeWired && !codexWired {
-		results = append(results, checkResult{
-			name:   "PreToolUse gate",
-			status: statusFail,
-			reason: "no memento gate installed",
-			detail: "no memento PreToolUse gate wired for any agent under " + repoRoot + "; run memento init",
-		})
-	}
-	if claudeWired {
-		results = append(results, gateChecks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)...)
-	}
-	if codexWired {
-		results = append(results, gateChecks(repoRoot, "codex", readCodexHooks(repoRoot), codexMatcherCovers)...)
+	caveat := ""
+	if fileExists(filepath.Join(repoRoot, ".codex", "memento-pre-write-vault-guard.sh")) {
+		// codex gates only apply_patch; raw shell writes are ungated (ryr.39), so a
+		// codex LIVE is never a bare LIVE.
 		caveat = "apply_patch only; raw shell writes are ungated on codex"
 	}
-
-	results = append(results, binaryReachableCheck(v, vaultErr))
-	results = append(results, liveFireCheck())
-	results = append(results, staleGrantCheck(v, vaultErr))
-	return results, caveat
+	printDoctorHeadline(stdout, outcomes, caveat)
+	renderEngineReport(stdout, outcomes)
+	return computeExitCode(outcomes, detectContext(), doctorStrict())
 }
 
-func isLive(results []checkResult) bool {
-	for _, r := range results {
-		if r.status == statusFail {
-			return false
+// doctorNodes assembles the ADR-0032 check DAG over a memento installation. The gate /
+// postwrite / legacy nodes read the COMMITTED agent config under repoRoot and run
+// regardless of vault resolution; grant-fresh needs a vault, so it depends on
+// vault-discoverable and SKIPS (blocked-by) when no vault resolves — never a green
+// "not checked". (assertable-in "session,ci" and "any" both gate in both contexts and
+// so both map to ctxAny; their distinction is rationale, carried in the comments.)
+func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
+	return []checkNode{
+		{
+			name: nodeVaultDiscoverable, class: classHygiene, assertableIn: ctxAny,
+			run: func() []finding { return vaultDiscoverableFindings(vaultErr) },
+		},
+		{
+			name: nodeGateCommitted, class: classLiveness, assertableIn: ctxAny, // session, ci
+			run: func() []finding { return gateCommittedFindings(repoRoot) },
+		},
+		{
+			name: nodeGateEffectiveLocal, class: classLiveness, assertableIn: ctxSession,
+			run: func() []finding { return gateEffectiveLocalFindings(repoRoot) },
+		},
+		{
+			name: nodePostwriteHook, class: classLiveness, assertableIn: ctxAny, // session, ci
+			run: func() []finding { return postwriteFindings(repoRoot) },
+		},
+		{
+			name: nodeNoLegacyBroadDeny, class: classLiveness, assertableIn: ctxAny, // session, ci
+			run: func() []finding { return legacyFindings(repoRoot) },
+		},
+		{
+			name: nodeBinaryOnPath, class: classLiveness, assertableIn: ctxSession,
+			run: func() []finding { return binaryOnPathFindings() },
+		},
+		{
+			name: nodeLiveFire, class: classLiveness, assertableIn: ctxAny,
+			run: func() []finding { return liveFireFindings() },
+		},
+		{
+			name: nodeGrantFresh, class: classLiveness, assertableIn: ctxSession,
+			preconditions: []string{nodeVaultDiscoverable},
+			run:           func() []finding { return grantFreshFindings(v) },
+		},
+	}
+}
+
+// printDoctorHeadline keeps the loud `vault write enforcement: LIVE / OFF` line as the
+// liveness-class summary (ADR-0032 token-retrofit boundary). It reflects only
+// liveness-class errors: a hygiene error (e.g. no vault) can still gate the exit code
+// while enforcement itself is LIVE. (Headline/help wording is retrofitted further in a
+// dependent bead.)
+func printDoctorHeadline(stdout io.Writer, outcomes []checkOutcome, caveat string) {
+	if live, reason := livenessSummary(outcomes); !live {
+		fmt.Fprintf(stdout, "vault write enforcement: OFF (%s)\n", reason)
+		return
+	}
+	if caveat != "" {
+		fmt.Fprintf(stdout, "vault write enforcement: LIVE (%s)\n", caveat)
+		return
+	}
+	fmt.Fprintln(stdout, "vault write enforcement: LIVE")
+}
+
+// livenessSummary reports whether enforcement is LIVE and, when not, the detail of the
+// first liveness-class error in topo order. A skipped node is neither (it propagates a
+// precondition failure, not an enforcement verdict).
+func livenessSummary(outcomes []checkOutcome) (live bool, reason string) {
+	for _, o := range outcomes {
+		if o.skipped || o.node.class != classLiveness {
+			continue
+		}
+		for _, f := range o.findings {
+			if f.severity == sevError {
+				return false, f.detail
+			}
 		}
 	}
-	return true
+	return true, ""
 }
 
-func printDoctorReport(stdout io.Writer, results []checkResult, live bool, caveat string) {
-	if live {
-		if caveat != "" {
-			fmt.Fprintf(stdout, "vault write enforcement: LIVE (%s)\n", caveat)
-		} else {
-			fmt.Fprintln(stdout, "vault write enforcement: LIVE")
-		}
-	} else {
-		fmt.Fprintf(stdout, "vault write enforcement: OFF (%s)\n", firstFailReason(results))
+// --- vault-discoverable --------------------------------------------------
+
+// vaultDiscoverableFindings is the DAG root for vault-dependent checks. Ambiguity
+// (multiple markers) and absence are distinct tokens; both are errors per the catalog.
+func vaultDiscoverableFindings(vaultErr error) []finding {
+	if vaultErr == nil {
+		return okFindings()
 	}
-	for _, r := range results {
-		fmt.Fprintf(stdout, "  [%s] %s: %s\n", r.status.tag(), r.name, r.detail)
+	if errors.Is(vaultErr, vault.ErrMultipleVaults) {
+		return []finding{{token: tokVaultAmbiguous, severity: sevError,
+			detail: vaultErr.Error(), remediation: "set MEMENTO_VAULT_ROOT"}}
 	}
+	return []finding{{token: tokVaultAbsent, severity: sevError,
+		detail: vaultErr.Error(), remediation: "set MEMENTO_VAULT_ROOT"}}
 }
 
-func firstFailReason(results []checkResult) string {
-	for _, r := range results {
-		if r.status == statusFail {
-			return r.reason
-		}
-	}
-	return "unknown"
+// --- gate nodes ----------------------------------------------------------
+
+// gateScan is one agent family's resolved gate state, scanned once and shared by the
+// gate / postwrite / legacy nodes. covers reports whether a matcher covers the
+// family's write tools.
+type gateScan struct {
+	family      string
+	gate        *resolvedHook
+	gateMatcher string
+	post        *resolvedHook
+	legacy      *resolvedHook
+	covers      func(matcher string) (full, fileTools bool)
 }
 
-// gateChecks evaluates the two wiring checks plus the legacy-guard check for one
-// agent family from its flattened hooks. covers reports whether a matcher covers
-// the family's write tools (Claude: Write|Edit|MultiEdit|Bash; codex: apply_patch).
-func gateChecks(repoRoot, family string, hooks []wiredHook, covers func(matcher string) (full, fileTools bool)) []checkResult {
-	var results []checkResult
-	var gate *resolvedHook
-	var postGate *resolvedHook
-	var legacy *resolvedHook
-	var gateMatcher string
+// wiredFamilies returns a scan for each agent family memento actually wired — its
+// installed pre-write guard script is present. A bare .claude/ or .codex/ from another
+// tool is not a memento-enforced family and is skipped, so it cannot force a phantom
+// gate failure.
+func wiredFamilies(repoRoot string) []gateScan {
+	var fams []gateScan
+	if fileExists(filepath.Join(repoRoot, ".claude", "memento-pre-write-vault-guard.sh")) {
+		fams = append(fams, scanHooks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers))
+	}
+	if fileExists(filepath.Join(repoRoot, ".codex", "memento-pre-write-vault-guard.sh")) {
+		fams = append(fams, scanHooks(repoRoot, "codex", readCodexHooks(repoRoot), codexMatcherCovers))
+	}
+	return fams
+}
 
+// scanHooks classifies a family's flattened hooks into its gate, post-hook, and any
+// legacy broad-deny guard by reading the script each points at, not by trusting names.
+func scanHooks(repoRoot, family string, hooks []wiredHook, covers func(matcher string) (full, fileTools bool)) gateScan {
+	s := gateScan{family: family, covers: covers}
 	for _, h := range hooks {
 		rh := resolveHookCommand(repoRoot, h.command)
 		switch {
 		case rh.content != "" && isLegacyBroadDeny(rh.content):
-			legacy = &rh
+			l := rh
+			s.legacy = &l
 		case rh.content != "" && strings.Contains(rh.content, "check-write"):
 			if h.event == "PreToolUse" {
 				g := rh
-				gate = &g
-				gateMatcher = h.matcher
+				s.gate = &g
+				s.gateMatcher = h.matcher
 			}
 		case strings.Contains(filepath.Base(h.command), "pre-write-vault-guard"):
 			// A memento gate by filename whose script does not resolve/read: record it
-			// so check #1 fails loudly with "command does not resolve" rather than
-			// silently reporting no gate at all.
-			if h.event == "PreToolUse" && gate == nil {
+			// so gate-committed-config emits gate-unresolved rather than silently
+			// reporting no gate at all.
+			if h.event == "PreToolUse" && s.gate == nil {
 				g := rh
-				gate = &g
-				gateMatcher = h.matcher
+				s.gate = &g
+				s.gateMatcher = h.matcher
 			}
 		}
 		if h.event == "PostToolUse" && rh.content != "" && strings.Contains(rh.content, "compile") {
 			p := rh
-			postGate = &p
+			s.post = &p
 		}
 	}
-
-	results = append(results, gateCheck(family, gate, gateMatcher, covers))
-	results = append(results, postWriteCheck(family, postGate))
-	results = append(results, legacyGuardCheck(family, legacy))
-	return results
+	return s
 }
 
-// gateCheck is liveness check #1: a PreToolUse check-write gate exists, its command
-// resolves to an executable file, and its matcher covers the write tools.
-func gateCheck(family string, gate *resolvedHook, matcher string, covers func(matcher string) (full, fileTools bool)) checkResult {
-	name := family + " PreToolUse gate"
-	if gate == nil {
-		return checkResult{name: name, status: statusFail,
-			reason: "no PreToolUse check-write gate", detail: "no memento check-write hook found"}
+// gateCommittedFindings is the gate-committed-config node: it reads the COMMITTED agent
+// config (.claude/settings.json or the codex sentinel block), never the machine-local
+// layer. No wired family at all is gate-missing — the loud "run memento init" signal.
+func gateCommittedFindings(repoRoot string) []finding {
+	fams := wiredFamilies(repoRoot)
+	if len(fams) == 0 {
+		return []finding{{token: tokGateMissing, severity: sevError,
+			detail:      "no memento check-write gate wired for any agent under " + repoRoot,
+			remediation: "memento init"}}
 	}
-	if !gate.exists {
-		return checkResult{name: name, status: statusFail,
-			reason: "gate command does not resolve", detail: "gate command " + gate.command + " does not exist"}
+	var fs []finding
+	for _, f := range fams {
+		fs = append(fs, gateCommittedFinding(f))
 	}
-	if !gate.executable {
-		return checkResult{name: name, status: statusFail,
-			reason: "gate command not executable", detail: gate.command + " is not executable"}
+	return fs
+}
+
+// gateCommittedFinding is one family's committed-gate verdict. A matcher that covers no
+// note-write tool is gate-missing (the gate never fires on note writes — effectively
+// absent), distinct from a matcher that covers file tools but not Bash, which is the
+// warning-severity gate-matcher-partial. A command that does not resolve or is not
+// executable is gate-unresolved.
+func gateCommittedFinding(s gateScan) finding {
+	if s.gate == nil {
+		return finding{token: tokGateMissing, severity: sevError,
+			detail: s.family + ": no PreToolUse check-write gate found", remediation: "memento init"}
 	}
-	full, fileTools := covers(matcher)
+	if !s.gate.exists {
+		return finding{token: tokGateUnresolved, severity: sevError,
+			detail: s.family + " gate command " + s.gate.command + " does not resolve", remediation: "memento init"}
+	}
+	if !s.gate.executable {
+		return finding{token: tokGateUnresolved, severity: sevError,
+			detail: s.family + " gate command " + s.gate.command + " is not executable", remediation: "memento init"}
+	}
+	full, fileTools := s.covers(s.gateMatcher)
 	if !fileTools {
-		return checkResult{name: name, status: statusFail,
-			reason: "gate matcher misses write tools", detail: fmt.Sprintf("matcher %q does not cover the write tools", matcher)}
+		return finding{token: tokGateMissing, severity: sevError,
+			detail:      fmt.Sprintf("%s gate matcher %q covers no note-write tool; the gate never fires on note writes", s.family, s.gateMatcher),
+			remediation: "memento init"}
 	}
 	if !full {
-		return checkResult{name: name, status: statusWarn,
-			detail: fmt.Sprintf("%s (matcher %q does not cover every write tool; some writes are ungated)", gate.command, matcher)}
+		return finding{token: tokGateMatcherPartial, severity: sevWarning,
+			detail:      fmt.Sprintf("%s gate matcher %q does not cover every write tool; some writes are ungated", s.family, s.gateMatcher),
+			remediation: "memento init"}
 	}
-	return checkResult{name: name, status: statusOK,
-		detail: fmt.Sprintf("%s (matcher %q)", gate.command, matcher)}
+	return finding{severity: sevOK, detail: s.family + " gate live (matcher " + s.gateMatcher + ")"}
 }
 
-// postWriteCheck is liveness check #2. A missing PostToolUse compile hook degrades
-// the detective drift backstop but does not disable the preventive PreToolUse gate,
-// so it warns rather than flipping enforcement OFF.
-func postWriteCheck(family string, post *resolvedHook) checkResult {
-	name := family + " PostToolUse compile hook"
-	if post == nil {
-		return checkResult{name: name, status: statusWarn,
-			detail: "no compile hook found; the post-write drift alarm is not wired"}
+// gateEffectiveLocalFindings is the gate-effective-local node: it reads the MERGED
+// Claude config (machine-local .claude/settings.local.json over the committed
+// .claude/settings.json, Claude's documented local-over-committed precedence) and fires
+// gate-locally-overridden when the committed gate is healthy but the effective one is
+// not. session-only: CI cannot see, and does not own, the dev machine's local layer.
+// codex has no machine-local layer, so there is nothing local can override.
+func gateEffectiveLocalFindings(repoRoot string) []finding {
+	if !fileExists(filepath.Join(repoRoot, ".claude", "memento-pre-write-vault-guard.sh")) {
+		return okFindings()
 	}
-	if !post.exists {
-		return checkResult{name: name, status: statusWarn,
-			detail: "compile hook " + post.command + " does not exist; drift alarm not wired"}
+	committed := scanHooks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)
+	effective := scanHooks(repoRoot, "claude", readClaudeEffectiveHooks(repoRoot), claudeMatcherCovers)
+	if gateHealthy(committed) && !gateHealthy(effective) {
+		return []finding{{token: tokGateLocallyOverridden, severity: sevError,
+			detail:      "machine-local .claude/settings.local.json overrides the committed gate; the effective gate no longer covers note writes",
+			remediation: "restore local config"}}
 	}
-	if !post.executable {
-		return checkResult{name: name, status: statusWarn,
-			detail: post.command + " is not executable; drift alarm not wired"}
-	}
-	return checkResult{name: name, status: statusOK, detail: post.command}
+	return okFindings()
 }
 
-// legacyGuardCheck is liveness check #4. A PreToolUse hook pointing at the
-// pre-ADR-0031 broad-deny guard bricks the vault: it denies every vault write and
-// there is no surviving `write` verb to satisfy it. Flag it as a hard failure.
-func legacyGuardCheck(family string, legacy *resolvedHook) checkResult {
-	name := family + " no legacy broad-deny guard"
-	if legacy != nil {
-		return checkResult{name: name, status: statusFail,
-			reason: "legacy broad-deny guard wired",
-			detail: legacy.command + " is a pre-ADR-0031 broad-deny guard; it bricks the vault (deny with no write verb). Remove it."}
+// gateHealthy reports whether a scanned gate would actually fire on note writes: its
+// command resolves and is executable and its matcher covers the file-write tools.
+// Matcher partiality (Bash uncovered) is a degradation, not an absent gate, so it does
+// not count as unhealthy here.
+func gateHealthy(s gateScan) bool {
+	if s.gate == nil || !s.gate.exists || !s.gate.executable {
+		return false
 	}
-	return checkResult{name: name, status: statusOK, detail: "none"}
+	_, fileTools := s.covers(s.gateMatcher)
+	return fileTools
 }
 
-// binaryReachableCheck is liveness check #3. The gate shells to ${MEMENTO_BIN:-memento};
-// if that binary is not on PATH the gate fails closed and every vault write is
-// blocked, and if the binary is older than the on-disk manifest schema it cannot
-// read the vault it is meant to guard. Either is fatal to a useful LIVE.
-func binaryReachableCheck(v vault.Vault, vaultErr error) checkResult {
-	const name = "check-write binary"
+// postwriteFindings is the postwrite-hook-live node. A missing PostToolUse compile hook
+// degrades the detective drift backstop but does not disable the preventive PreToolUse
+// gate, so it is a warning, never an enforcement-OFF error.
+func postwriteFindings(repoRoot string) []finding {
+	fams := wiredFamilies(repoRoot)
+	if len(fams) == 0 {
+		// No wired family: gate-committed-config owns the loud gate-missing signal; the
+		// post-write drift alarm is moot.
+		return okFindings()
+	}
+	var fs []finding
+	for _, f := range fams {
+		fs = append(fs, postFinding(f))
+	}
+	return fs
+}
+
+func postFinding(s gateScan) finding {
+	switch {
+	case s.post == nil:
+		return finding{token: tokPostwriteHookMissing, severity: sevWarning,
+			detail: s.family + ": no PostToolUse compile hook found; the post-write drift alarm is not wired", remediation: "memento init"}
+	case !s.post.exists:
+		return finding{token: tokPostwriteHookMissing, severity: sevWarning,
+			detail: s.family + " compile hook " + s.post.command + " does not resolve; drift alarm not wired", remediation: "memento init"}
+	case !s.post.executable:
+		return finding{token: tokPostwriteHookMissing, severity: sevWarning,
+			detail: s.family + " compile hook " + s.post.command + " is not executable; drift alarm not wired", remediation: "memento init"}
+	}
+	return finding{severity: sevOK, detail: s.family + " compile hook live"}
+}
+
+// legacyFindings is the no-legacy-broad-deny node. A PreToolUse hook pointing at the
+// pre-ADR-0031 broad-deny guard bricks the vault: it denies every vault write and there
+// is no surviving `write` verb to satisfy it. Flag it as a hard error.
+func legacyFindings(repoRoot string) []finding {
+	var fs []finding
+	for _, f := range wiredFamilies(repoRoot) {
+		if f.legacy != nil {
+			fs = append(fs, finding{token: tokLegacyBroadDenyWired, severity: sevError,
+				detail:      f.family + ": " + f.legacy.command + " is a pre-ADR-0031 broad-deny guard; it bricks the vault (deny with no write verb)",
+				remediation: "remove legacy guard"})
+		}
+	}
+	if len(fs) == 0 {
+		return okFindings()
+	}
+	return fs
+}
+
+// --- binary-on-path ------------------------------------------------------
+
+// binaryOnPathFindings is the binary-on-path node. The gate shells to
+// ${MEMENTO_BIN:-memento}; if that binary is not on PATH the gate fails closed and
+// every vault write is blocked. session-only: CI's binary says nothing about the dev
+// machine's. (Schema compatibility splits into its own nodes in a dependent bead.)
+func binaryOnPathFindings() []finding {
 	bin := os.Getenv("MEMENTO_BIN")
 	if bin == "" {
 		bin = "memento"
 	}
 	if _, err := exec.LookPath(bin); err != nil {
-		return checkResult{name: name, status: statusFail,
-			reason: bin + " not on PATH",
-			detail: fmt.Sprintf("the gate shells to %q, which is not reachable; the gate would fail closed and block every vault write", bin)}
+		return []finding{{token: tokBinaryNotOnPath, severity: sevError,
+			detail:      fmt.Sprintf("the gate shells to %q, which is not on PATH; the gate would fail closed and block every vault write", bin),
+			remediation: "install memento"}}
 	}
-	if vaultErr != nil {
-		// No vault resolved (or ambiguous): we cannot compare against a manifest
-		// schema, but the binary is reachable, which is the part this check owns.
-		return checkResult{name: name, status: statusOK,
-			detail: bin + " on PATH (manifest schema not checked: no resolved vault)"}
-	}
-	schema, present, err := readManifestSchemaVersion(v)
-	if err != nil {
-		return checkResult{name: name, status: statusWarn,
-			detail: bin + " on PATH; manifest schema unreadable: " + err.Error()}
-	}
-	if !present {
-		return checkResult{name: name, status: statusWarn,
-			detail: bin + " on PATH; no manifest to check schema against (run memento compile)"}
-	}
-	if schema > manifest.CurrentSchemaVersion {
-		return checkResult{name: name, status: statusFail,
-			reason: "binary older than manifest schema",
-			detail: fmt.Sprintf("manifest schema %d exceeds the schema %d this binary supports; the gate cannot read the vault", schema, manifest.CurrentSchemaVersion)}
-	}
-	return checkResult{name: name, status: statusOK,
-		detail: fmt.Sprintf("%s on PATH; manifest schema %d <= binary %d", bin, schema, manifest.CurrentSchemaVersion)}
+	return okFindings()
 }
 
-// liveFireCheck is liveness check #6 and the only check that proves the CHAIN rather
-// than that parts exist: it synthesises a ratified read-only note in a throwaway
-// vault and runs the same verdict chokepoint every in-vault write flows through,
-// asserting the read-only overwrite is denied. A non-deny means the lattice no
-// longer bites and flips enforcement OFF.
-//
-// The fixture is always synthetic (settling the bead's open question): a temp,
-// non-git vault treats every note as ratified (the edit window only opens inside a
-// git work tree), so the probe needs no commit and the real vault's notes and
-// decision log are never touched — no residue, no dependence on the vault already
-// holding a read-only note.
-func liveFireCheck() checkResult {
-	const name = "live-fire self-test"
+// --- live-fire -----------------------------------------------------------
+
+// liveFireFindings is the live-fire node — the only check that proves the CHAIN rather
+// than that parts exist. It synthesises a ratified read-only note in a throwaway vault
+// and runs the same verdict chokepoint every in-vault write flows through, asserting
+// the read-only overwrite is denied. Hermetic (a temp, non-git vault), so assertable
+// anywhere a clone exists.
+func liveFireFindings() []finding {
 	denied, reasonCode, err := liveFireReadOnlyProbe()
 	if err != nil {
-		return checkResult{name: name, status: statusFail,
-			reason: "live-fire self-test could not run", detail: "synthetic read-only probe failed: " + err.Error()}
+		return []finding{{token: tokLiveFireNotDenied, severity: sevError,
+			detail: "synthetic read-only probe failed: " + err.Error(), remediation: "upgrade / reinstall memento"}}
 	}
 	if !denied {
-		return checkResult{name: name, status: statusFail,
-			reason: "read-only overwrite was not denied",
-			detail: "synthetic read-only overwrite returned " + reasonCode + ", not a read_only deny; the mode lattice is not enforcing"}
+		return []finding{{token: tokLiveFireNotDenied, severity: sevError,
+			detail:      "synthetic read-only overwrite returned " + reasonCode + ", not a read_only deny; the mode lattice is not enforcing",
+			remediation: "upgrade / reinstall memento"}}
 	}
-	return checkResult{name: name, status: statusOK, detail: "read-only overwrite denied (" + reasonCode + ")"}
+	return okFindings()
 }
 
-// liveFireReadOnlyProbe builds a throwaway vault holding a ratified read-only note,
-// then runs the live verdict engine (computeVaultWriteVerdict — the single
-// chokepoint checkWriteFile funnels every in-vault file verdict through) against a
-// Write that would rewrite it, returning whether the verdict denied. The temp vault
-// is removed on return, so the probe leaves no residue.
+// liveFireReadOnlyProbe builds a throwaway vault holding a ratified read-only note, then
+// runs the live verdict engine (computeVaultWriteVerdict — the single chokepoint
+// checkWriteFile funnels every in-vault file verdict through) against a Write that would
+// rewrite it, returning whether the verdict denied. The temp vault is removed on return,
+// so the probe leaves no residue. A non-git temp vault treats every note as ratified
+// (the edit window only opens inside a git work tree), so the probe needs no commit and
+// the real vault is never touched.
 func liveFireReadOnlyProbe() (denied bool, reasonCode string, err error) {
 	dir, err := os.MkdirTemp("", "memento-doctor-probe-")
 	if err != nil {
@@ -395,28 +487,27 @@ func liveFireReadOnlyProbe() (denied bool, reasonCode string, err error) {
 	return verdict.decision == "deny" && verdict.reasonCode == enforce.ReasonReadOnly, verdict.reasonCode, nil
 }
 
-// staleGrantCheck is liveness check #5: an unlock grant whose key has no matching
+// --- grant-fresh ---------------------------------------------------------
+
+// grantFreshFindings is the grant-fresh node: an unlock grant whose key has no matching
 // uncommitted edit is stale — the edit it thawed the note for already committed (and
-// should have re-locked) or never happened. It is a hygiene warning, not an
-// enforcement failure, so it never flips enforcement OFF.
-func staleGrantCheck(v vault.Vault, vaultErr error) checkResult {
-	const name = "unlock grants"
-	if vaultErr != nil {
-		return checkResult{name: name, status: statusOK, detail: "not checked (no resolved vault)"}
-	}
+// should have re-locked) or never happened. A hygiene warning, never an enforcement
+// error. It depends on vault-discoverable, so with no vault it SKIPS rather than
+// reporting a dishonest ok.
+func grantFreshFindings(v vault.Vault) []finding {
 	grants, err := enforce.LoadGrants(v)
 	if err != nil {
-		return checkResult{name: name, status: statusWarn, detail: "could not read unlock grants: " + err.Error()}
+		return []finding{{severity: sevWarning, detail: "could not read unlock grants: " + err.Error()}}
 	}
 	if len(grants) == 0 {
-		return checkResult{name: name, status: statusOK, detail: "none"}
+		return okFindings()
 	}
 	var stale []string
 	for key := range grants {
 		edited, err := keyHasUncommittedEdit(v.Root, key)
 		if err != nil {
-			// Cannot prove staleness (no git, git error): do not warn on what we
-			// cannot determine.
+			// Cannot prove staleness (no git, git error): do not warn on what we cannot
+			// determine.
 			continue
 		}
 		if !edited {
@@ -424,10 +515,26 @@ func staleGrantCheck(v vault.Vault, vaultErr error) checkResult {
 		}
 	}
 	if len(stale) == 0 {
-		return checkResult{name: name, status: statusOK, detail: fmt.Sprintf("%d active, none stale", len(grants))}
+		return okFindings()
 	}
-	return checkResult{name: name, status: statusWarn,
-		detail: fmt.Sprintf("stale grant(s) with no pending edit: %s; commit or drop them", strings.Join(stale, ", "))}
+	sort.Strings(stale)
+	return []finding{{token: tokGrantStale, severity: sevWarning,
+		detail:      "stale grant(s) with no pending edit: " + strings.Join(stale, ", ") + "; commit or drop them",
+		remediation: "commit or drop the grant"}}
+}
+
+// okFindings is the single passing finding a healthy node emits (empty token, sevOK).
+func okFindings() []finding { return []finding{{severity: sevOK}} }
+
+// --- hook resolution helpers ---------------------------------------------
+
+// wiredHook is one agent-configured hook command, normalised across families: the
+// Claude settings.json array entries and the codex config.toml `[[hooks.<Event>]]`
+// tables both flatten to (event, matcher, command).
+type wiredHook struct {
+	event   string
+	matcher string
+	command string
 }
 
 // resolvedHook is a hook command resolved against the filesystem: whether its path
@@ -466,9 +573,9 @@ func resolveHookCommand(repoRoot, command string) resolvedHook {
 	return rh
 }
 
-// hookExecutable reports whether a hook script is runnable. Unix needs an execute
-// bit; Windows has no such bit (runnability is by association), so existence is the
-// honest answer there and the bead's Windows CI stays green.
+// hookExecutable reports whether a hook script is runnable. Unix needs an execute bit;
+// Windows has no such bit (runnability is by association), so existence is the honest
+// answer there.
 func hookExecutable(info os.FileInfo) bool {
 	if runtime.GOOS == "windows" {
 		return true
@@ -476,10 +583,10 @@ func hookExecutable(info os.FileInfo) bool {
 	return info.Mode().Perm()&0o111 != 0
 }
 
-// isLegacyBroadDeny recognises the pre-ADR-0031 broad-deny guard: a memento vault
-// guard that denies writes and routes them through the now-removed `memento write`
-// verb, and crucially predates `check-write`. The ADR-0031 dumb-pipe gate always
-// shells to `check-write`, so its presence is the discriminator.
+// isLegacyBroadDeny recognises the pre-ADR-0031 broad-deny guard: a memento vault guard
+// that denies writes and routes them through the now-removed `memento write` verb, and
+// crucially predates `check-write`. The ADR-0031 dumb-pipe gate always shells to
+// `check-write`, so its presence is the discriminator.
 func isLegacyBroadDeny(content string) bool {
 	if strings.Contains(content, "check-write") {
 		return false
@@ -489,8 +596,8 @@ func isLegacyBroadDeny(content string) bool {
 
 // claudeMatcherCovers reports whether a Claude matcher covers the write tools. full
 // requires every tool init wires (Write|Edit|MultiEdit|Bash); fileTools requires at
-// least the derivable file tools (Write/Edit/MultiEdit) — without those the gate
-// does not see ordinary note writes at all.
+// least the derivable file tools (Write/Edit/MultiEdit) — without those the gate does
+// not see ordinary note writes at all.
 func claudeMatcherCovers(matcher string) (full, fileTools bool) {
 	has := func(tool string) bool { return matcherHasTool(matcher, tool) }
 	fileTools = has("Write") && has("Edit") && has("MultiEdit")
@@ -498,16 +605,16 @@ func claudeMatcherCovers(matcher string) (full, fileTools bool) {
 	return full, fileTools
 }
 
-// codexMatcherCovers reports whether a codex matcher covers its one hookable write
-// tool, apply_patch (codex matches exact tool names; shell writes never fire the
-// PreToolUse hook — ryr.39 — which is why the caveat rides every codex LIVE).
+// codexMatcherCovers reports whether a codex matcher covers its one hookable write tool,
+// apply_patch (codex matches exact tool names; shell writes never fire the PreToolUse
+// hook — ryr.39 — which is why the caveat rides every codex LIVE).
 func codexMatcherCovers(matcher string) (full, fileTools bool) {
 	covered := matcherHasTool(matcher, "apply_patch")
 	return covered, covered
 }
 
-// matcherHasTool reports whether a `|`-separated matcher names tool exactly,
-// matching how both Claude and codex split the matcher into tool names.
+// matcherHasTool reports whether a `|`-separated matcher names tool exactly, matching
+// how both Claude and codex split the matcher into tool names.
 func matcherHasTool(matcher, tool string) bool {
 	for _, part := range strings.Split(matcher, "|") {
 		if strings.TrimSpace(part) == tool {
@@ -517,11 +624,10 @@ func matcherHasTool(matcher, tool string) bool {
 	return false
 }
 
-// readClaudeHooks flattens .claude/settings.json's hooks object into wiredHooks. A
-// missing or malformed file yields no hooks rather than an error — doctor's job is
-// to report the gate missing, loudly, not to abort.
-func readClaudeHooks(repoRoot string) (hooks []wiredHook) {
-	path := filepath.Join(repoRoot, ".claude", "settings.json")
+// parseClaudeHooks reads one settings file's hooks object grouped by event. A missing or
+// malformed file yields no hooks rather than an error — doctor reports the gate missing,
+// loudly, not aborts.
+func parseClaudeHooks(path string) map[string][]wiredHook {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -537,20 +643,50 @@ func readClaudeHooks(repoRoot string) (hooks []wiredHook) {
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		return nil
 	}
+	out := map[string][]wiredHook{}
 	for event, entries := range parsed.Hooks {
 		for _, entry := range entries {
 			for _, h := range entry.Hooks {
-				hooks = append(hooks, wiredHook{event: event, matcher: entry.Matcher, command: h.Command})
+				out[event] = append(out[event], wiredHook{event: event, matcher: entry.Matcher, command: h.Command})
 			}
 		}
 	}
-	return hooks
+	return out
 }
 
-// readCodexHooks flattens the memento sentinel block in .codex/config.toml into
-// wiredHooks. memento has no TOML dependency (init writes the block with string
-// builders), so this is a line scan of the memento-owned block only: it tracks the
-// current `[[hooks.<Event>]]` header and captures each `command`/`matcher` under it.
+func flattenEvents(m map[string][]wiredHook) []wiredHook {
+	var out []wiredHook
+	for _, hs := range m {
+		out = append(out, hs...)
+	}
+	return out
+}
+
+// readClaudeHooks flattens the COMMITTED .claude/settings.json hooks.
+func readClaudeHooks(repoRoot string) []wiredHook {
+	return flattenEvents(parseClaudeHooks(filepath.Join(repoRoot, ".claude", "settings.json")))
+}
+
+// readClaudeEffectiveHooks flattens the MERGED Claude config: machine-local
+// .claude/settings.local.json layered over the committed .claude/settings.json. The
+// local layer takes precedence per event (Claude's documented local-over-committed
+// precedence): if settings.local.json defines hooks for an event, its entries are the
+// effective ones for that event; otherwise the committed entries stand.
+func readClaudeEffectiveHooks(repoRoot string) []wiredHook {
+	merged := map[string][]wiredHook{}
+	for ev, hs := range parseClaudeHooks(filepath.Join(repoRoot, ".claude", "settings.json")) {
+		merged[ev] = hs
+	}
+	for ev, hs := range parseClaudeHooks(filepath.Join(repoRoot, ".claude", "settings.local.json")) {
+		merged[ev] = hs
+	}
+	return flattenEvents(merged)
+}
+
+// readCodexHooks flattens the memento sentinel block in .codex/config.toml. memento has
+// no TOML dependency (init writes the block with string builders), so this is a line
+// scan of the memento-owned block only: it tracks the current `[[hooks.<Event>]]` header
+// and captures each `command`/`matcher` under it.
 func readCodexHooks(repoRoot string) (hooks []wiredHook) {
 	path := filepath.Join(repoRoot, ".codex", "config.toml")
 	data, err := os.ReadFile(path)
@@ -583,9 +719,9 @@ func readCodexHooks(repoRoot string) (hooks []wiredHook) {
 	return hooks
 }
 
-// tomlStringValue reads the basic-string value of a `key = "value"` line, undoing
-// the backslash/quote escaping init's tomlBasicString applies. It is the minimal
-// inverse the hook scan needs, not a TOML parser.
+// tomlStringValue reads the basic-string value of a `key = "value"` line, undoing the
+// backslash/quote escaping init's tomlBasicString applies. It is the minimal inverse the
+// hook scan needs, not a TOML parser.
 func tomlStringValue(line string) string {
 	_, rhs, ok := strings.Cut(line, "=")
 	if !ok {
@@ -598,27 +734,10 @@ func tomlStringValue(line string) string {
 	return r.Replace(rhs)
 }
 
-func readManifestSchemaVersion(v vault.Vault) (version int, present bool, err error) {
-	data, err := os.ReadFile(v.ManifestPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return 0, false, nil
-		}
-		return 0, false, err
-	}
-	var head struct {
-		SchemaVersion int `json:"schema_version"`
-	}
-	if err := json.Unmarshal(data, &head); err != nil {
-		return 0, false, err
-	}
-	return head.SchemaVersion, true, nil
-}
-
 // keyHasUncommittedEdit reports whether the vault-relative key shows an uncommitted
-// change in the working tree (modified, staged, or untracked). A non-git tree or a
-// git error returns an error so the caller can decline to judge staleness rather
-// than warn on what it cannot determine.
+// change in the working tree (modified, staged, or untracked). A non-git tree or a git
+// error returns an error so the caller can decline to judge staleness rather than warn
+// on what it cannot determine.
 func keyHasUncommittedEdit(root, key string) (bool, error) {
 	cmd := exec.Command("git", "--literal-pathspecs", "status", "--porcelain", "--", filepath.FromSlash(key))
 	cmd.Dir = root
