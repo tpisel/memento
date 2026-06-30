@@ -17,7 +17,7 @@ Usage:
   memento help
   memento version
   memento init [--dir <vault>] [--agents detect|none|claude,codex]
-  memento doctor
+  memento doctor [--session]
   memento compile
   memento brief
   memento orient
