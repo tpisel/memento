@@ -873,6 +873,29 @@ func TestPrecommitEditedButReachableNotError(t *testing.T) {
 	}
 }
 
+// A pre-commit hook whose only memento line is a commented-out command does not run memento,
+// so reachability must not fail open on it: it reads as missing, not live.
+func TestPrecommitCommentedStepMissing(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	commented := "#!/bin/sh\nset -eu\n# memento compile\n  # memento clear-grants\nnpm test\n"
+	writeDoctorScript(t, repoRoot, ".git/hooks/pre-commit", commented)
+	f := findToken(t, precommitAnchorFindings(repoRoot), tokPrecommitMissing)
+	if f.severity != sevError {
+		t.Fatalf("precommit-anchor-missing severity = %v, want error", f.severity)
+	}
+}
+
+// An inline trailing comment after a live memento command does not hide the command: the
+// step still reaches memento.
+func TestPrecommitInlineCommentStillReaches(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	body := "#!/bin/sh\nset -eu\nmemento compile # ratification-boundary audit\n"
+	writeDoctorScript(t, repoRoot, ".git/hooks/pre-commit", body)
+	assertOK(t, precommitAnchorFindings(repoRoot))
+}
+
 // An effective pre-commit hook that never reaches memento, with no redirect, is absence —
 // not shadowing — but the ratification-boundary audit is just as dead, so it is a not-live
 // error under the precommit-anchor-missing token.

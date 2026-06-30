@@ -967,11 +967,34 @@ func hookFileReachesMemento(path string) bool {
 }
 
 // hookContentReachesMemento reports whether a script body invokes memento's pre-commit step
-// — by the install sentinel or either wired command.
+// — by the install sentinel or either wired command. The sentinel is itself a comment marker
+// memento writes, so it is matched raw; the commands must survive comment stripping, so a
+// purely commented-out step (e.g. `# memento compile`) does not fail the check open. This is
+// a lightweight per-line scan, not a shell parser.
 func hookContentReachesMemento(content string) bool {
-	return strings.Contains(content, preCommitSentinel) ||
-		strings.Contains(content, preCommitCompileCmd) ||
-		strings.Contains(content, preCommitClearGrants)
+	if strings.Contains(content, preCommitSentinel) {
+		return true
+	}
+	for _, line := range strings.Split(content, "\n") {
+		code := stripShellComment(line)
+		if strings.Contains(code, preCommitCompileCmd) || strings.Contains(code, preCommitClearGrants) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripShellComment drops a line-ending `#` comment, treating `#` as a comment start only at
+// the line start or after whitespace — so `memento compile # note` keeps the command while
+// `# memento compile` and `a#b` are left as code and comment respectively. Lightweight by
+// design: it does not track quoting, which the reachability scan does not need.
+func stripShellComment(line string) string {
+	for i := 0; i < len(line); i++ {
+		if line[i] == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t') {
+			return line[:i]
+		}
+	}
+	return line
 }
 
 // hookDelegations returns the files a hook hands control to, so reachability can follow the
