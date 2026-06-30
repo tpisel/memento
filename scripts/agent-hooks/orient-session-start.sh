@@ -62,8 +62,11 @@ orient_output="$(cd "$repo_root" && "${mem[@]}" orient 2>&1)"
 # see. LIVE collapses to the headline; OFF keeps the full report so the break is
 # actionable in place. A binary too old to know the verb cannot self-check, which
 # is itself an enforcement-uncertainty signal. doctor's live-fire is in-process.
-doctor_output="$(cd "$repo_root" && "${mem[@]}" doctor 2>&1)"
-doctor_status=$?
+if doctor_output="$(cd "$repo_root" && "${mem[@]}" doctor 2>&1)"; then
+  doctor_status=0
+else
+  doctor_status=$?
+fi
 case "$doctor_output" in
   *"vault write enforcement:"*)
     if [ "$doctor_status" -eq 0 ]; then
