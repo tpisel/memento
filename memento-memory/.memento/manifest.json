@@ -542,6 +542,10 @@
           {
             "source": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0032-doctor-scope-and-check-model.md",
+            "type": "wiki"
           }
         ]
       }
@@ -2060,6 +2064,10 @@
           {
             "source": "Architecture decision record/adr-0030-memento-operational-namespace.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0032-doctor-scope-and-check-model.md",
+            "type": "wiki"
           }
         ]
       }
@@ -2314,6 +2322,10 @@
         ],
         "in": [
           {
+            "source": "Architecture decision record/adr-0032-doctor-scope-and-check-model.md",
+            "type": "wiki"
+          },
+          {
             "source": "a-uat/test-matrix.md",
             "type": "wiki"
           },
@@ -2346,6 +2358,159 @@
             "type": "wiki"
           }
         ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0032-doctor-scope-and-check-model.md",
+      "title": "memento doctor — scope, the two-axis check model, and the diagnose-only contract",
+      "summary": "Defines memento doctor as a single check engine over a precondition DAG, diagnose-only in v1 (--fix deferred). The discriminator: every check output is a property of the installation or a derived artifact, never of a note — which ejects broken links, orphans, frontmatter validity, and 'pulling its weight' to compile/review. Each check carries two ORTHOGONAL axes: class (liveness vs hygiene — the faculty-region) and assertable-in {session,ci,any} (where it may gate), because they cross (core.hooksPath shadowing is liveness-class yet CI-assertable; BYO-conformer presence is hygiene-class yet fine-when-absent on a fresh runner). Severity is ok/nudge/warning/error plus skip-with-reason as a first-class exit-neutral outcome. Exit spine stays 0=clean / 1=broken / 2=usage; warnings exit 0 by default and only gate under MEMENTO_DOCTOR_STRICT (mirrors MEMENTO_STRICT_COMMIT). Liveness is behavioral not byte-match: the pre-commit anchor is checked for core.hooksPath/husky shadowing, not script identity. Manifest freshness is an authoritative side-effect-free in-buffer recompile+diff that shares brief's predicate at higher fidelity. Subsumes the liveness verb shipped in memento-aan/mbd, satisfies ADR-0031's named hard dependency, and amends ADR-0029's convention-check routing.",
+      "bytes": 28783,
+      "lines": 469,
+      "tags": [
+        "adr",
+        "cli",
+        "doctor",
+        "enforcement",
+        "health",
+        "memento"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "What this supersedes / amends",
+          "slug": "what-this-supersedes-amends"
+        },
+        {
+          "level": 2,
+          "text": "Scope",
+          "slug": "scope"
+        },
+        {
+          "level": 3,
+          "text": "The discriminator",
+          "slug": "the-discriminator"
+        },
+        {
+          "level": 3,
+          "text": "In scope",
+          "slug": "in-scope"
+        },
+        {
+          "level": 3,
+          "text": "Out of scope (named, with where they re-home)",
+          "slug": "out-of-scope-named-with-where-they-re-home"
+        },
+        {
+          "level": 2,
+          "text": "The two-axis check model",
+          "slug": "the-two-axis-check-model"
+        },
+        {
+          "level": 2,
+          "text": "The check DAG",
+          "slug": "the-check-dag"
+        },
+        {
+          "level": 3,
+          "text": "Naming: nodes name the property, tokens name the failure",
+          "slug": "naming-nodes-name-the-property-tokens-name-the-failure"
+        },
+        {
+          "level": 3,
+          "text": "Per-check catalog (canonical node→token map)",
+          "slug": "per-check-catalog-canonical-nodetoken-map"
+        },
+        {
+          "level": 2,
+          "text": "Severity and exit contract",
+          "slug": "severity-and-exit-contract"
+        },
+        {
+          "level": 2,
+          "text": "Liveness ≠ presence",
+          "slug": "liveness-presence"
+        },
+        {
+          "level": 2,
+          "text": "Manifest freshness",
+          "slug": "manifest-freshness"
+        },
+        {
+          "level": 3,
+          "text": "The CI gate rests on a compile-determinism invariant — named, not assumed",
+          "slug": "the-ci-gate-rests-on-a-compile-determinism-invariant-named-not-assumed"
+        },
+        {
+          "level": 2,
+          "text": "Schema-compat: one fact, two faculties",
+          "slug": "schema-compat-one-fact-two-faculties"
+        },
+        {
+          "level": 2,
+          "text": "init ↔ doctor symmetry (one-directional)",
+          "slug": "init-doctor-symmetry-one-directional"
+        },
+        {
+          "level": 2,
+          "text": "Degenerate cases (the most common invocations)",
+          "slug": "degenerate-cases-the-most-common-invocations"
+        },
+        {
+          "level": 2,
+          "text": "v1 boundary and deferred",
+          "slug": "v1-boundary-and-deferred"
+        },
+        {
+          "level": 2,
+          "text": "Open questions / deferred",
+          "slug": "open-questions-deferred"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "c8ebc6f4e9c104733aa0cf634ecb3bc55bff38821ba779fcb40a96f4926835cd",
+      "summary_sha": "306dd69a2006741e22b944c0605e87908c82dfd75d98ec9146950eea2c30efe4",
+      "summary_state": "stale",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0010-tool-read-writing-guide.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "doctor-scoping.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "review-audit-doctor faculties.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
       }
     },
     {
@@ -2607,8 +2772,8 @@
       "key": "OKF interop and external compatibility.md",
       "title": "OKF interop and external compatibility",
       "summary": "Working notes on aligning memento with Google Cloud's Open Knowledge Format (OKF) v0.1. Records what we can align without harming the Obsidian-as-human-interface commitment, what gap remains, whether to surface OKF support as an explicit mode, and where the OKF spec appears to be heading that we may already be on the path to.",
-      "bytes": 23983,
-      "lines": 186,
+      "bytes": 32982,
+      "lines": 244,
       "tags": [
         "distribution",
         "format",
@@ -2729,6 +2894,36 @@
           "level": 2,
           "text": "Provenance",
           "slug": "provenance"
+        },
+        {
+          "level": 2,
+          "text": "Addendum 2026-06-29: memento as an OKF producer, and the deploy-an-agent-today consumer path",
+          "slug": "addendum-2026-06-29-memento-as-an-okf-producer-and-the-deploy-an-agent-today-consumer-path"
+        },
+        {
+          "level": 3,
+          "text": "1. memento as a multi-source producer (generalising the reference enrichment agent)",
+          "slug": "1-memento-as-a-multi-source-producer-generalising-the-reference-enrichment-agent"
+        },
+        {
+          "level": 3,
+          "text": "2. Two governance gaps that only appear on gather-and-publish",
+          "slug": "2-two-governance-gaps-that-only-appear-on-gather-and-publish"
+        },
+        {
+          "level": 3,
+          "text": "3. Hosted OKF vault = roadmap validation",
+          "slug": "3-hosted-okf-vault-roadmap-validation"
+        },
+        {
+          "level": 3,
+          "text": "4. Deploying an ADK agent today: packaging a vault (retrieval-only)",
+          "slug": "4-deploying-an-adk-agent-today-packaging-a-vault-retrieval-only"
+        },
+        {
+          "level": 3,
+          "text": "Net / pins",
+          "slug": "net-pins"
         }
       ],
       "mode": "append-only",
@@ -2739,6 +2934,11 @@
       "summary_state": "stale",
       "links": {
         "out": [
+          {
+            "target": "conditional-information-access.md",
+            "type": "wiki",
+            "resolved": true
+          },
           {
             "target": "target",
             "type": "wiki",
@@ -3644,6 +3844,10 @@
         "out": [],
         "in": [
           {
+            "source": "OKF interop and external compatibility.md",
+            "type": "wiki"
+          },
+          {
             "source": "review-audit-doctor faculties.md",
             "type": "wiki"
           }
@@ -3727,6 +3931,10 @@
         "in": [
           {
             "source": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0032-doctor-scope-and-check-model.md",
             "type": "wiki"
           },
           {
@@ -4064,6 +4272,10 @@
         ],
         "in": [
           {
+            "source": "Architecture decision record/adr-0032-doctor-scope-and-check-model.md",
+            "type": "wiki"
+          },
+          {
             "source": "doctor-scoping.md",
             "type": "wiki"
           },
@@ -4382,12 +4594,13 @@
   "tags": {
     "_memento": 2,
     "a-uat": 3,
+    "adr": 1,
     "agents": 16,
     "audit": 2,
     "beads": 2,
     "bootloader": 2,
     "brief": 4,
-    "cli": 2,
+    "cli": 3,
     "codex": 2,
     "compile": 6,
     "config": 1,
@@ -4397,12 +4610,13 @@
     "design": 2,
     "design-philosophy": 1,
     "distribution": 1,
-    "doctor": 2,
+    "doctor": 3,
     "draft": 1,
-    "enforcement": 9,
+    "enforcement": 10,
     "format": 1,
     "frontmatter": 4,
     "git": 2,
+    "health": 1,
     "hooks": 11,
     "ignore": 1,
     "information-access": 1,
@@ -4414,7 +4628,7 @@
     "manifest": 6,
     "markdown": 1,
     "mcp": 1,
-    "memento": 46,
+    "memento": 47,
     "mode": 5,
     "namespace": 3,
     "observability": 1,

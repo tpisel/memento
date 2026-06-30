@@ -184,3 +184,61 @@ Only one prescription changes (relative links on export). Everything else the or
 ## Provenance
 
 Originated in a 2026-06-14 conversation immediately after the Google Cloud OKF v0.1 announcement. Recorded to capture the alignment analysis while both formats are young and the cost of preserving compatibility is minimal. Addendum same day after the user pushed back on the "Obsidian as universal commitment" framing and surfaced the dual-mode deployment question. Second addendum 2026-06-26 after reviewing the published example bundles (`knowledge-catalog/okf/bundles/`), which corrected the link-form export prescription and added evidence on the compiled-index direction.
+
+## Addendum 2026-06-29: memento as an OKF *producer*, and the deploy-an-agent-today *consumer* path
+
+The note and its prior addenda treat OKF as an **interchange/export** concern — how a memento vault renders *out* to a conformant bundle (Option A, relative links, qualified `type:` synthesis, ratified subset). This addendum records two roles that analysis does not cover, surfaced in a 2026-06-29 conversation: (1) memento as a **producer** that *assembles* a well-connected vault from heterogeneous sources before rendering to OKF, and (2) the near-term shape of a **deployed-agent consumer** reading a packaged vault. The strategic posture above (Option A default) is unchanged; this extends it at both ends of the pipeline.
+
+### 1. memento as a multi-source producer (generalising the reference enrichment agent)
+
+Google's POC enrichment agent is a **single-structured-source crawler**: walk BigQuery metadata, emit OKF. The producer role memento is actually shaped for is the inverse on two axes — **many *unstructured* sources** (web, email, wikis) and **human-in-the-loop curation**. That is the differentiated producer position OKF's "format, not platform" punt deliberately leaves open. If GCP ships a hosted OKF store (see §3), the *consumer* side commoditises and the *curation/producer* side is where the moat is.
+
+The **render half is already settled** (Option A and the link/type prescriptions above). The unsettled, higher-value half is the **gather → connect → ratify** pipeline:
+
+- **"Well-connected" is the load-bearing phrase and does not come for free.** Naive multi-agent gathering across disparate sources yields *islands* — N internally-fine, graph-disconnected notes. Connectedness is the entire value (it is what turns a folder of dumps into a knowledge graph) and it takes real orchestration.
+- memento has the right *primitives* (`brief`, the link graph, write modes) but **not the orchestration loop**. Required disciplines: **consult-brief-before-write** (a gathering agent reads `brief` + `inlinks/outlinks` *before* writing, so a finding attaches to and dedups against existing concepts rather than spawning a parallel island); the **compounding feedback loop** gather → read brief → link → write → recompile → richer brief for the next agent; **modes protecting the ratified core** mid-gather; and a **reconciliation/link pass** ("these three notes are one concept; this finding should link to that ADR").
+- **Pin:** the gathering orchestration is *unbuilt* and is the actual product — larger than the export shim. The reconciliation pass is adjacent to the v4 agent-driven summarisation worklist; a **connectedness worklist** is its sibling.
+
+### 2. Two governance gaps that only appear on gather-and-publish
+
+The export analysis above is about *internal* authoring. Gathering externally and publishing org-wide crosses two boundaries it does not touch:
+
+- **Provenance.** A note synthesised from an email thread or wiki page must carry origin + recency. This maps onto OKF's `resource:` and `timestamp:`. memento notes mostly do not populate these; for gathered knowledge it is *not* optional metadata — it is how a downstream consumer judges trust and staleness. **Cheap constraint:** give gathered notes a first-class `source:`/`resource:` field, which renders straight to OKF `resource:`.
+- **Access-scope / PII.** The sharp one. What a gathering agent may *read* (internal email, private wiki) is not automatically fit to *publish* into an org-wide OKF store. OKF's permissive consumption model is silent here. This is exactly where [[conditional-information-access]]'s **deontic axis** (how access is *governed*, not just what the info *is*) becomes load-bearing: render needs an **eligibility filter**, not just a format transform. Rule shape: *do not export a concept whose sources sit above the target store's audience.*
+
+**Clean resolution — ratification is the export gate.** Gathering agents produce unratified drafts freely; a human (or CI) reviews, connects, ratifies, and checks access-eligibility; render emits the **ratified, eligible subset**. This reuses the existing ratification boundary and invents no new mechanism — the boundary between "agents dumped stuff" and "fit to ship to the org."
+
+### 3. Hosted OKF vault = roadmap validation
+
+The likely arrival of a **first-class hosted GCP OKF store** turns the render/deploy-to-it path from speculative to roadmap-validated, and makes the producer pipeline its natural feed. Track it; do not pre-build the upload integration until the surface exists — consistent with the standing "defer the export shim until a concrete consumer asks" posture.
+
+### 4. Deploying an ADK agent *today*: packaging a vault (retrieval-only)
+
+Grounded in Agent Runtime's actual model (skill: `google-agents-cli-deploy`):
+
+- **Packaging is source-based** — no Dockerfile; agent code ships as a **base64-encoded source tarball** (`uv export` → requirements; `deploy.py` packages source), Python pinned 3.12. **Arbitrary package data rides along in the tarball**, so a compiled bundle (notes + `.memento/manifest.json`) is shippable as co-located package data, read at cold start via a package-relative path. No filesystem mount needed.
+- **The compile/read seam does the work.** `manifest.json` (stable, versioned, refuses unsupported `schema_version`) is the portable artifact; a deployed agent needs only a *reader* over manifest + notes — not the Go CLI, hooks, or write path.
+
+**Packaging options:**
+
+- **Co-located (today's default).** Bundle into the app package; the source tarball carries it; load once at `set_up()`/import. Zero network, version-pinned with the agent, git-rollback covers it. Cost: vault update ⇒ redeploy; tarball size; not shared across agents.
+- **Remote (GCS — bridge to the hosted OKF store).** Ship a thin reader + a pointer; fetch `manifest.json` at cold start, lazy-fetch note bodies (LRU). Update without redeploy; shareable. Cost: cold-start latency, bucket IAM on the app SA, cache invalidation via GCS object generation/ETag. **GCS is reachable without VPC**; a *private* vault behind a VPC needs `--network-attachment` (PSC). GCS-backed remote is the low-friction path and generalises to a future hosted-OKF read.
+
+**Reader = native Python over the manifest, not a shell-out.** Bundling/exec'ing the Go binary in a no-Dockerfile, fixed-Python managed runtime is fragile (arch, subprocess). The manifest *is* the contract — a small Python consumer projects `brief` and serves `read`. Guard CLI-drift by binding the reader to `manifest.schema_version` and conformance-testing both readers against one fixture vault.
+
+**Tool shape — two `FunctionTool`s:** `memento_brief() -> dict` (manifest projection; orient/landscape) and `memento_read(key, heading=None) -> dict` (pull one note/section). Docstrings are the model-facing usage contract. This maps **1:1 onto an existing ADK idiom**: `PreloadMemoryTool` (inject at turn start) ≈ orient/brief; `LoadMemoryTool` (on-demand) ≈ read. Brief can be preloaded into the system instruction with **context caching** making it cheap.
+
+**Crucial layering — do not conflate.** ADK's **Memory Bank / MemoryService is bottom-up, per-user, auto-generated episodic memory** ("what this user told me; facts learned across sessions," derived from conversation events). memento is **top-down, org-wide, human-curated, governed knowledge** ("what the project has ratified"). They are complementary layers — the memento tool sits *next to* `PreloadMemoryTool`, not instead of it. This is also the clean positioning line against memento being mistaken for ADK's native memory.
+
+**Write story today: none.** No PreToolUse-hook or commit-boundary equivalent at runtime; retrieval-only is the correct v1. Deferred writeback (runtime append region → ratify back in-repo via the producer pipeline of §1) is a later path, not a today concern.
+
+### Net / pins
+
+- The **producer pipeline** (gather → connect → ratify) is the high-value *unbuilt* piece; render is the known small shim.
+- Add a `source:`/`resource:` **provenance** field to gathered notes (cheap, OKF-aligned).
+- An **access-eligibility filter** on export, keyed off [[conditional-information-access]]'s deontic axis; **ratification is the export + eligibility gate**.
+- For **deploy-today**: co-located compiled bundle + native-Python manifest reader + `brief`/`read` `FunctionTool`s; `manifest.schema_version` is the consumer contract; retrieval-only.
+
+**Revisit triggers (in addition to those above):** a hosted GCP OKF store ships; a concrete ADK deployment wants memento retrieval; demand surfaces for runtime writeback.
+
+*Provenance: 2026-06-29 conversation extending the OKF analysis from interchange to (a) multi-source production and (b) deployed-agent (ADK / Agent Runtime) consumption. Deploy specifics grounded in the `google-agents-cli-deploy` / `-adk-code` skills. This addendum post-dates the Provenance section above.*
