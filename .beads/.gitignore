@@ -59,6 +59,13 @@ dolt-pprof/
 # Backup data (auto-exported JSONL, local-only)
 backup/
 
+# Audit-trail event export (regenerable from Dolt via `bd export`; bd's default is
+# git-add: false). Tracking it churns the tree on every bd op — Dolt (refs/dolt/data)
+# is the source of truth, so this stays local-only. NB: issues.jsonl is intentionally
+# NOT ignored — it's the canonical human-readable interchange mirror.
+interactions.jsonl
+events.jsonl
+
 # Per-project environment file (Dolt connection config, GH#2520)
 .env
 
