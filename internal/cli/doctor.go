@@ -154,14 +154,16 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		// codex LIVE is never a bare LIVE.
 		caveat = "apply_patch only; raw shell writes are ungated on codex"
 	}
-	printDoctorHeadline(stdout, outcomes, caveat)
-	renderEngineReport(stdout, outcomes)
 	// --session declares the session cadence: CI never passes it, so gate as ctxSession
 	// rather than re-detecting; the deferred corpus-scaling checks gate nowhere anyway.
 	ctx := detectContext()
 	if *sessionMode {
 		ctx = ctxSession
 	}
+	// The headline reads the SAME context-assertable subset as the exit code, so a
+	// session-only liveness error in CI never asserts a hard OFF that exit 0 contradicts.
+	printDoctorHeadline(stdout, outcomes, caveat, ctx)
+	renderEngineReport(stdout, outcomes)
 	return computeExitCode(outcomes, ctx, doctorStrict())
 }
 
@@ -285,7 +287,7 @@ func doctorNodes(repoRoot string, v vault.Vault, vaultErr error, hotPath bool) [
 // while enforcement itself is LIVE. This is the line the SessionStart orient hook
 // projects when doctor exits clean — the hook simply INVOKES the engine, it is not a
 // separate verb (ADR-0032: one engine, the cadences are assertable-in masks).
-func printDoctorHeadline(stdout io.Writer, outcomes []checkOutcome, caveat string) {
+func printDoctorHeadline(stdout io.Writer, outcomes []checkOutcome, caveat string, ctx assertContext) {
 	// A failed vault root is the dominant fact: run outside a project (no vault) or with
 	// ambiguous markers, "enforcement OFF" is a look-alike of "no usable vault here", so
 	// lead with the vault verdict and let the body carry the per-node detail rather than
@@ -294,7 +296,7 @@ func printDoctorHeadline(stdout io.Writer, outcomes []checkOutcome, caveat strin
 		fmt.Fprintln(stdout, headline)
 		return
 	}
-	if live, reason := livenessSummary(outcomes); !live {
+	if live, reason := livenessSummary(outcomes, ctx); !live {
 		fmt.Fprintf(stdout, "vault write enforcement: OFF (%s)\n", reason)
 		return
 	}
@@ -330,11 +332,14 @@ func vaultHeadline(outcomes []checkOutcome) (headline string, blocking bool) {
 }
 
 // livenessSummary reports whether enforcement is LIVE and, when not, the detail of the
-// first liveness-class error in topo order. A skipped node is neither (it propagates a
-// precondition failure, not an enforcement verdict).
-func livenessSummary(outcomes []checkOutcome) (live bool, reason string) {
+// first liveness-class error in topo order. It reads only nodes assertable in ctx — the
+// same subset computeExitCode gates on — so a session-only liveness error (binary-on-path,
+// gate-effective-local) seen in CI never flips the headline to a hard OFF that the exit 0
+// contradicts; its detail still renders in the body. A skipped node is neither (it
+// propagates a precondition failure, not an enforcement verdict).
+func livenessSummary(outcomes []checkOutcome, ctx assertContext) (live bool, reason string) {
 	for _, o := range outcomes {
-		if o.skipped || o.node.class != classLiveness {
+		if o.skipped || o.node.class != classLiveness || o.node.assertableIn&ctx == 0 {
 			continue
 		}
 		for _, f := range o.findings {

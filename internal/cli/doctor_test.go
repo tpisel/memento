@@ -714,6 +714,71 @@ func TestNoGrantsOK(t *testing.T) {
 	assertOK(t, grantFreshFindings(doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion)))
 }
 
+// --- headline / exit consistency (memento-tbu.7) -------------------------
+
+// headlineFor renders just the headline line for the given outcomes and context.
+func headlineFor(outcomes []checkOutcome, ctx assertContext) string {
+	var buf bytes.Buffer
+	printDoctorHeadline(&buf, outcomes, "", ctx)
+	return strings.TrimSpace(buf.String())
+}
+
+// A session-only liveness error (a node assertable only in ctxSession) must not flip
+// the headline to a hard OFF in ci context, where it does not gate the exit code: the
+// loud OFF would contradict exit 0. In session context the same error both gates and
+// reads OFF. The body still carries the detail either way.
+func TestHeadlineMatchesExitAcrossContexts(t *testing.T) {
+	sessionOnly := checkOutcome{
+		node: checkNode{
+			name:         nodeBinaryOnPath,
+			class:        classLiveness,
+			assertableIn: ctxSession,
+		},
+		findings: []finding{{token: "binary-missing", severity: sevError, detail: "memento not on PATH"}},
+	}
+	outcomes := []checkOutcome{sessionOnly}
+
+	// ci: the session-only error does not gate, so exit is 0 and the headline must not
+	// assert a hard OFF.
+	if code := computeExitCode(outcomes, ctxCI, false); code != 0 {
+		t.Fatalf("ci exit = %d, want 0 (session-only liveness error does not gate in ci)", code)
+	}
+	if h := headlineFor(outcomes, ctxCI); strings.Contains(h, "OFF") {
+		t.Fatalf("ci headline = %q, want no hard OFF contradicting exit 0", h)
+	}
+
+	// session: the same error both gates and reads OFF — headline and exit agree.
+	if code := computeExitCode(outcomes, ctxSession, false); code != 1 {
+		t.Fatalf("session exit = %d, want 1", code)
+	}
+	if h := headlineFor(outcomes, ctxSession); !strings.Contains(h, "OFF") {
+		t.Fatalf("session headline = %q, want OFF", h)
+	}
+}
+
+// A liveness error on a node assertable in any context gates and reads OFF in both
+// session and ci — the fix must not suppress genuine context-assertable failures.
+func TestHeadlineOFFWhenContextAssertable(t *testing.T) {
+	anyCtx := checkOutcome{
+		node: checkNode{
+			name:         nodePostwriteHook,
+			class:        classLiveness,
+			assertableIn: ctxAny,
+		},
+		findings: []finding{{token: "postwrite-missing", severity: sevError, detail: "no postwrite hook"}},
+	}
+	outcomes := []checkOutcome{anyCtx}
+
+	for _, ctx := range []assertContext{ctxSession, ctxCI} {
+		if code := computeExitCode(outcomes, ctx, false); code != 1 {
+			t.Fatalf("exit in ctx %d = %d, want 1", ctx, code)
+		}
+		if h := headlineFor(outcomes, ctx); !strings.Contains(h, "OFF") {
+			t.Fatalf("headline in ctx %d = %q, want OFF", ctx, h)
+		}
+	}
+}
+
 // --- git-repo & precommit-anchor-live ------------------------------------
 
 func TestGitRepoFindingsPresent(t *testing.T) {
