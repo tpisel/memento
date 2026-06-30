@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/tpisel/memento/internal/brief"
 	"github.com/tpisel/memento/internal/enforce"
@@ -77,18 +76,10 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 
 // strictCommit reports whether the optional commit-blocking mitigation is enabled
 // via the strictCommitEnv environment variable. Any value other than empty, "0",
-// "false", "no", or "off" (case-insensitive) is treated as on.
+// "false", "no", or "off" (case-insensitive) is treated as on. It shares the parser
+// with MEMENTO_DOCTOR_STRICT (envFlagEnabled) so the two strict surfaces cannot drift.
 func strictCommit() bool {
-	v, ok := os.LookupEnv(strictCommitEnv)
-	if !ok {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "", "0", "false", "no", "off":
-		return false
-	default:
-		return true
-	}
+	return envFlagEnabled(strictCommitEnv)
 }
 
 // reportModeViolations runs the ratification-boundary diff audit: for each
