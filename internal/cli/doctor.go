@@ -11,9 +11,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/tpisel/memento/internal/enforce"
+	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/vault"
 )
 
@@ -30,7 +32,8 @@ import (
 // the binary is reachable, no legacy guard bricks the vault, and — the one check that
 // proves the CHAIN, not just that parts exist — a live-fire self-test that a read-only
 // overwrite is actually denied. The schema-compat split (binary-schema-compatible /
-// manifest-schema-readable) and the remaining hygiene nodes land in dependent beads.
+// manifest-schema-readable) lands here; the remaining hygiene nodes land in dependent
+// beads.
 
 const doctorHelpText = `memento doctor
 
@@ -61,6 +64,8 @@ const (
 	nodePostwriteHook      = "postwrite-hook-live"
 	nodeNoLegacyBroadDeny  = "no-legacy-broad-deny"
 	nodeBinaryOnPath       = "binary-on-path"
+	nodeBinarySchemaCompat = "binary-schema-compatible"
+	nodeManifestSchemaRead = "manifest-schema-readable"
 	nodeLiveFire           = "live-fire"
 	nodeGrantFresh         = "grant-fresh"
 )
@@ -77,6 +82,8 @@ const (
 	tokPostwriteHookMissing  = "postwrite-hook-missing"
 	tokLegacyBroadDenyWired  = "legacy-broad-deny-wired"
 	tokBinaryNotOnPath       = "binary-not-on-path"
+	tokBinarySchemaTooOld    = "binary-schema-too-old"
+	tokManifestSchemaUnread  = "manifest-schema-unreadable"
 	tokLiveFireNotDenied     = "live-fire-not-denied"
 	tokGrantStale            = "grant-stale"
 	tokVaultAmbiguous        = "vault-ambiguous"
@@ -122,9 +129,12 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 
 // doctorNodes assembles the ADR-0032 check DAG over a memento installation. The gate /
 // postwrite / legacy nodes read the COMMITTED agent config under repoRoot and run
-// regardless of vault resolution; grant-fresh needs a vault, so it depends on
-// vault-discoverable and SKIPS (blocked-by) when no vault resolves — never a green
-// "not checked". (assertable-in "session,ci" and "any" both gate in both contexts and
+// regardless of vault resolution; grant-fresh and manifest-schema-readable need a
+// vault, so they depend on vault-discoverable and SKIP (blocked-by) when no vault
+// resolves — never a green "not checked". binary-schema-compatible depends on
+// binary-on-path (no point asking a binary that is not there what schema it reads) and
+// reads the manifest opportunistically, treating an absent vault as nothing to judge.
+// (assertable-in "session,ci" and "any" both gate in both contexts and
 // so both map to ctxAny; their distinction is rationale, carried in the comments.)
 func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
 	return []checkNode{
@@ -151,6 +161,16 @@ func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
 		{
 			name: nodeBinaryOnPath, class: classLiveness, assertableIn: ctxSession,
 			run: func() []finding { return binaryOnPathFindings() },
+		},
+		{
+			name: nodeBinarySchemaCompat, class: classLiveness, assertableIn: ctxSession,
+			preconditions: []string{nodeBinaryOnPath},
+			run:           func() []finding { return binarySchemaCompatFindings(v, vaultErr) },
+		},
+		{
+			name: nodeManifestSchemaRead, class: classHygiene, assertableIn: ctxAny,
+			preconditions: []string{nodeVaultDiscoverable},
+			run:           func() []finding { return manifestSchemaReadableFindings(v) },
 		},
 		{
 			name: nodeLiveFire, class: classLiveness, assertableIn: ctxAny,
@@ -413,18 +433,127 @@ func legacyFindings(repoRoot string) []finding {
 // binaryOnPathFindings is the binary-on-path node. The gate shells to
 // ${MEMENTO_BIN:-memento}; if that binary is not on PATH the gate fails closed and
 // every vault write is blocked. session-only: CI's binary says nothing about the dev
-// machine's. (Schema compatibility splits into its own nodes in a dependent bead.)
+// machine's. Schema compatibility of that same binary is binary-schema-compatible,
+// which depends on this node.
 func binaryOnPathFindings() []finding {
-	bin := os.Getenv("MEMENTO_BIN")
-	if bin == "" {
-		bin = "memento"
-	}
+	bin := mementoBin()
 	if _, err := exec.LookPath(bin); err != nil {
 		return []finding{{token: tokBinaryNotOnPath, severity: sevError,
 			detail:      fmt.Sprintf("the gate shells to %q, which is not on PATH; the gate would fail closed and block every vault write", bin),
 			remediation: "install memento"}}
 	}
 	return okFindings()
+}
+
+// mementoBin is the binary the gate shells to: ${MEMENTO_BIN:-memento}. The
+// binary-on-path and binary-schema-compatible nodes both reason about THIS binary, so
+// they resolve it the one way here.
+func mementoBin() string {
+	if bin := os.Getenv("MEMENTO_BIN"); bin != "" {
+		return bin
+	}
+	return "memento"
+}
+
+// --- binary-schema-compatible --------------------------------------------
+
+// gateSchemaProbe asks the gate's binary which manifest schema it supports by shelling
+// to `${bin} schema`. ok is false when the binary cannot be queried — an exec error or
+// output that does not parse as an integer (e.g. a binary too old to know the verb).
+// It is a package var so a test can substitute a binary reporting a schema other than
+// doctor's own without compiling one, exercising the divergence the split exists to
+// surface; the real exec path is covered against a freshly built binary.
+var gateSchemaProbe = func(bin string) (schema int, ok bool) {
+	out, err := exec.Command(bin, "schema").Output()
+	if err != nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// binarySchemaCompatFindings is the binary-schema-compatible node: the binary the gate
+// shells to HERE cannot read the vault it guards, so it enforces nothing. It is keyed on
+// the gate's resolved binary (${MEMENTO_BIN:-memento}) — distinct from
+// manifest-schema-readable, which is keyed on doctor's own compiled-in schema; the two
+// diverge whenever the gate's binary is not the one running doctor. session-only: CI's
+// binary version says nothing about the dev machine's. With no resolved vault there is
+// no manifest to be incompatible with (vault-discoverable owns that error), and a gate
+// binary that does not report a schema is not judged on what cannot be determined.
+func binarySchemaCompatFindings(v vault.Vault, vaultErr error) []finding {
+	if vaultErr != nil {
+		return okFindings()
+	}
+	manifestSchema, present, err := readManifestSchemaVersion(v.ManifestPath)
+	if err != nil || !present {
+		// An unreadable or absent manifest is manifest-schema-readable's / a future
+		// manifest-present node's concern; this node only judges binary-vs-manifest
+		// once a schema is readable.
+		return okFindings()
+	}
+	bin := mementoBin()
+	schema, ok := gateSchemaProbe(bin)
+	if !ok {
+		return okFindings()
+	}
+	if schema < manifestSchema {
+		return []finding{{token: tokBinarySchemaTooOld, severity: sevError,
+			detail:      fmt.Sprintf("the gate shells to %q, which supports manifest schema %d but the on-disk manifest is schema %d; that binary cannot read the vault it guards", bin, schema, manifestSchema),
+			remediation: "upgrade memento"}}
+	}
+	return okFindings()
+}
+
+// --- manifest-schema-readable --------------------------------------------
+
+// manifestSchemaReadableFindings is the manifest-schema-readable node: can a memento
+// binary at THIS schema (doctor's own compiled-in CurrentSchemaVersion) decode the
+// committed on-disk manifest at all. A static fact about the artifact-vs-schema,
+// independent of any gate and true even where none is wired — hygiene, any. An absent
+// manifest is deferred to a future manifest-present node (this node only judges a
+// manifest that exists); a manifest whose schema exceeds this binary's, or one that
+// will not decode, is unreadable.
+func manifestSchemaReadableFindings(v vault.Vault) []finding {
+	schema, present, err := readManifestSchemaVersion(v.ManifestPath)
+	if err != nil {
+		return []finding{{token: tokManifestSchemaUnread, severity: sevError,
+			detail:      "the on-disk manifest cannot be decoded: " + err.Error(),
+			remediation: "upgrade memento"}}
+	}
+	if !present {
+		return okFindings()
+	}
+	if schema > manifest.CurrentSchemaVersion {
+		return []finding{{token: tokManifestSchemaUnread, severity: sevError,
+			detail:      fmt.Sprintf("the on-disk manifest is schema %d but this binary supports up to schema %d; it cannot decode the manifest", schema, manifest.CurrentSchemaVersion),
+			remediation: "upgrade memento"}}
+	}
+	return okFindings()
+}
+
+// readManifestSchemaVersion reads just the schema_version off the on-disk manifest at
+// manifestPath, raw rather than via manifest.Load (which rejects unsupported versions
+// before doctor can report them). A missing file is present=false, not an error, so the
+// absent-manifest case is the caller's to route; a read or JSON error is returned so the
+// caller can distinguish "undecodable" from "too new".
+func readManifestSchemaVersion(manifestPath string) (version int, present bool, err error) {
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	var head struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return 0, false, err
+	}
+	return head.SchemaVersion, true, nil
 }
 
 // --- live-fire -----------------------------------------------------------

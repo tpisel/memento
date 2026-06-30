@@ -199,6 +199,20 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
+// TestSchemaCommand covers the hidden `schema` plumbing verb (ADR-0032): it prints the
+// manifest schema version this binary supports, so doctor's binary-schema-compatible
+// node can query the binary the gate shells to.
+func TestSchemaCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"schema"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("Run(schema) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if got, want := strings.TrimSpace(stdout.String()), fmt.Sprintf("%d", manifest.CurrentSchemaVersion); got != want {
+		t.Fatalf("Run(schema) output = %q, want %q", got, want)
+	}
+}
+
 func TestUnknownCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 

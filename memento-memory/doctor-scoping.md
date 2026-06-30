@@ -172,3 +172,36 @@ not a CI gate. Decisions carried forward:
   template (`scripts/agent-hooks/orient-session-start.sh`, which keeps the `go run`
   fallback). The orient script is **not** drift-pinned to the template (only the
   pre/post-write guards are), so the three are edited together by hand.
+
+## Schema-compat split landed — the `schema` query verb (2026-06-30, memento-e3x.3)
+
+ADR-0032's split of the fused v1 schema check into `binary-schema-compatible` (liveness,
+session, `binary-schema-too-old`) and `manifest-schema-readable` (hygiene, any,
+`manifest-schema-unreadable`) is implemented. The ADR fixes *what* the two nodes assert
+and that they read distinct data sources; building it settled the mechanism the ADR left
+open and one rollout choice:
+
+- **`binary-schema-compatible` queries the gate binary out-of-process via a new hidden
+  `memento schema` verb** that prints the binary's compiled-in
+  `manifest.CurrentSchemaVersion`. This is the only honest way to read the schema of the
+  binary *the gate shells to* (`${MEMENTO_BIN:-memento}`) when it is not the binary
+  running doctor — the divergence the split exists to surface. The v1 fusion *assumed*
+  they were equal (compared the manifest to doctor's own `CurrentSchemaVersion`), which
+  is exactly the bug. `manifest-schema-readable` keeps that same own-binary comparison —
+  correctly, because its question ("can *this* binary decode the artifact") is about the
+  running binary. So the two nodes share the manifest schema as one input but differ on
+  the second (gate binary vs. self), and that is the divergence.
+- **A gate binary that does not answer `schema` is `ok`, not OFF (cannot-determine).**
+  An exec error or unparseable output (an old binary predating the verb) yields no
+  finding, mirroring the grant-fresh "do not judge what cannot be determined" discipline.
+  The deciding factor is rollout: every memento currently installed predates the `schema`
+  verb, so firing OFF on a non-answer would make doctor scream OFF everywhere until the
+  whole fleet upgrades (this repo's own on-PATH `memento` is one such). The cost is a real
+  gap — an old-enough gate binary that genuinely cannot read a new manifest is missed —
+  accepted for v1 of the split.
+- **Testing the cross-binary probe without compiling an old binary:** the exec probe is a
+  package-var seam (`gateSchemaProbe`) a test can stub to report a schema other than
+  doctor's own (the divergence test), while the real exec+parse path is covered against
+  the freshly built binary `TestMain` already produces (`mementoBinary`). The in-process
+  live DAG tests stub it too — invoking the *test* binary with `schema` would re-enter
+  `TestMain` and re-run the whole suite (a fork bomb), so they must not exec it.

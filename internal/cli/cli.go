@@ -81,6 +81,13 @@ func RunWithInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		// Hook plumbing (ADR-0031), deliberately absent from help: the
 		// PreToolUse verdict engine, fed the raw payload on stdin.
 		return runCheckWrite(stdin, stdout, stderr)
+	case "schema":
+		// Doctor plumbing (ADR-0032), deliberately absent from help: prints the
+		// manifest schema version THIS binary supports, so a doctor running elsewhere
+		// can query the schema of the binary the gate shells to (binary-schema-compatible)
+		// rather than assuming it equals doctor's own compiled-in version.
+		fmt.Fprintln(stdout, manifest.CurrentSchemaVersion)
+		return 0
 	case "clear-grants":
 		// Hook plumbing (ADR-0031), deliberately absent from help: the pre-commit
 		// step that drops all unlock grants (the "any commit re-locks" semantics),

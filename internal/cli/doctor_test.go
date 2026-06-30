@@ -138,6 +138,18 @@ func realBin(t *testing.T) {
 	t.Setenv("MEMENTO_BIN", exe)
 }
 
+// stubGateSchema makes binary-schema-compatible see a gate binary reporting schema,
+// restoring the real exec-based probe when the test ends. The in-process live tests use
+// it so traversing the node does not exec the test binary itself — which, invoked with
+// `schema`, would re-enter TestMain and re-run the whole suite. The real exec+parse path
+// is covered separately against a freshly built binary (TestGateSchemaProbeRealBinary).
+func stubGateSchema(t *testing.T, schema int) {
+	t.Helper()
+	orig := gateSchemaProbe
+	gateSchemaProbe = func(string) (int, bool) { return schema, true }
+	t.Cleanup(func() { gateSchemaProbe = orig })
+}
+
 // --- finding assertions --------------------------------------------------
 
 func sole(t *testing.T, fs []finding) finding {
@@ -325,6 +337,85 @@ func TestBinaryOnPathLive(t *testing.T) {
 	assertOK(t, binaryOnPathFindings())
 }
 
+// --- binary-schema-compatible --------------------------------------------
+
+// TestSchemaNodesDiverge is the split's reason for being: the two schema nodes read
+// distinct data sources and so disagree. With a manifest at the binary's own schema,
+// manifest-schema-readable (keyed on doctor's compiled-in version) stays ok, while a
+// gate binary reporting an older schema makes binary-schema-compatible emit
+// binary-schema-too-old.
+func TestSchemaNodesDiverge(t *testing.T) {
+	realBin(t) // binary-on-path resolves; the probe below is stubbed, so nothing execs
+	stubGateSchema(t, manifest.CurrentSchemaVersion-1)
+	v := doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion)
+
+	assertOK(t, manifestSchemaReadableFindings(v))
+
+	f := findToken(t, binarySchemaCompatFindings(v, nil), tokBinarySchemaTooOld)
+	if f.severity != sevError {
+		t.Fatalf("binary-schema-too-old severity = %v, want error", f.severity)
+	}
+}
+
+func TestBinarySchemaCompatLive(t *testing.T) {
+	realBin(t)
+	stubGateSchema(t, manifest.CurrentSchemaVersion)
+	assertOK(t, binarySchemaCompatFindings(doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion), nil))
+}
+
+// A gate binary that does not report a schema (old binary, exec error) is not judged on
+// what cannot be determined.
+func TestBinarySchemaCompatProbeUnknownOK(t *testing.T) {
+	realBin(t)
+	orig := gateSchemaProbe
+	gateSchemaProbe = func(string) (int, bool) { return 0, false }
+	t.Cleanup(func() { gateSchemaProbe = orig })
+	assertOK(t, binarySchemaCompatFindings(doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion), nil))
+}
+
+// With no resolved vault there is no manifest to be incompatible with; the node is ok
+// (vault-discoverable owns the no-vault error).
+func TestBinarySchemaCompatNoVaultOK(t *testing.T) {
+	assertOK(t, binarySchemaCompatFindings(vault.Vault{}, vault.ErrVaultNotFound))
+}
+
+// TestGateSchemaProbeRealBinary exercises the real exec+parse path: a freshly built
+// memento binary answers `schema` with its compiled-in CurrentSchemaVersion.
+func TestGateSchemaProbeRealBinary(t *testing.T) {
+	schema, ok := gateSchemaProbe(mementoBinary(t))
+	if !ok || schema != manifest.CurrentSchemaVersion {
+		t.Fatalf("gateSchemaProbe(real) = (%d, %v), want (%d, true)", schema, ok, manifest.CurrentSchemaVersion)
+	}
+}
+
+// --- manifest-schema-readable --------------------------------------------
+
+// TestManifestSchemaReadableTooNew re-homes the dropped v1 TestBinaryReachableSchemaTooNew:
+// a manifest newer than this binary's schema cannot be decoded.
+func TestManifestSchemaReadableTooNew(t *testing.T) {
+	v := doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion+1)
+	f := findToken(t, manifestSchemaReadableFindings(v), tokManifestSchemaUnread)
+	if f.severity != sevError {
+		t.Fatalf("manifest-schema-unreadable severity = %v, want error", f.severity)
+	}
+}
+
+func TestManifestSchemaReadableOK(t *testing.T) {
+	assertOK(t, manifestSchemaReadableFindings(doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion)))
+}
+
+// A malformed on-disk manifest is undecodable, so the node reports it unreadable.
+func TestManifestSchemaReadableMalformed(t *testing.T) {
+	v := doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion)
+	if err := os.WriteFile(v.ManifestPath, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := findToken(t, manifestSchemaReadableFindings(v), tokManifestSchemaUnread)
+	if f.severity != sevError {
+		t.Fatalf("malformed manifest severity = %v, want error", f.severity)
+	}
+}
+
 // --- grant-fresh ---------------------------------------------------------
 
 func TestGrantStaleWarns(t *testing.T) {
@@ -410,6 +501,7 @@ func TestGrantFreshSkipsWithNoVault(t *testing.T) {
 func TestDoctorDAGLive(t *testing.T) {
 	repoRoot := liveClaudeRepo(t)
 	realBin(t)
+	stubGateSchema(t, manifest.CurrentSchemaVersion)
 	v := doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
 	outcomes, err := runChecks(doctorNodes(repoRoot, v, nil))
 	if err != nil {
@@ -431,6 +523,7 @@ func TestRunDoctorExitLive(t *testing.T) {
 	t.Setenv("CI", "")
 	repoRoot := liveClaudeRepo(t)
 	realBin(t)
+	stubGateSchema(t, manifest.CurrentSchemaVersion)
 	doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
 	chdirCLI(t, repoRoot)
 
@@ -464,6 +557,7 @@ func TestRunDoctorCodexCaveat(t *testing.T) {
 	t.Setenv("CI", "")
 	repoRoot := codexRepo(t)
 	realBin(t)
+	stubGateSchema(t, manifest.CurrentSchemaVersion)
 	doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
 	chdirCLI(t, repoRoot)
 
