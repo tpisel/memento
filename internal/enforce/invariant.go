@@ -22,13 +22,20 @@ const ReasonUnparsedMode = "unparsed_mode"
 
 // unparsedFrontmatterMessage is the shared denial copy for a note whose
 // frontmatter fails to parse, used by both the prefix invariant and the
-// operation lattice so the two surfaces cannot drift. The recovery is to repair
-// the frontmatter — not `unlock`/`write-mode`, which presume a known mode.
+// operation lattice so the two surfaces cannot drift. This denial only fires for
+// a ratified, ungranted note (EvaluateVaultWrite short-circuits unratified and
+// granted writes to allow), so the recovery is necessarily two-step: re-open the
+// edit window with `unlock`, then repair the frontmatter. `unlock` is the
+// sanctioned, audited route here — it re-opens the window so the repair can land
+// (the drive-by defense allows a write that fixes an unparsed baseline), it does
+// not loosen a mode (there is no readable mode to loosen). It still needs the
+// user's explicit say-so, like any loosening (memento-o0a, memento-gzx).
 func unparsedFrontmatterMessage(key string) string {
 	return fmt.Sprintf(
 		"note %s: its frontmatter does not parse, so memento cannot tell the mode its author declared and holds it read-only until that is fixed — this write is denied and the identical write will be denied again. "+
-			"Fix the frontmatter so it parses (then the declared mode applies); do not self-authorise around this.",
-		key)
+			"Fix the frontmatter so it parses (then the declared mode applies). Because this note is already committed it is held read-only, so repairing it needs the user's explicit say-so — being told to do the task is not authorisation to loosen the note. "+
+			"Stop and confirm with the user; only once they authorise it, run `memento unlock %s --justification <reason>` to re-open the edit window, then fix the frontmatter.",
+		key, key)
 }
 
 // EvaluatePrefixInvariant applies ADR-0031's prefix invariant to a write already

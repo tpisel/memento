@@ -70,7 +70,10 @@ func TestEvaluatePrefixInvariantUnparsedIsReadOnly(t *testing.T) {
 	if deny.ReasonCode != ReasonUnparsedMode {
 		t.Fatalf("ReasonCode = %q, want %q", deny.ReasonCode, ReasonUnparsedMode)
 	}
-	for _, want := range []string{key, "does not parse", "denied again", "Fix the frontmatter"} {
+	// The copy must name `unlock` as the sanctioned repair route: this denial only
+	// fires for a committed (ratified) note, whose edit window must be re-opened
+	// before the frontmatter fix can land (memento-gzx).
+	for _, want := range []string{key, "does not parse", "denied again", "Fix the frontmatter", "memento unlock", "--justification"} {
 		if !strings.Contains(deny.Message, want) {
 			t.Fatalf("Message = %q, want it to contain %q", deny.Message, want)
 		}
