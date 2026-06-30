@@ -27,6 +27,14 @@ func runBrief(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	// Catch out-of-band note edits the PostToolUse hook never saw (e.g. a human
+	// editing a note mid-session): recompile only when the vault has out-paced the
+	// manifest, otherwise serve the existing artifacts unchanged.
+	if err := ensureBriefFresh(v); err != nil {
+		printCLIError(stderr, "brief", err)
+		return 1
+	}
+
 	data, err := readOrRenderBrief(v)
 	if err != nil {
 		printCLIError(stderr, "brief", err)

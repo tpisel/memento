@@ -373,6 +373,10 @@
           {
             "source": "Architecture decision record/adr-0030-memento-operational-namespace.md",
             "type": "wiki"
+          },
+          {
+            "source": "Architecture decision record/adr-0033-mtime-gated-lazy-compile-on-brief.md",
+            "type": "wiki"
           }
         ]
       }
@@ -1375,6 +1379,10 @@
             "type": "wiki"
           },
           {
+            "source": "Architecture decision record/adr-0033-mtime-gated-lazy-compile-on-brief.md",
+            "type": "wiki"
+          },
+          {
             "source": "check-write compile drift handshake.md",
             "type": "wiki"
           }
@@ -2326,6 +2334,10 @@
             "type": "wiki"
           },
           {
+            "source": "Architecture decision record/adr-0033-mtime-gated-lazy-compile-on-brief.md",
+            "type": "wiki"
+          },
+          {
             "source": "a-uat/test-matrix.md",
             "type": "wiki"
           },
@@ -2506,6 +2518,89 @@
           },
           {
             "target": "review-audit-doctor faculties.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": [
+          {
+            "source": "Architecture decision record/adr-0033-mtime-gated-lazy-compile-on-brief.md",
+            "type": "wiki"
+          }
+        ]
+      }
+    },
+    {
+      "key": "Architecture decision record/adr-0033-mtime-gated-lazy-compile-on-brief.md",
+      "title": "mtime-gated lazy recompile on brief (and why read is not gated)",
+      "summary": "brief runs a cheap stat-only freshness gate and recompiles ONLY when a note's mtime is strictly newer than the manifest's; the already-fresh case is O(n) os.Stat calls with no body reads. This catches the drift the PostToolUse hook structurally misses — a human editing a note mid-session produces no agent tool write, so the manifest/brief would otherwise lag until the next explicit compile. The lazy path runs writeCompileArtifacts only, NOT the DRIFT ALARM / MODE VIOLATION audits, which stay on explicit compile + PostToolUse + pre-commit so integrity signals are never absorbed by a read-side verb. A missing manifest is out of scope (bootstrap, handled by readOrRenderBrief's compile hint), not a freshness case. read is deliberately NOT gated: it serves note bodies fresh from disk, so only its manifest-derived stderr metadata can lag — lower stakes — and gating the hottest verb is not worth the stat-walk while brief at task start already refreshes the shared manifest. Refines ADR-0022, which rejected guarded auto-compile in the write-trigger context that ADR-0031 has since removed.",
+      "bytes": 7575,
+      "lines": 124,
+      "tags": [
+        "adr",
+        "brief",
+        "compile",
+        "freshness",
+        "manifest",
+        "memento"
+      ],
+      "headings": [
+        {
+          "level": 2,
+          "text": "Decision",
+          "slug": "decision"
+        },
+        {
+          "level": 2,
+          "text": "Context",
+          "slug": "context"
+        },
+        {
+          "level": 3,
+          "text": "Reconciling with ADR-0022",
+          "slug": "reconciling-with-adr-0022"
+        },
+        {
+          "level": 3,
+          "text": "Why read is not gated",
+          "slug": "why-read-is-not-gated"
+        },
+        {
+          "level": 2,
+          "text": "Consequences",
+          "slug": "consequences"
+        },
+        {
+          "level": 2,
+          "text": "Related",
+          "slug": "related"
+        }
+      ],
+      "mode": "read-only",
+      "orient": false,
+      "updated": "",
+      "body_sha": "0f86b9946adec8d6817ece3fe77cdbf31292b84f0c0df7ecd9028548c3a0e1b9",
+      "summary_sha": "87533f38af09171147f137f84e68aadf7d21cde193e47dda2ee9d21126a02e9e",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0008-memento-brief-projection.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0022-auto-compile-after-write.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0032-doctor-scope-and-check-model.md",
             "type": "wiki",
             "resolved": true
           }
@@ -4594,15 +4689,15 @@
   "tags": {
     "_memento": 2,
     "a-uat": 3,
-    "adr": 1,
+    "adr": 2,
     "agents": 16,
     "audit": 2,
     "beads": 2,
     "bootloader": 2,
-    "brief": 4,
+    "brief": 5,
     "cli": 3,
     "codex": 2,
-    "compile": 6,
+    "compile": 7,
     "config": 1,
     "configuration": 1,
     "convention": 1,
@@ -4614,6 +4709,7 @@
     "draft": 1,
     "enforcement": 10,
     "format": 1,
+    "freshness": 1,
     "frontmatter": 4,
     "git": 2,
     "health": 1,
@@ -4625,10 +4721,10 @@
     "lifecycle": 2,
     "links": 1,
     "maintenance": 1,
-    "manifest": 6,
+    "manifest": 7,
     "markdown": 1,
     "mcp": 1,
-    "memento": 47,
+    "memento": 48,
     "mode": 5,
     "namespace": 3,
     "observability": 1,
