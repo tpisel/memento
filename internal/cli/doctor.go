@@ -1088,8 +1088,16 @@ func configValidFindings(v vault.Vault) []finding {
 	}
 	keys, ok := scanConfigKeys(string(data))
 	if !ok {
-		return []finding{{token: tokConfigInvalid, severity: sevError,
-			detail: path + " does not parse as TOML", remediation: "fix .memento/config.toml"}}
+		// scanConfigKeys is a minimal hand-scanner, not a real TOML parser: ok=false
+		// means "this scanner could not make sense of the file", which is NOT the same
+		// as "this is definitively malformed TOML". Gating (exit 1) on a limited
+		// scanner's confusion is the forward trap memento-tbu.4 fixed — so a parse
+		// failure is a non-gating WARNING (it still surfaces, and gates under
+		// MEMENTO_DOCTOR_STRICT), not a hard error. Only an unambiguous unrecognised
+		// key below is a gating error. Revisit if a real TOML dependency is ever added.
+		return []finding{{token: tokConfigInvalid, severity: sevWarning,
+			detail:      path + " could not be parsed by memento's minimal config scanner",
+			remediation: "fix .memento/config.toml"}}
 	}
 	var unknown []string
 	for _, k := range keys {
@@ -1112,12 +1120,31 @@ func configValidFindings(v vault.Vault) []finding {
 // dependency (init writes config with string builders; readCodexHooks line-scans the codex
 // block), so this matches that line-level discipline — sufficient because the recognised
 // set is closed-world: a healthy config is comment-only and any declared key is judged
-// against the allowlist. It does not model multi-line strings or arrays; the config has
-// none.
+// against the allowlist.
+//
+// It is string- and continuation-aware (memento-tbu.4): scanLine strips line-ending `#`
+// comments without tripping on `#` inside strings, and carries the state of a value that
+// spans lines (an open `"""`/`”'` multi-line string or an unbalanced `[`/`{` array or
+// inline table) so the lines that continue it are not mis-read as fresh statements. It is
+// still not a full TOML parser; ok=false is treated by the caller as a non-gating warning,
+// not proof of malformed input.
 func scanConfigKeys(contents string) (keys []string, ok bool) {
-	for _, line := range strings.Split(contents, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+	var (
+		mlDelim string // open multi-line string delimiter (`"""` or `'''`), else ""
+		depth   int    // unbalanced [/{ brackets carried from a value that spans lines
+	)
+	for _, raw := range strings.Split(contents, "\n") {
+		// A line begun inside a multi-line string or an unbalanced bracket run is a
+		// continuation of the previous statement, never a fresh one: advance the carry
+		// state across it and move on.
+		continuation := mlDelim != "" || depth > 0
+		var code string
+		code, mlDelim, depth = scanLine(raw, mlDelim, depth)
+		if continuation {
+			continue
+		}
+		trimmed := strings.TrimSpace(code)
+		if trimmed == "" {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "[") {
@@ -1135,7 +1162,94 @@ func scanConfigKeys(contents string) (keys []string, ok bool) {
 		}
 		keys = append(keys, strings.Trim(key, `"'`))
 	}
+	if mlDelim != "" || depth > 0 {
+		return nil, false // an unterminated multi-line string or bracket run
+	}
 	return keys, true
+}
+
+// scanLine walks one physical line from the given carry state — an open multi-line string
+// delimiter (`"""`/`”'`, else "") and the count of unbalanced `[`/`{` brackets — and
+// returns the line's TOML "code" with any line-ending `#` comment removed, plus the carry
+// state after the line. It tracks single-line `"`/`'` strings, triple-quoted multi-line
+// strings, and `[`/`{` … `]`/`}` nesting so that a `#` inside a string is not read as a
+// comment and a value spanning lines is reported as still-open. The returned code is used
+// only to classify a fresh statement (table header vs `key = value`); a continuation line's
+// code is discarded by the caller.
+func scanLine(line, mlDelim string, depth int) (code, outDelim string, outDepth int) {
+	var b strings.Builder
+	n := len(line)
+	i := 0
+	// Consume the remainder of an already-open multi-line string first.
+	if mlDelim != "" {
+		idx := strings.Index(line, mlDelim)
+		if idx < 0 {
+			return "", mlDelim, depth // the whole line is inside the string
+		}
+		i = idx + len(mlDelim)
+		mlDelim = ""
+	}
+	for i < n {
+		switch {
+		case strings.HasPrefix(line[i:], `"""`):
+			rel := strings.Index(line[i+3:], `"""`)
+			if rel < 0 {
+				return b.String(), `"""`, depth
+			}
+			i += 3 + rel + 3
+		case strings.HasPrefix(line[i:], `'''`):
+			rel := strings.Index(line[i+3:], `'''`)
+			if rel < 0 {
+				return b.String(), `'''`, depth
+			}
+			i += 3 + rel + 3
+		case line[i] == '#':
+			return b.String(), "", depth // comment runs to end of line
+		case line[i] == '"':
+			j := i + 1
+			for j < n {
+				if line[j] == '\\' {
+					j += 2
+					continue
+				}
+				if line[j] == '"' {
+					break
+				}
+				j++
+			}
+			if j > n {
+				j = n
+			} else if j < n {
+				j++ // include the closing quote
+			}
+			b.WriteString(line[i:j])
+			i = j
+		case line[i] == '\'':
+			j := i + 1
+			for j < n && line[j] != '\'' {
+				j++
+			}
+			if j < n {
+				j++ // include the closing quote
+			}
+			b.WriteString(line[i:j])
+			i = j
+		case line[i] == '[' || line[i] == '{':
+			depth++
+			b.WriteByte(line[i])
+			i++
+		case line[i] == ']' || line[i] == '}':
+			if depth > 0 {
+				depth--
+			}
+			b.WriteByte(line[i])
+			i++
+		default:
+			b.WriteByte(line[i])
+			i++
+		}
+	}
+	return b.String(), "", depth
 }
 
 // tomlTableName extracts the top-level table name from a `[table]` or

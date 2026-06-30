@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -876,12 +877,15 @@ func TestConfigValidCommentOnlyOK(t *testing.T) {
 	assertOK(t, configValidFindings(v))
 }
 
+// A file the minimal scanner cannot parse is a non-gating WARNING, not a hard error: the
+// hand-scanner is not a real TOML parser, so its confusion must not fail the build on what
+// may well be valid TOML it does not model (memento-tbu.4).
 func TestConfigValidMalformed(t *testing.T) {
 	v := hygieneVault(t)
 	writeConfig(t, v, "this line is not valid toml\n")
 	f := findToken(t, configValidFindings(v), tokConfigInvalid)
-	if f.severity != sevError {
-		t.Fatalf("malformed config severity = %v, want error", f.severity)
+	if f.severity != sevWarning {
+		t.Fatalf("unparseable config severity = %v, want warning", f.severity)
 	}
 }
 
@@ -900,6 +904,71 @@ func TestConfigValidUnrecognisedTable(t *testing.T) {
 	f := findToken(t, configValidFindings(v), tokConfigInvalid)
 	if f.severity != sevError {
 		t.Fatalf("unrecognised table severity = %v, want error", f.severity)
+	}
+}
+
+// withRecognisedKeys temporarily swaps the closed-world allowlist (empty in production)
+// so the well-formed-syntax tests below can assert that recognised keys pass config-valid
+// rather than tripping the unrecognised-key error, which is orthogonal to the parse step.
+func withRecognisedKeys(t *testing.T, keys ...string) {
+	t.Helper()
+	prev := recognisedConfigKeys
+	t.Cleanup(func() { recognisedConfigKeys = prev })
+	recognisedConfigKeys = map[string]bool{}
+	for _, k := range keys {
+		recognisedConfigKeys[k] = true
+	}
+}
+
+// scanConfigKeys must read well-formed TOML the old hand-scanner rejected as unparseable
+// (memento-tbu.4): a `[table]` header with a trailing inline comment, inline comments on
+// key lines, a multi-line array, and a multi-line string.
+func TestScanConfigKeysWellFormedSyntaxes(t *testing.T) {
+	cases := []struct {
+		name     string
+		contents string
+		want     []string
+	}{
+		{"table header inline comment", "[hooks] # configure hooks\npre = true\n", []string{"hooks", "pre"}},
+		{"key line inline comment", "name = \"vault\" # the display name\n", []string{"name"}},
+		{"hash inside string is not a comment", "name = \"a#b\"\n", []string{"name"}},
+		{"multi-line array", "tags = [\n  \"a\",\n  \"b\",\n]\n", []string{"tags"}},
+		{"multi-line string", "note = \"\"\"\nline one\n# not a comment\nline two\n\"\"\"\n", []string{"note"}},
+		{"inline table", "owner = { name = \"x\", id = 1 }\n", []string{"owner"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			keys, ok := scanConfigKeys(tc.contents)
+			if !ok {
+				t.Fatalf("scanConfigKeys(%q) ok=false, want true", tc.contents)
+			}
+			if !reflect.DeepEqual(keys, tc.want) {
+				t.Fatalf("scanConfigKeys(%q) keys = %v, want %v", tc.contents, keys, tc.want)
+			}
+		})
+	}
+}
+
+// End-to-end: those same well-formed syntaxes must clear config-valid with no finding at
+// all when their keys are recognised — proving the parse step no longer raises
+// config-invalid on valid TOML.
+func TestConfigValidWellFormedSyntaxes(t *testing.T) {
+	withRecognisedKeys(t, "hooks", "pre", "name", "tags", "note", "owner")
+	cases := []struct {
+		name     string
+		contents string
+	}{
+		{"table header inline comment", "[hooks] # configure hooks\npre = true\n"},
+		{"key line inline comment", "name = \"vault\" # the display name\n"},
+		{"multi-line array", "tags = [\n  \"a\",\n  \"b\",\n]\n"},
+		{"multi-line string", "note = \"\"\"\nline one\nline two\n\"\"\"\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			v := hygieneVault(t)
+			writeConfig(t, v, tc.contents)
+			assertOK(t, configValidFindings(v))
+		})
 	}
 }
 

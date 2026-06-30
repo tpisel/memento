@@ -114,7 +114,13 @@ pipeline are live."
 - **Manifest schema *read* compatibility** — this binary can decode the on-disk
   manifest (`schema_version ≤ CurrentSchemaVersion`). Distinct from `compile`'s
   *write-time* validity, and split from the liveness framing (see *Schema-compat*).
-- **Config validity** — `.memento/config.toml` parses and its keys are recognised.
+- **Config validity** — `.memento/config.toml` parses and its keys are recognised. An
+  unrecognised key is a gating `error` (a closed-world violation). A file the minimal
+  hand-scanner cannot parse is only a non-gating `warning`: that scanner is not a real
+  TOML parser, so its confusion is not proof of malformed input, and gating on it would
+  reject valid TOML it does not model (inline comments after a `[table]` header or on a
+  key line, multi-line arrays/strings — the memento-tbu.4 forward trap). Revisit if a real
+  TOML dependency is ever added.
 - **Vault discoverability** — exactly one marker dir resolves from the repo root
   (ambiguity is reported, never a panic).
 - **Ignore correctness** — the `.gitignore` memento stanzas (and `.mementoignore`)
@@ -258,7 +264,7 @@ asterisked.)
 | `manifest-schema-readable` | `manifest-schema-unreadable` | hygiene | any | error | upgrade memento |
 | `manifest-present` | `manifest-not-found` | hygiene | session, ci | warning | `memento compile` |
 | `manifest-fresh` | `manifest-stale` | hygiene | session, ci | warning | `memento compile` |
-| `config-valid` | `config-invalid` | hygiene | any | error | fix `.memento/config.toml` |
+| `config-valid` | `config-invalid` | hygiene | any | warning / error | fix `.memento/config.toml` |
 | `vault-discoverable` | `vault-ambiguous`, `vault-absent` | hygiene | any | error | set `MEMENTO_VAULT_ROOT` |
 | `ignore-correct` | `gitignore-stanza-missing` | hygiene | any | warning | `memento init` |
 | `tool-read-files-present` | `writing-md-absent` | hygiene | session | nudge | author a writing convention |
