@@ -1008,7 +1008,10 @@ func TestRunDoctorExitLive(t *testing.T) {
 
 func TestRunDoctorExitOff(t *testing.T) {
 	t.Setenv("CI", "")
-	repoRoot := t.TempDir()
+	// A wired gate and a resolvable vault, but the binary the gate shells to is missing:
+	// enforcement is genuinely OFF (binary-not-on-path), distinct from "no vault here".
+	repoRoot := liveClaudeRepo(t)
+	doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
 	t.Setenv("MEMENTO_BIN", filepath.Join(repoRoot, "no-memento"))
 	chdirCLI(t, repoRoot)
 
@@ -1046,5 +1049,107 @@ func TestRunDoctorRejectsArgs(t *testing.T) {
 	code := Run([]string{"doctor", "extra"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("doctor extra-arg exit = %d, want 2", code)
+	}
+}
+
+// --- degenerate cases (integration) --------------------------------------
+//
+// These three prove the ADR-0032 skip-cascade reads cleanly across the REAL check set:
+// the most common invocations (no vault / outside a project, ambiguous markers, non-git
+// tree) each produce a coherent report with a specific exit code and never panic.
+
+// No vault / run outside a project: vault-discoverable fails as the DAG root, so every
+// vault-dependent check skips blocked-by vault-discoverable; doctor leads with "no memento
+// vault here" and exits 1 (vault-absent gates) — not a cascade of look-alike errors, not a
+// crash.
+func TestRunDoctorNoVault(t *testing.T) {
+	t.Setenv("CI", "")
+	repoRoot := t.TempDir() // empty: no vault, no gate, no git
+	realBin(t)              // binary resolves, so the missing vault is the only gating fact
+	chdirCLI(t, repoRoot)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"doctor"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("no-vault exit = %d, want 1 (vault-absent gates); stderr=%q", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.HasPrefix(out, "no memento vault here") {
+		t.Fatalf("headline = %q, want 'no memento vault here' lead", out)
+	}
+	// Every vault-dependent check skips, naming vault-discoverable — a coherent cascade.
+	for _, node := range []string{nodeManifestPresent, nodeConfigValid, nodeIgnoreCorrect, nodeToolReadFiles, nodeGrantFresh} {
+		want := "[skip] " + node + ": blocked-by " + nodeVaultDiscoverable
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q; got:\n%s", want, out)
+		}
+	}
+	// No git either: precommit-anchor skips blocked-by git-repo, distinct from the vault skips.
+	if want := "[skip] " + nodePrecommitAnchor + ": blocked-by " + nodeGitRepo; !strings.Contains(out, want) {
+		t.Fatalf("output missing %q; got:\n%s", want, out)
+	}
+}
+
+// Non-git vault: SUPPORTED with a named capability loss. grant-fresh and precommit-anchor
+// skip blocked-by git-repo, but the git-independent live-fire probe still runs, so
+// enforcement liveness is STILL assertable — the headline is LIVE and the exit is clean.
+func TestRunDoctorNonGitVault(t *testing.T) {
+	t.Setenv("CI", "")
+	repoRoot := t.TempDir() // deliberately not a git tree
+	pre := writeDoctorScript(t, repoRoot, ".claude/memento-pre-write-vault-guard.sh", preWriteScriptBody)
+	post := writeDoctorScript(t, repoRoot, ".claude/memento-post-write-compile.sh", postWriteScriptBody)
+	writeClaudeSettings(t, repoRoot,
+		hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", pre},
+		hookSpec{"PostToolUse", "Write|Edit|MultiEdit|Bash", post},
+	)
+	realBin(t)
+	stubGateSchema(t, manifest.CurrentSchemaVersion)
+	doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
+	chdirCLI(t, repoRoot)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"doctor"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("non-git vault exit = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.HasPrefix(out, "vault write enforcement: LIVE") {
+		t.Fatalf("headline = %q, want LIVE (enforcement is assertable without git)", out)
+	}
+	for _, node := range []string{nodePrecommitAnchor, nodeGrantFresh} {
+		want := "[skip] " + node + ": blocked-by " + nodeGitRepo
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q; got:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(out, "[ok] "+nodeLiveFire) {
+		t.Fatalf("live-fire did not run/pass without git; got:\n%s", out)
+	}
+}
+
+// Ambiguous vault (multiple markers): vault-discoverable emits vault-ambiguous (error) with
+// the MEMENTO_VAULT_ROOT remediation; doctor exits 1 and does not panic.
+func TestRunDoctorAmbiguousVault(t *testing.T) {
+	t.Setenv("CI", "")
+	repoRoot := t.TempDir()
+	for _, sub := range []string{"alpha", "beta"} { // two marker dirs => ambiguous discovery
+		if err := os.MkdirAll(filepath.Join(repoRoot, sub, vault.MarkerDirName), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	realBin(t)
+	chdirCLI(t, repoRoot)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"doctor"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("ambiguous-vault exit = %d, want 1 (vault-ambiguous gates); stderr=%q", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, tokVaultAmbiguous) {
+		t.Fatalf("output missing %q token; got:\n%s", tokVaultAmbiguous, out)
+	}
+	if !strings.Contains(out, "MEMENTO_VAULT_ROOT") {
+		t.Fatalf("output missing MEMENTO_VAULT_ROOT remediation; got:\n%s", out)
 	}
 }

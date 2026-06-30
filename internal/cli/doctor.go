@@ -153,8 +153,11 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 // binary-schema-compatible depends on
 // binary-on-path (no point asking a binary that is not there what schema it reads) and
 // reads the manifest opportunistically, treating an absent vault as nothing to judge.
-// precommit-anchor-live depends on git-repo (no .git/hooks to reason about outside a git
-// tree), so it SKIPS (blocked-by git-repo) rather than reporting a dishonest verdict.
+// precommit-anchor-live and grant-fresh both depend on git-repo: there are no .git/hooks
+// to reason about and no `git status` to date a grant against outside a git tree, so each
+// SKIPS (blocked-by git-repo) rather than reporting a dishonest verdict. grant-fresh names
+// vault-discoverable first, so in a non-vault non-git dir it skips blocked-by the vault
+// root (the deeper cause) rather than git.
 // The installation-property hygiene nodes config-valid, ignore-correct, and
 // tool-read-files-present each assert something init establishes (the one-directional
 // init↔doctor symmetry) and hang off vault-discoverable, so with no vault they SKIP rather
@@ -222,7 +225,7 @@ func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
 		},
 		{
 			name: nodeGrantFresh, class: classLiveness, assertableIn: ctxSession,
-			preconditions: []string{nodeVaultDiscoverable},
+			preconditions: []string{nodeVaultDiscoverable, nodeGitRepo},
 			run:           func() []finding { return grantFreshFindings(v) },
 		},
 		{
@@ -249,6 +252,14 @@ func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
 // while enforcement itself is LIVE. (Headline/help wording is retrofitted further in a
 // dependent bead.)
 func printDoctorHeadline(stdout io.Writer, outcomes []checkOutcome, caveat string) {
+	// A failed vault root is the dominant fact: run outside a project (no vault) or with
+	// ambiguous markers, "enforcement OFF" is a look-alike of "no usable vault here", so
+	// lead with the vault verdict and let the body carry the per-node detail rather than
+	// blaring a cascade (ADR-0032 degenerate cases).
+	if headline, blocking := vaultHeadline(outcomes); blocking {
+		fmt.Fprintln(stdout, headline)
+		return
+	}
 	if live, reason := livenessSummary(outcomes); !live {
 		fmt.Fprintf(stdout, "vault write enforcement: OFF (%s)\n", reason)
 		return
@@ -258,6 +269,30 @@ func printDoctorHeadline(stdout io.Writer, outcomes []checkOutcome, caveat strin
 		return
 	}
 	fmt.Fprintln(stdout, "vault write enforcement: LIVE")
+}
+
+// vaultHeadline returns the headline to lead with when the vault root could not be
+// resolved, and whether that case applies. vault-absent (run outside a project) reports
+// "no memento vault here"; ambiguous markers report the set-MEMENTO_VAULT_ROOT remediation.
+// A resolved vault returns blocking=false, deferring to the LIVE/OFF liveness summary. The
+// body still renders the vault-discoverable error and every skip(blocked-by) below this
+// line, so leading the headline collapses the look-alike cascade without hiding detail.
+func vaultHeadline(outcomes []checkOutcome) (headline string, blocking bool) {
+	for _, o := range outcomes {
+		if o.node.name != nodeVaultDiscoverable {
+			continue
+		}
+		for _, f := range o.findings {
+			switch f.token {
+			case tokVaultAbsent:
+				return "no memento vault here", true
+			case tokVaultAmbiguous:
+				return "ambiguous memento vault; " + f.remediation, true
+			}
+		}
+		return "", false
+	}
+	return "", false
 }
 
 // livenessSummary reports whether enforcement is LIVE and, when not, the detail of the
@@ -945,8 +980,10 @@ func sourcedPaths(content string) []string {
 // grantFreshFindings is the grant-fresh node: an unlock grant whose key has no matching
 // uncommitted edit is stale — the edit it thawed the note for already committed (and
 // should have re-locked) or never happened. A hygiene warning, never an enforcement
-// error. It depends on vault-discoverable, so with no vault it SKIPS rather than
-// reporting a dishonest ok.
+// error. It depends on vault-discoverable AND git-repo (dating a grant against the working
+// tree needs `git status`), so with no vault or no git it SKIPS rather than reporting a
+// dishonest ok; the internal git-error guard below is the defensive backstop for a git
+// failure the precondition did not catch.
 func grantFreshFindings(v vault.Vault) []finding {
 	grants, err := enforce.LoadGrants(v)
 	if err != nil {
