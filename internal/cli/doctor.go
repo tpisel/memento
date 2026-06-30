@@ -728,7 +728,12 @@ func manifestFreshFindings(v vault.Vault) []finding {
 		return []finding{{severity: sevWarning,
 			detail: "could not load the on-disk manifest to check freshness: " + err.Error()}}
 	}
-	if !manifestProjectionsEqual(fresh, onDisk) {
+	equal, err := manifestProjectionsEqual(fresh, onDisk)
+	if err != nil {
+		return []finding{{severity: sevWarning,
+			detail: "could not canonicalise the recompiled manifest to check freshness: " + err.Error()}}
+	}
+	if !equal {
 		return []finding{{token: tokManifestStale, severity: sevWarning,
 			detail:      "the on-disk manifest does not match a recompile of the vault; a note changed without recompiling",
 			remediation: "memento compile"}}
@@ -736,23 +741,28 @@ func manifestFreshFindings(v vault.Vault) []finding {
 	return okFindings()
 }
 
+// manifestProjectionMarshal canonicalises a freshly compiled manifest for comparison. It is
+// a seam so the near-impossible marshal failure can be exercised by manifest-fresh's tests.
+var manifestProjectionMarshal = manifest.Marshal
+
 // manifestProjectionsEqual reports whether two manifests are equal as their canonical
 // DECODED projection. The freshly compiled manifest is round-tripped through
 // Marshal→Decode so it is compared in exactly the form the on-disk artifact was loaded in:
 // this zeroes compile-only unexported state (OutLink.occurrence) and normalises
 // omitempty / whitespace / key-ordering, so only a genuine content divergence trips the
 // diff. A marshal/decode failure means the recompile cannot be canonicalised for
-// comparison, so the two cannot be proven equal.
-func manifestProjectionsEqual(fresh, onDisk manifest.Manifest) bool {
-	data, err := manifest.Marshal(fresh)
+// comparison: an internal serialization failure is undiagnosable, not evidence of
+// staleness, so it is returned to the caller rather than collapsed into "not equal".
+func manifestProjectionsEqual(fresh, onDisk manifest.Manifest) (bool, error) {
+	data, err := manifestProjectionMarshal(fresh)
 	if err != nil {
-		return false
+		return false, err
 	}
 	proj, err := manifest.Decode(data)
 	if err != nil {
-		return false
+		return false, err
 	}
-	return reflect.DeepEqual(proj, onDisk)
+	return reflect.DeepEqual(proj, onDisk), nil
 }
 
 // --- live-fire -----------------------------------------------------------

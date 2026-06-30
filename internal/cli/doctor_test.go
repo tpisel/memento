@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -532,6 +533,29 @@ func TestManifestFreshIgnoresReserialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertOK(t, manifestFreshFindings(v))
+}
+
+// An internal Marshal failure while canonicalising the recompile is undiagnosable, not
+// evidence of staleness: it must yield a plain warning WITHOUT the manifest-stale token,
+// matching the sibling Compile/Load failure branches. Mislabeling it manifest-stale would
+// tell the user a note changed when the corpus is actually fresh.
+func TestManifestFreshMarshalErrorIsUndiagnosable(t *testing.T) {
+	v := freshVault(t)
+	orig := manifestProjectionMarshal
+	manifestProjectionMarshal = func(manifest.Manifest) ([]byte, error) {
+		return nil, errors.New("injected marshal failure")
+	}
+	t.Cleanup(func() { manifestProjectionMarshal = orig })
+
+	findings := manifestFreshFindings(v)
+	for _, f := range findings {
+		if f.token == tokManifestStale {
+			t.Fatal("a Marshal failure was mislabeled manifest-stale; it must be an undiagnosable warning")
+		}
+	}
+	if len(findings) != 1 || findings[0].severity != sevWarning || findings[0].token != "" {
+		t.Fatalf("want one untokened warning, got %+v", findings)
+	}
 }
 
 // manifest-fresh is side-effect-free: it recompiles to a buffer and must not touch the
