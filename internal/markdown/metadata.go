@@ -307,14 +307,16 @@ func parseFrontmatter(raw string) (frontmatter, error) {
 			return frontmatter{}, fmt.Errorf("%w: empty key on line %d", ErrMalformedFrontmatter, i+1)
 		}
 
-		if key == "tags" && value == "" {
-			tags, next, err := parseBlockTags(lines, i+1)
+		if value == "" {
+			items, next, found, err := parseBlockSequence(lines, i+1)
 			if err != nil {
 				return frontmatter{}, err
 			}
-			fm.tags = tags
-			i = next - 1
-			continue
+			if found {
+				applyFrontmatterListField(&fm, key, items)
+				i = next - 1
+				continue
+			}
 		}
 
 		if err := applyFrontmatterField(&fm, key, value); err != nil {
@@ -325,8 +327,14 @@ func parseFrontmatter(raw string) (frontmatter, error) {
 	return fm, nil
 }
 
-func parseBlockTags(lines []string, start int) ([]string, int, error) {
-	var tags []string
+// parseBlockSequence consumes a YAML block sequence ("- item" lines) under a key
+// whose inline value was empty, beginning at line index start. It returns the
+// captured items, the index of the first line past the sequence, and whether any
+// item was found. found=false means the key carried no block sequence (the next
+// line is another key or the fence), so the caller treats the empty value as a
+// scalar. Block sequences are standard YAML and the form Obsidian's property
+// editor emits, so they must parse under any key, not just tags (memento-dl5).
+func parseBlockSequence(lines []string, start int) (items []string, next int, found bool, err error) {
 	i := start
 	for ; i < len(lines); i++ {
 		raw := strings.TrimSuffix(lines[i], "\r")
@@ -337,13 +345,27 @@ func parseBlockTags(lines []string, start int) ([]string, int, error) {
 		if !strings.HasPrefix(trimmed, "- ") {
 			break
 		}
-		tag := cleanScalar(strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")))
-		if tag == "" {
-			return nil, 0, fmt.Errorf("%w: empty tag on line %d", ErrMalformedFrontmatter, i+1)
+		item := cleanScalar(strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")))
+		if item == "" {
+			return nil, 0, false, fmt.Errorf("%w: empty block-sequence item on line %d", ErrMalformedFrontmatter, i+1)
 		}
-		tags = append(tags, tag)
+		items = append(items, item)
 	}
-	return tags, i, nil
+	return items, i, len(items) > 0, nil
+}
+
+// applyFrontmatterListField stores a block-sequence value. tags is the only typed
+// list field; a block sequence under any other key is durable human metadata with
+// no typed home, so it is captured-and-ignored, mirroring how unknown scalar keys
+// are preserved-by-ignoring. The point is to accept standard YAML list syntax, not
+// to reject it (memento-dl5).
+func applyFrontmatterListField(fm *frontmatter, key string, items []string) {
+	switch key {
+	case "tags":
+		fm.tags = items
+	default:
+		// Non-tags list metadata: accepted and ignored by design.
+	}
 }
 
 func applyFrontmatterField(fm *frontmatter, key, value string) error {

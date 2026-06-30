@@ -385,6 +385,51 @@ tags:
 	}
 }
 
+func TestExtractMetadataParsesBlockSequenceUnderNonTagsKey(t *testing.T) {
+	// Standard YAML block sequences must parse under ANY key, not just tags.
+	// This is the form Obsidian's property editor emits for list fields; rejecting
+	// it discarded the whole frontmatter and silently downgraded the note's mode
+	// (memento-dl5). The block sequence must be fully consumed so a following key
+	// (here mode) still parses.
+	source := []byte(`---
+scope:
+  - theory
+  - modelling doctrine
+mode: living
+---
+
+# Title
+`)
+
+	got, err := ExtractMetadata("scope.md", source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+	if got.Mode != ModeLiving {
+		t.Fatalf("Mode = %q, want %q (block sequence not consumed before following key)", got.Mode, ModeLiving)
+	}
+}
+
+func TestExtractMetadataAcceptsInlineFlowUnderNonTagsKey(t *testing.T) {
+	// The inline flow form already parsed; guard that it keeps doing so and that a
+	// following key is still read.
+	source := []byte(`---
+scope: ["theory", "modelling doctrine"]
+mode: living
+---
+
+# Title
+`)
+
+	got, err := ExtractMetadata("scope.md", source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+	if got.Mode != ModeLiving {
+		t.Fatalf("Mode = %q, want %q", got.Mode, ModeLiving)
+	}
+}
+
 func TestBodyHashUsesBodyExcludingFrontmatter(t *testing.T) {
 	body := []byte("# Title\n\nBody text.\n")
 	bodyHash := hashBody(body)
