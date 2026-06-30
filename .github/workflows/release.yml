@@ -9,8 +9,14 @@ permissions:
   contents: write
 
 jobs:
+  # Same matrix `just check` gate CI runs — release only proceeds if it is green,
+  # so goreleaser can never publish from a tree whose checks fail on any platform.
+  check:
+    uses: ./.github/workflows/check.yml
+
   release:
     name: GoReleaser
+    needs: check
     runs-on: ubuntu-latest
 
     steps:

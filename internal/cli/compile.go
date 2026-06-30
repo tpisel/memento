@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/tpisel/memento/internal/brief"
 	"github.com/tpisel/memento/internal/enforce"
@@ -251,7 +252,8 @@ func writeBriefArtifact(v vault.Vault, m manifest.Manifest) error {
 // 'brief' invocation racing on the same manifest/brief artifact — never observes a
 // half-written file. The rename is atomic within a filesystem; the temp file shares
 // path's directory to keep both sides on one. The temp is removed on any failure
-// before the rename lands (memento-tbu.8).
+// before the rename lands (memento-tbu.8). renameReplace, not a bare os.Rename,
+// absorbs the transient Windows replace error two racers can provoke.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
@@ -272,11 +274,35 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		removeTmp()
 		return err
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := renameReplace(tmpName, path); err != nil {
 		removeTmp()
 		return err
 	}
 	return nil
+}
+
+// renameReplace renames src over dst. On POSIX rename(2) atomically replaces and
+// never fails under concurrency, so this is a single os.Rename. On Windows os.Rename
+// is MoveFileEx(MOVEFILE_REPLACE_EXISTING), which returns a TRANSIENT
+// ERROR_ACCESS_DENIED / ERROR_SHARING_VIOLATION when the destination is momentarily
+// held by a competing replace (a parallel lazy recompile from another 'brief'), an
+// open reader without FILE_SHARE_DELETE, or an antivirus scan. Those are not real
+// failures — the holder releases in microseconds — so a short bounded retry lets the
+// replace land and keeps writeFileAtomic's concurrency guarantee true on Windows too.
+// retryableRenameErr is always false off Windows, so non-Windows stays single-shot.
+func renameReplace(src, dst string) error {
+	const attempts = 20
+	delay := time.Millisecond
+	for i := 0; ; i++ {
+		err := os.Rename(src, dst)
+		if err == nil || i == attempts-1 || !retryableRenameErr(err) {
+			return err
+		}
+		time.Sleep(delay)
+		if delay < 50*time.Millisecond {
+			delay *= 2
+		}
+	}
 }
 
 // printCompileWarnings raises each malformed-frontmatter warning as a loud
