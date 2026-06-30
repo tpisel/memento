@@ -430,6 +430,151 @@ func TestManifestSchemaReadableMalformed(t *testing.T) {
 	}
 }
 
+// --- manifest-present & manifest-fresh -----------------------------------
+
+// freshVault builds a vault with one note and a freshly compiled, on-disk manifest, so a
+// manifest-fresh check over it reports ok until a note is edited out of band.
+func freshVault(t *testing.T) vault.Vault {
+	t.Helper()
+	root := t.TempDir()
+	marker := filepath.Join(root, vault.MarkerDirName)
+	if err := os.MkdirAll(marker, 0o755); err != nil {
+		t.Fatalf("mkdir marker: %v", err)
+	}
+	v := vault.Vault{Root: root, MarkerDir: marker, ManifestPath: filepath.Join(marker, vault.ManifestFileName)}
+	if err := os.WriteFile(filepath.Join(root, "note.md"), []byte("---\ntitle: Note\n---\n# Note\n\nBody.\n"), 0o644); err != nil {
+		t.Fatalf("write note: %v", err)
+	}
+	if err := manifest.Write(v); err != nil {
+		t.Fatalf("compile manifest: %v", err)
+	}
+	return v
+}
+
+func TestManifestPresentOK(t *testing.T) {
+	assertOK(t, manifestPresentFindings(freshVault(t)))
+}
+
+func TestManifestPresentMissing(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, vault.MarkerDirName)
+	if err := os.MkdirAll(marker, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	v := vault.Vault{Root: root, MarkerDir: marker, ManifestPath: filepath.Join(marker, vault.ManifestFileName)}
+	f := findToken(t, manifestPresentFindings(v), tokManifestNotFound)
+	if f.severity != sevWarning {
+		t.Fatalf("manifest-not-found severity = %v, want warning", f.severity)
+	}
+}
+
+// A freshly compiled-and-committed vault is fresh.
+func TestManifestFreshOK(t *testing.T) {
+	assertOK(t, manifestFreshFindings(freshVault(t)))
+}
+
+// Editing a note without recompiling makes the on-disk manifest stale: the authoritative
+// in-buffer recompile diverges from the artifact.
+func TestManifestFreshStaleAfterEdit(t *testing.T) {
+	v := freshVault(t)
+	if err := os.WriteFile(filepath.Join(v.Root, "note.md"), []byte("---\ntitle: Note\n---\n# Note\n\nEdited body, never recompiled.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := findToken(t, manifestFreshFindings(v), tokManifestStale)
+	if f.severity != sevWarning {
+		t.Fatalf("manifest-stale severity = %v, want warning", f.severity)
+	}
+}
+
+// A re-serialized but semantically equivalent on-disk manifest must NOT trip
+// manifest-stale: the diff runs over the canonical decoded projection, not raw bytes, so
+// whitespace and serialization differences are invisible to it.
+func TestManifestFreshIgnoresReserialization(t *testing.T) {
+	v := freshVault(t)
+	m, err := manifest.Load(v)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	// Compact re-encoding differs byte-for-byte from memento's indented canonical Marshal
+	// while decoding to the identical model; a raw-byte diff would call this stale.
+	scrambled, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if bytes.Equal(scrambled, mustReadFile(t, v.ManifestPath)) {
+		t.Fatal("re-encoding did not change the bytes; the test proves nothing")
+	}
+	if err := os.WriteFile(v.ManifestPath, scrambled, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assertOK(t, manifestFreshFindings(v))
+}
+
+// manifest-fresh is side-effect-free: it recompiles to a buffer and must not touch the
+// on-disk manifest. Writing would race the PostToolUse compile hook — a diagnostic must
+// not mutate what it diagnoses.
+func TestManifestFreshWritesNothing(t *testing.T) {
+	v := freshVault(t)
+	// Make it stale so the check does its most work (recompile, diff, and emit a finding).
+	if err := os.WriteFile(filepath.Join(v.Root, "note.md"), []byte("---\ntitle: Note\n---\n# Note\n\nEdited.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(v.ManifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeBytes := mustReadFile(t, v.ManifestPath)
+
+	_ = manifestFreshFindings(v)
+
+	after, err := os.Stat(v.ManifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.ModTime().Equal(after.ModTime()) {
+		t.Fatalf("manifest mtime changed %v -> %v; doctor must not write", before.ModTime(), after.ModTime())
+	}
+	if !bytes.Equal(beforeBytes, mustReadFile(t, v.ManifestPath)) {
+		t.Fatal("manifest bytes changed; doctor must not write the manifest")
+	}
+}
+
+// With a resolvable vault but no compiled manifest, manifest-present emits
+// manifest-not-found and manifest-fresh SKIPS through the manifest chain rather than
+// recompiling against an artifact that is not there.
+func TestManifestFreshSkipsWithNoManifest(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, vault.MarkerDirName)
+	if err := os.MkdirAll(marker, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	v := vault.Vault{Root: root, MarkerDir: marker, ManifestPath: filepath.Join(marker, vault.ManifestFileName)}
+	outcomes, err := runChecks(doctorNodes(t.TempDir(), v, nil))
+	if err != nil {
+		t.Fatalf("runChecks: %v", err)
+	}
+	mp := outcomeFor(t, outcomes, nodeManifestPresent)
+	if f := findToken(t, mp.findings, tokManifestNotFound); f.severity != sevWarning {
+		t.Fatalf("manifest-present finding = %+v, want manifest-not-found warning", f)
+	}
+	mf := outcomeFor(t, outcomes, nodeManifestFresh)
+	if !mf.skipped || mf.blockedBy != nodeManifestSchemaRead {
+		t.Fatalf("manifest-fresh outcome = %+v, want skipped blocked-by %s", mf, nodeManifestSchemaRead)
+	}
+	if mf.passed() {
+		t.Fatal("a skipped manifest-fresh must not count as passed")
+	}
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return data
+}
+
 // --- grant-fresh ---------------------------------------------------------
 
 func TestGrantStaleWarns(t *testing.T) {

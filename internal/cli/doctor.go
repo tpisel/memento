@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
@@ -65,7 +66,9 @@ const (
 	nodeNoLegacyBroadDeny  = "no-legacy-broad-deny"
 	nodeBinaryOnPath       = "binary-on-path"
 	nodeBinarySchemaCompat = "binary-schema-compatible"
+	nodeManifestPresent    = "manifest-present"
 	nodeManifestSchemaRead = "manifest-schema-readable"
+	nodeManifestFresh      = "manifest-fresh"
 	nodeLiveFire           = "live-fire"
 	nodeGrantFresh         = "grant-fresh"
 	nodeGitRepo            = "git-repo"
@@ -85,7 +88,9 @@ const (
 	tokLegacyBroadDenyWired  = "legacy-broad-deny-wired"
 	tokBinaryNotOnPath       = "binary-not-on-path"
 	tokBinarySchemaTooOld    = "binary-schema-too-old"
+	tokManifestNotFound      = "manifest-not-found"
 	tokManifestSchemaUnread  = "manifest-schema-unreadable"
+	tokManifestStale         = "manifest-stale"
 	tokLiveFireNotDenied     = "live-fire-not-denied"
 	tokGrantStale            = "grant-stale"
 	tokVaultAmbiguous        = "vault-ambiguous"
@@ -132,9 +137,13 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 
 // doctorNodes assembles the ADR-0032 check DAG over a memento installation. The gate /
 // postwrite / legacy nodes read the COMMITTED agent config under repoRoot and run
-// regardless of vault resolution; grant-fresh and manifest-schema-readable need a
-// vault, so they depend on vault-discoverable and SKIP (blocked-by) when no vault
-// resolves — never a green "not checked". binary-schema-compatible depends on
+// regardless of vault resolution; the manifest chain and grant-fresh need a vault, so
+// they hang off vault-discoverable and SKIP (blocked-by) when no vault resolves — never a
+// green "not checked". The manifest chain is the ADR-0032 spine
+// vault-discoverable → manifest-present → manifest-schema-readable → manifest-fresh: each
+// edge is a real precondition, so an absent manifest SKIPS schema-readable and fresh
+// rather than letting them judge an artifact that is not there.
+// binary-schema-compatible depends on
 // binary-on-path (no point asking a binary that is not there what schema it reads) and
 // reads the manifest opportunistically, treating an absent vault as nothing to judge.
 // precommit-anchor-live depends on git-repo (no .git/hooks to reason about outside a git
@@ -173,9 +182,19 @@ func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
 			run:           func() []finding { return binarySchemaCompatFindings(v, vaultErr) },
 		},
 		{
-			name: nodeManifestSchemaRead, class: classHygiene, assertableIn: ctxAny,
+			name: nodeManifestPresent, class: classHygiene, assertableIn: ctxAny, // session, ci
 			preconditions: []string{nodeVaultDiscoverable},
+			run:           func() []finding { return manifestPresentFindings(v) },
+		},
+		{
+			name: nodeManifestSchemaRead, class: classHygiene, assertableIn: ctxAny,
+			preconditions: []string{nodeManifestPresent},
 			run:           func() []finding { return manifestSchemaReadableFindings(v) },
+		},
+		{
+			name: nodeManifestFresh, class: classHygiene, assertableIn: ctxAny, // session, ci
+			preconditions: []string{nodeManifestSchemaRead},
+			run:           func() []finding { return manifestFreshFindings(v) },
 		},
 		{
 			name: nodeLiveFire, class: classLiveness, assertableIn: ctxAny,
@@ -521,15 +540,31 @@ func binarySchemaCompatFindings(v vault.Vault, vaultErr error) []finding {
 	return okFindings()
 }
 
+// --- manifest-present ----------------------------------------------------
+
+// manifestPresentFindings is the manifest-present node: is there a compiled manifest on
+// disk at all. It is the DAG root for the rest of the manifest chain
+// (manifest-schema-readable and manifest-fresh depend on it), so an absent manifest SKIPS
+// those rather than letting them judge a file that is not there. A never-compiled vault is
+// a hygiene warning, not an enforcement-OFF error — it is one `memento compile` away from
+// healthy, and the gate's loud signal is owned by gate-committed-config.
+func manifestPresentFindings(v vault.Vault) []finding {
+	if fileExists(v.ManifestPath) {
+		return okFindings()
+	}
+	return []finding{{token: tokManifestNotFound, severity: sevWarning,
+		detail: "no compiled manifest at " + v.ManifestPath, remediation: "memento compile"}}
+}
+
 // --- manifest-schema-readable --------------------------------------------
 
 // manifestSchemaReadableFindings is the manifest-schema-readable node: can a memento
 // binary at THIS schema (doctor's own compiled-in CurrentSchemaVersion) decode the
 // committed on-disk manifest at all. A static fact about the artifact-vs-schema,
-// independent of any gate and true even where none is wired — hygiene, any. An absent
-// manifest is deferred to a future manifest-present node (this node only judges a
-// manifest that exists); a manifest whose schema exceeds this binary's, or one that
-// will not decode, is unreadable.
+// independent of any gate and true even where none is wired — hygiene, any. Its
+// manifest-present precondition guarantees the file exists, so the !present branch is
+// defensive; a manifest whose schema exceeds this binary's, or one that will not decode,
+// is unreadable.
 func manifestSchemaReadableFindings(v vault.Vault) []finding {
 	schema, present, err := readManifestSchemaVersion(v.ManifestPath)
 	if err != nil {
@@ -568,6 +603,59 @@ func readManifestSchemaVersion(manifestPath string) (version int, present bool, 
 		return 0, false, err
 	}
 	return head.SchemaVersion, true, nil
+}
+
+// --- manifest-fresh ------------------------------------------------------
+
+// manifestFreshFindings is the manifest-fresh node: does the committed on-disk manifest
+// match an AUTHORITATIVE in-buffer recompile of the vault. It recompiles to memory via
+// manifest.Compile and diffs the CANONICAL DECODED PROJECTION both sides compute — the
+// freshly compiled manifest round-tripped through Marshal→Decode against the on-disk
+// Load — never raw bytes, so re-serialization, key-ordering, or whitespace differences
+// can never raise a phantom manifest-stale. It MUST NOT write: a write would race the
+// PostToolUse compile hook, and a diagnostic must not mutate what it diagnoses. This is
+// brief/read's mtime freshness predicate (ADR-0033 / memento-7z4) at higher fidelity and
+// cost; the cheap mtime heuristic is allowed to report fresh where this content diff
+// reports stale (touch-without-change, clock skew). A hygiene warning, never an
+// enforcement error. Its preconditions guarantee a present, schema-readable manifest, so a
+// Compile or Load failure here is unexpected and reported as an undiagnosable warning
+// rather than asserted as staleness.
+func manifestFreshFindings(v vault.Vault) []finding {
+	fresh, err := manifest.Compile(v)
+	if err != nil {
+		return []finding{{severity: sevWarning,
+			detail: "could not recompile the vault to check manifest freshness: " + err.Error()}}
+	}
+	onDisk, err := manifest.Load(v)
+	if err != nil {
+		return []finding{{severity: sevWarning,
+			detail: "could not load the on-disk manifest to check freshness: " + err.Error()}}
+	}
+	if !manifestProjectionsEqual(fresh, onDisk) {
+		return []finding{{token: tokManifestStale, severity: sevWarning,
+			detail:      "the on-disk manifest does not match a recompile of the vault; a note changed without recompiling",
+			remediation: "memento compile"}}
+	}
+	return okFindings()
+}
+
+// manifestProjectionsEqual reports whether two manifests are equal as their canonical
+// DECODED projection. The freshly compiled manifest is round-tripped through
+// Marshal→Decode so it is compared in exactly the form the on-disk artifact was loaded in:
+// this zeroes compile-only unexported state (OutLink.occurrence) and normalises
+// omitempty / whitespace / key-ordering, so only a genuine content divergence trips the
+// diff. A marshal/decode failure means the recompile cannot be canonicalised for
+// comparison, so the two cannot be proven equal.
+func manifestProjectionsEqual(fresh, onDisk manifest.Manifest) bool {
+	data, err := manifest.Marshal(fresh)
+	if err != nil {
+		return false
+	}
+	proj, err := manifest.Decode(data)
+	if err != nil {
+		return false
+	}
+	return reflect.DeepEqual(proj, onDisk)
 }
 
 // --- live-fire -----------------------------------------------------------
