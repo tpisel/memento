@@ -736,12 +736,27 @@ func TestPrecommitEditedButReachableNotError(t *testing.T) {
 	}
 }
 
-// No memento anchor and no redirect is absence, not shadowing — this node does not own it.
-func TestPrecommitNoAnchorNoRedirectOK(t *testing.T) {
+// An effective pre-commit hook that never reaches memento, with no redirect, is absence —
+// not shadowing — but the ratification-boundary audit is just as dead, so it is a not-live
+// error under the precommit-anchor-missing token.
+func TestPrecommitNoAnchorNoRedirectMissing(t *testing.T) {
 	repoRoot := t.TempDir()
 	initCLIGit(t, repoRoot)
 	writeDoctorScript(t, repoRoot, ".git/hooks/pre-commit", benignScriptBody)
-	assertOK(t, precommitAnchorFindings(repoRoot))
+	f := findToken(t, precommitAnchorFindings(repoRoot), tokPrecommitMissing)
+	if f.severity != sevError {
+		t.Fatalf("precommit-anchor-missing severity = %v, want error", f.severity)
+	}
+}
+
+// No pre-commit hook file at all (never wired) is also absence: missing, not shadowed.
+func TestPrecommitNoHookFileMissing(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	f := findToken(t, precommitAnchorFindings(repoRoot), tokPrecommitMissing)
+	if f.severity != sevError {
+		t.Fatalf("precommit-anchor-missing severity = %v, want error", f.severity)
+	}
 }
 
 // With no .git tree, precommit-anchor-live SKIPS blocked-by git-repo rather than reporting

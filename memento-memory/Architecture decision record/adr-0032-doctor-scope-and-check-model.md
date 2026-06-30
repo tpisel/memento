@@ -251,7 +251,7 @@ asterisked.)
 | `gate-effective-local` | `gate-locally-overridden` | liveness | session | error | restore local config |
 | `postwrite-hook-live` | `postwrite-hook-missing` | liveness | session, ci | warning | `memento init` |
 | `no-legacy-broad-deny` | `legacy-broad-deny-wired` | liveness | session, ci | error | remove legacy guard |
-| `precommit-anchor-live` | `precommit-shadowed` | liveness | session, ci | error | unset `core.hooksPath` / compose memento step |
+| `precommit-anchor-live` | `precommit-shadowed`, `precommit-anchor-missing` | liveness | session, ci | error / error | unset `core.hooksPath` / compose memento step ; `memento init` |
 | `binary-on-path` | `binary-not-on-path` | liveness | session | error | install memento |
 | `binary-schema-compatible` | `binary-schema-too-old` | liveness | session | error | upgrade memento |
 | `live-fire` | `live-fire-not-denied` | liveness | any | error | upgrade / reinstall memento |

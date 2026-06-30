@@ -110,6 +110,7 @@ const (
 	tokVaultAmbiguous         = "vault-ambiguous"
 	tokVaultAbsent            = "vault-absent"
 	tokPrecommitShadowed      = "precommit-shadowed"
+	tokPrecommitMissing       = "precommit-anchor-missing"
 	tokConfigInvalid          = "config-invalid"
 	tokGitignoreStanzaMissing = "gitignore-stanza-missing"
 	tokWritingMdAbsent        = "writing-md-absent"
@@ -823,12 +824,17 @@ const (
 // the ratification-boundary MODE VIOLATION commit audit (ADR-0031's integrity floor). The
 // predicate is BEHAVIORAL, not byte-match: resolve the pre-commit hook git will ACTUALLY
 // run (honoring core.hooksPath and third-party managers — husky, lefthook, pre-commit) and
-// verify memento's step is reachable from it. A core.hooksPath redirect that bypasses the
-// installed .git/hooks/pre-commit makes a byte-perfect anchor DEAD: that is the
-// precommit-shadowed error. Reachable-but-content-edited is deliberately NOT a finding —
-// brittle script-identity matching is the stale-hook-detector trap the ADR rejects (it
-// fails open on a working edit and closed on a shadowed byte-identical script), so identity
-// is at most a nudge, never a gate, and we decline to reinvent it.
+// verify memento's step is reachable from it. Unreachable is the same dead audit however it
+// arises, so it is always a not-live error; the two shapes differ only in remediation. A
+// core.hooksPath redirect that bypasses an installed .git/hooks/pre-commit which DOES reach
+// memento is precommit-shadowed (unset the redirect / compose the step). Otherwise the step
+// is simply absent from the effective hook — never wired or deleted — which is
+// precommit-anchor-missing (re-run init). "Liveness ≠ presence" cuts both ways: absent is
+// not reachable, so a green verdict there would leave the integrity floor silently
+// uncovered. Reachable-but-content-edited is deliberately NOT a finding — brittle
+// script-identity matching is the stale-hook-detector trap the ADR rejects (it fails open on
+// a working edit and closed on a shadowed byte-identical script), so identity is at most a
+// nudge, never a gate, and we decline to reinvent it.
 func precommitAnchorFindings(repoRoot string) []finding {
 	gitDir, err := gitOutput(repoRoot, "rev-parse", "--git-dir")
 	if err != nil {
@@ -845,16 +851,18 @@ func precommitAnchorFindings(repoRoot string) []finding {
 	if precommitReachesMemento(repoRoot, effectiveHook) {
 		return okFindings()
 	}
-	// memento's step is not reachable via the hook git runs. That is shadowing — not mere
-	// absence — only when an installed anchor at the DEFAULT location is being bypassed by
-	// a redirect. No anchor to bypass (never wired) or no redirect (effective == default)
-	// is absence, which this node does not own.
+	// memento's step is not reachable via the hook git runs, so the ratification-boundary
+	// audit is dead either way. It is shadowing when a redirect bypasses an installed anchor
+	// at the DEFAULT location that itself reaches memento; otherwise the step is just absent
+	// from the effective hook (never wired, or deleted).
 	if !sameHookPath(effectiveHook, installedAnchor) && hookFileReachesMemento(installedAnchor) {
 		return []finding{{token: tokPrecommitShadowed, severity: sevError,
 			detail:      fmt.Sprintf("git runs %s (core.hooksPath), which never reaches memento's pre-commit step, so the installed anchor at %s is dead and the ratification-boundary audit does not run", effectiveHook, installedAnchor),
 			remediation: "unset core.hooksPath, or compose memento's step into the effective hook"}}
 	}
-	return okFindings()
+	return []finding{{token: tokPrecommitMissing, severity: sevError,
+		detail:      fmt.Sprintf("the pre-commit hook git runs (%s) never reaches memento's pre-commit step, so the ratification-boundary audit does not run", effectiveHook),
+		remediation: "run memento init to install the pre-commit hook"}}
 }
 
 // gitOutput runs git in repoRoot and returns trimmed stdout, or an error (e.g. not a git
