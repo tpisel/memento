@@ -886,6 +886,20 @@ func TestPrecommitCommentedStepMissing(t *testing.T) {
 	}
 }
 
+// A full sentinel-bracketed block whose memento commands are all commented out does not run
+// memento: the # memento:start marker is itself a comment, so its presence must not prove the
+// ratification-boundary audit runs. Reachability reads it as missing, not live.
+func TestPrecommitSentinelBlockCommentedMissing(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	commented := "#!/bin/sh\nset -eu\n# memento:start\n# if command -v memento >/dev/null 2>&1; then\n#   memento compile || exit $?\n#   memento clear-grants\n# fi\n# memento:end\nnpm test\n"
+	writeDoctorScript(t, repoRoot, ".git/hooks/pre-commit", commented)
+	f := findToken(t, precommitAnchorFindings(repoRoot), tokPrecommitMissing)
+	if f.severity != sevError {
+		t.Fatalf("precommit-anchor-missing severity = %v, want error", f.severity)
+	}
+}
+
 // An inline trailing comment after a live memento command does not hide the command: the
 // step still reaches memento.
 func TestPrecommitInlineCommentStillReaches(t *testing.T) {

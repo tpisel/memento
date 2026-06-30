@@ -847,13 +847,13 @@ func gitRepoFindings(repoRoot string) []finding {
 	return okFindings()
 }
 
-// precommit signals memento's pre-commit step is reachable by: the install sentinel that
-// brackets the memento block, or either memento command init wires into it. Matching the
-// behavior (a memento invocation is present), never the exact installed bytes, is the
-// ADR-0032 "liveness ≠ presence" rule — composition (memento's step folded into a larger
-// hook) must read as live, not as drift.
+// precommit signals memento's pre-commit step is reachable by either memento command init
+// wires into the hook. The install sentinel that brackets the block is deliberately not a
+// signal — it is a comment, so it proves installation, not that the step runs (ADR-0032
+// "liveness ≠ presence"). Matching the behavior (a memento invocation is present), never the
+// exact installed bytes, lets composition (memento's step folded into a larger hook) read as
+// live, not as drift.
 const (
-	preCommitSentinel    = "# memento:start"
 	preCommitCompileCmd  = "memento compile"
 	preCommitClearGrants = "memento clear-grants"
 )
@@ -967,15 +967,15 @@ func hookFileReachesMemento(path string) bool {
 	return hookContentReachesMemento(string(data))
 }
 
-// hookContentReachesMemento reports whether a script body invokes memento's pre-commit step
-// — by the install sentinel or either wired command. The sentinel is itself a comment marker
-// memento writes, so it is matched raw; the commands must survive comment stripping, so a
-// purely commented-out step (e.g. `# memento compile`) does not fail the check open. This is
-// a lightweight per-line scan, not a shell parser.
+// hookContentReachesMemento reports whether a script body actually invokes memento's
+// pre-commit step. Reachability is behavioral (ADR-0032): only an uncommented wired command
+// counts. The `# memento:start` install sentinel is deliberately NOT a signal — it is itself
+// a comment marker memento writes, so a sentinel-bracketed block whose commands are all
+// commented out still carries the sentinel yet runs nothing; matching it raw would prove
+// installation, not that the ratification-boundary audit runs. Each command must survive
+// comment stripping, so a purely commented-out step (e.g. `# memento compile`) does not fail
+// the check open. This is a lightweight per-line scan, not a shell parser.
 func hookContentReachesMemento(content string) bool {
-	if strings.Contains(content, preCommitSentinel) {
-		return true
-	}
 	for _, line := range strings.Split(content, "\n") {
 		code := stripShellComment(line)
 		if strings.Contains(code, preCommitCompileCmd) || strings.Contains(code, preCommitClearGrants) {
@@ -1098,8 +1098,8 @@ func grantFreshFindings(v vault.Vault) []finding {
 // --- config-valid --------------------------------------------------------
 
 // configFileName is the marker-dir-relative memento config. The canonical name is owned
-// by internal/setup (setup.ConfigFileName); duplicated here like preCommitSentinel rather
-// than imported, so doctor stays self-contained.
+// by internal/setup (setup.ConfigFileName); duplicated here rather than imported, so doctor
+// stays self-contained.
 const configFileName = "config.toml"
 
 // recognisedConfigKeys is the closed-world allowlist of top-level keys and table names
@@ -1319,8 +1319,8 @@ func tomlTableName(line string) (name string, valid bool) {
 // --- ignore-correct ------------------------------------------------------
 
 // memento .gitignore stanza sentinels — must match internal/setup's gitignoreStartSentinel
-// /gitignoreEndSentinel (init owns the canonical strings). Duplicated here like
-// preCommitSentinel rather than imported, so doctor stays self-contained.
+// /gitignoreEndSentinel (init owns the canonical strings). Duplicated here rather than
+// imported, so doctor stays self-contained.
 const (
 	gitignoreStartSentinel = "# memento:gitignore:start"
 	gitignoreEndSentinel   = "# memento:gitignore:end"
