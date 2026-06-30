@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -577,7 +578,7 @@ func gitignoreBlock() string {
 }
 
 func ensurePreCommitHook(repoRoot string, v vault.Vault) error {
-	path := filepath.Join(repoRoot, ".git", "hooks", "pre-commit")
+	path := effectivePreCommitHookPath(repoRoot)
 	block := preCommitHookBlock(repoRoot, v)
 
 	data, err := os.ReadFile(path)
@@ -1138,6 +1139,39 @@ func preCommitHookBlock(repoRoot string, v vault.Vault) string {
 		"fi",
 		hookEndSentinel,
 	}, "\n")
+}
+
+// effectivePreCommitHookPath returns the pre-commit hook path git will ACTUALLY run
+// from repoRoot, honoring core.hooksPath. A foreign hooks dir set by another tool
+// (e.g. beads' .beads/hooks) wins at the git level: git runs exactly one hooks dir, so
+// composing memento's step into the dead default .git/hooks/pre-commit would never run
+// the ratification-boundary audit (memento-42o; the init counterpart to doctor's
+// precommit-shadowed liveness check, ADR-0032). We resolve the live hook the same way
+// doctor does — `git rev-parse --git-path hooks/pre-commit` — and compose into it.
+// When repoRoot is not a git work tree, resolution fails and we fall back to the
+// default .git/hooks/pre-commit location (init stays usable pre-`git init`).
+func effectivePreCommitHookPath(repoRoot string) string {
+	def := filepath.Join(repoRoot, ".git", "hooks", "pre-commit")
+	out, err := gitOutput(repoRoot, "rev-parse", "--git-path", "hooks/pre-commit")
+	if err != nil || out == "" {
+		return def
+	}
+	if filepath.IsAbs(out) {
+		return filepath.Clean(out)
+	}
+	return filepath.Clean(filepath.Join(repoRoot, out))
+}
+
+// gitOutput runs git in repoRoot and returns trimmed stdout, or an error (e.g. not a
+// git work tree). Path resolution for the effective hook funnels through here.
+func gitOutput(repoRoot string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 func ensureExecutable(path string) error {

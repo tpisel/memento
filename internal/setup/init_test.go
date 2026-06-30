@@ -1476,6 +1476,79 @@ func TestInitReplacesExistingMementoBlockInPreCommitHook(t *testing.T) {
 	assertHookCommandsInsideMementoGuard(t, got)
 }
 
+// beadsLikePreCommit mirrors the shape of a beads-managed hook: a marker-bracketed
+// block that dispatches to `bd hooks run pre-commit`, with no trailing content. It is
+// the foreign hook a core.hooksPath redirect makes git run instead of .git/hooks.
+const beadsLikePreCommit = "#!/usr/bin/env sh\n" +
+	"# --- BEGIN BEADS INTEGRATION v1.0.5 ---\n" +
+	"if command -v bd >/dev/null 2>&1; then\n" +
+	"  bd hooks run pre-commit \"$@\"\n" +
+	"fi\n" +
+	"# --- END BEADS INTEGRATION v1.0.5 ---\n"
+
+func TestInitComposesMementoBlockIntoForeignHooksPathHook(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not found: %v", err)
+	}
+	repo := t.TempDir()
+	runSetupGit(t, repo, "init")
+	writeSetupFile(t, repo, ".beads/hooks/pre-commit", beadsLikePreCommit)
+	runSetupGit(t, repo, "config", "core.hooksPath", ".beads/hooks")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	// memento's step must land in the hook git actually runs (the foreign one),
+	// not the dead .git/hooks/pre-commit that core.hooksPath bypasses.
+	got := readSetupFile(t, repo, ".beads/hooks/pre-commit")
+	if !strings.HasPrefix(got, beadsLikePreCommit) {
+		t.Fatalf("foreign pre-commit hook = %q, want beads content preserved at start", got)
+	}
+	if count := strings.Count(got, "# memento:start"); count != 1 {
+		t.Fatalf("foreign pre-commit start sentinel count = %d, want 1; contents = %q", count, got)
+	}
+	if !strings.Contains(got, `git add -- 'memory/.memento/manifest.json'`) {
+		t.Fatalf("foreign pre-commit hook = %q, want memento manifest staging command", got)
+	}
+	// Scope the guard check to memento's block: the foreign hook carries its own
+	// `fi`, which the whole-file helper would otherwise mis-anchor on.
+	assertHookCommandsInsideMementoGuard(t, got[strings.Index(got, "# memento:start"):])
+
+	// The default anchor must not become a competing live hook — git never reaches it.
+	if data, err := os.ReadFile(filepath.Join(repo, ".git/hooks/pre-commit")); err == nil {
+		if strings.Contains(string(data), "# memento:start") {
+			t.Fatalf(".git/hooks/pre-commit = %q, want memento block only in the effective hook", string(data))
+		}
+	}
+}
+
+func TestInitComposesIntoForeignHooksPathIdempotently(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not found: %v", err)
+	}
+	repo := t.TempDir()
+	runSetupGit(t, repo, "init")
+	writeSetupFile(t, repo, ".beads/hooks/pre-commit", beadsLikePreCommit)
+	runSetupGit(t, repo, "config", "core.hooksPath", ".beads/hooks")
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("first Init() error = %v, want nil", err)
+	}
+	first := readSetupFile(t, repo, ".beads/hooks/pre-commit")
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("second Init() error = %v, want nil", err)
+	}
+	second := readSetupFile(t, repo, ".beads/hooks/pre-commit")
+
+	if first != second {
+		t.Fatalf("foreign hook changed on rerun:\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+	if count := strings.Count(second, "# memento:start"); count != 1 {
+		t.Fatalf("foreign pre-commit start sentinel count = %d, want 1; contents = %q", count, second)
+	}
+}
+
 func TestInitPreCommitHookRunsCurrentCLICompileDuringCommit(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("pre-commit hook is a POSIX shell script")

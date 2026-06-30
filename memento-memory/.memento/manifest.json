@@ -4061,8 +4061,8 @@
       "key": "enforcement backstop — ratification-boundary diff audit.md",
       "title": "Enforcement backstop — ratification-boundary diff audit",
       "summary": "Hook-time mode enforcement (PreToolUse check-write) is necessarily partial: it only fires for write paths the agent surface exposes to hooks — so codex exec shell writes, untrusted codex hooks, and Claude opaque shell ($()/eval/interpreters) all fail open SILENTLY. The path-agnostic catch-all is a post-hoc audit of the on-disk diff vs ratified (git HEAD) state, reusing the pure EvaluatePrefixInvariant verdict, anchored at the git pre-commit hook (the ratification boundary). It is detection by default, optional commit-block as mitigation, and is independent of any agent's lifecycle-hook trust model.",
-      "bytes": 4972,
-      "lines": 85,
+      "bytes": 5891,
+      "lines": 96,
       "tags": [
         "codex",
         "design",
@@ -4102,7 +4102,7 @@
       "updated": "",
       "body_sha": "e6b0d809ee0de78a4a32c9909732b7fe1a9042b440d6f5140ec294979095eb6f",
       "summary_sha": "4fd33d61b144480b0d240570e794b945ba28dd9022bbc3fc13ccccffb0bd3222",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {
