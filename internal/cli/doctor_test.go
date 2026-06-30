@@ -757,6 +757,169 @@ func TestVaultDiscoverableAmbiguous(t *testing.T) {
 	}
 }
 
+// --- config-valid --------------------------------------------------------
+
+// hygieneVault creates a bare vault (marker dir only) for the installation-property
+// hygiene nodes, which read files under the vault root and marker dir.
+func hygieneVault(t *testing.T) vault.Vault {
+	t.Helper()
+	root := t.TempDir()
+	marker := filepath.Join(root, vault.MarkerDirName)
+	if err := os.MkdirAll(marker, 0o755); err != nil {
+		t.Fatalf("mkdir marker: %v", err)
+	}
+	return vault.Vault{Root: root, MarkerDir: marker, ManifestPath: filepath.Join(marker, vault.ManifestFileName)}
+}
+
+func writeConfig(t *testing.T, v vault.Vault, contents string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(v.MarkerDir, "config.toml"), []byte(contents), 0o644); err != nil {
+		t.Fatalf("write config.toml: %v", err)
+	}
+}
+
+// An absent config.toml is vacuously valid — presence is init's job, this node only judges
+// a file that exists.
+func TestConfigValidAbsentOK(t *testing.T) {
+	assertOK(t, configValidFindings(hygieneVault(t)))
+}
+
+// The comment-only default init writes carries no keys, so it is valid.
+func TestConfigValidCommentOnlyOK(t *testing.T) {
+	v := hygieneVault(t)
+	writeConfig(t, v, "# memento vault configuration\n")
+	assertOK(t, configValidFindings(v))
+}
+
+func TestConfigValidMalformed(t *testing.T) {
+	v := hygieneVault(t)
+	writeConfig(t, v, "this line is not valid toml\n")
+	f := findToken(t, configValidFindings(v), tokConfigInvalid)
+	if f.severity != sevError {
+		t.Fatalf("malformed config severity = %v, want error", f.severity)
+	}
+}
+
+func TestConfigValidUnrecognisedKey(t *testing.T) {
+	v := hygieneVault(t)
+	writeConfig(t, v, "bogus = \"value\"\n")
+	f := findToken(t, configValidFindings(v), tokConfigInvalid)
+	if f.severity != sevError || !strings.Contains(f.detail, "bogus") {
+		t.Fatalf("unrecognised key: got %+v, want config-invalid error naming bogus", f)
+	}
+}
+
+func TestConfigValidUnrecognisedTable(t *testing.T) {
+	v := hygieneVault(t)
+	writeConfig(t, v, "[unknown]\nx = 1\n")
+	f := findToken(t, configValidFindings(v), tokConfigInvalid)
+	if f.severity != sevError {
+		t.Fatalf("unrecognised table severity = %v, want error", f.severity)
+	}
+}
+
+// --- ignore-correct ------------------------------------------------------
+
+func writeGitignoreStanza(t *testing.T, repoRoot string) {
+	t.Helper()
+	stanza := gitignoreStartSentinel + "\n**/.memento/grants.json\n" + gitignoreEndSentinel + "\n"
+	if err := os.WriteFile(filepath.Join(repoRoot, ".gitignore"), []byte(stanza), 0o644); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+}
+
+func writeMementoignore(t *testing.T, v vault.Vault) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(v.Root, vault.IgnoreFileName), []byte(".memento/\n"), 0o644); err != nil {
+		t.Fatalf("write .mementoignore: %v", err)
+	}
+}
+
+func TestIgnoreCorrectOK(t *testing.T) {
+	repoRoot := t.TempDir()
+	v := hygieneVault(t)
+	writeGitignoreStanza(t, repoRoot)
+	writeMementoignore(t, v)
+	assertOK(t, ignoreCorrectFindings(repoRoot, v))
+}
+
+func TestIgnoreCorrectMissingGitignoreStanza(t *testing.T) {
+	repoRoot := t.TempDir() // no .gitignore at all
+	v := hygieneVault(t)
+	writeMementoignore(t, v)
+	f := findToken(t, ignoreCorrectFindings(repoRoot, v), tokGitignoreStanzaMissing)
+	if f.severity != sevWarning {
+		t.Fatalf("missing gitignore stanza severity = %v, want warning", f.severity)
+	}
+}
+
+func TestIgnoreCorrectMissingMementoignore(t *testing.T) {
+	repoRoot := t.TempDir()
+	v := hygieneVault(t) // no .mementoignore
+	writeGitignoreStanza(t, repoRoot)
+	f := findToken(t, ignoreCorrectFindings(repoRoot, v), tokGitignoreStanzaMissing)
+	if f.severity != sevWarning {
+		t.Fatalf("missing .mementoignore severity = %v, want warning", f.severity)
+	}
+}
+
+// An incomplete stanza (start sentinel without end) is malformed: still gitignore-stanza-missing.
+func TestIgnoreCorrectMalformedStanza(t *testing.T) {
+	repoRoot := t.TempDir()
+	v := hygieneVault(t)
+	writeMementoignore(t, v)
+	if err := os.WriteFile(filepath.Join(repoRoot, ".gitignore"), []byte(gitignoreStartSentinel+"\n.memento/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := findToken(t, ignoreCorrectFindings(repoRoot, v), tokGitignoreStanzaMissing)
+	if f.severity != sevWarning {
+		t.Fatalf("malformed stanza severity = %v, want warning", f.severity)
+	}
+}
+
+// --- tool-read-files-present ---------------------------------------------
+
+func TestToolReadFilesWritingPresentOK(t *testing.T) {
+	v := hygieneVault(t)
+	writing := filepath.Join(v.Root, vault.ToolDirName, "conventions", "writing.md")
+	if err := os.MkdirAll(filepath.Dir(writing), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(writing, []byte("# writing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assertOK(t, toolReadFilesFindings(v))
+}
+
+// Absent writing.md is a NUDGE that never gates, in any context, strict or not.
+func TestToolReadFilesWritingAbsentNudge(t *testing.T) {
+	f := findToken(t, toolReadFilesFindings(hygieneVault(t)), tokWritingMdAbsent)
+	if f.severity != sevNudge {
+		t.Fatalf("writing-md-absent severity = %v, want nudge", f.severity)
+	}
+	if f.gates(ctxAny, ctxSession, true) {
+		t.Fatal("a nudge must never gate, even under strict")
+	}
+}
+
+// The three hygiene nodes hang off vault-discoverable: with no vault they SKIP, not judge
+// files that are not there.
+func TestHygieneNodesSkipWithNoVault(t *testing.T) {
+	outcomes, err := runChecks(doctorNodes(t.TempDir(), vault.Vault{}, vault.ErrVaultNotFound))
+	if err != nil {
+		t.Fatalf("runChecks: %v", err)
+	}
+	for _, name := range []string{nodeConfigValid, nodeIgnoreCorrect, nodeToolReadFiles} {
+		o := outcomeFor(t, outcomes, name)
+		if !o.skipped || o.blockedBy != nodeVaultDiscoverable {
+			t.Fatalf("%s outcome = %+v, want skipped blocked-by %s", name, o, nodeVaultDiscoverable)
+		}
+		if o.passed() {
+			t.Fatalf("a skipped %s must not count as passed", name)
+		}
+	}
+}
+
 // --- full DAG ------------------------------------------------------------
 
 // TestGrantFreshSkipsWithNoVault is the dishonest-OK fix: with no vault, grant-fresh
@@ -775,11 +938,40 @@ func TestGrantFreshSkipsWithNoVault(t *testing.T) {
 	}
 }
 
+// installHygieneFiles establishes the config / ignore / tool-read files the ADR-0032
+// hygiene nodes assert, so a fully-init'd vault passes config-valid, ignore-correct, and
+// tool-read-files-present. It mirrors what `memento init` writes.
+func installHygieneFiles(t *testing.T, repoRoot string, v vault.Vault) {
+	t.Helper()
+	// config.toml: comment-only is valid (no recognised keys to violate).
+	if err := os.WriteFile(filepath.Join(v.MarkerDir, "config.toml"), []byte("# memento vault configuration\n"), 0o644); err != nil {
+		t.Fatalf("write config.toml: %v", err)
+	}
+	// .gitignore stanza at the repo root.
+	gitignore := gitignoreStartSentinel + "\n**/.memento/grants.json\n" + gitignoreEndSentinel + "\n"
+	if err := os.WriteFile(filepath.Join(repoRoot, ".gitignore"), []byte(gitignore), 0o644); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+	// .mementoignore at the vault root.
+	if err := os.WriteFile(filepath.Join(v.Root, vault.IgnoreFileName), []byte(".memento/\n"), 0o644); err != nil {
+		t.Fatalf("write .mementoignore: %v", err)
+	}
+	// writing convention under _memento/conventions/.
+	writing := filepath.Join(v.Root, vault.ToolDirName, "conventions", "writing.md")
+	if err := os.MkdirAll(filepath.Dir(writing), 0o755); err != nil {
+		t.Fatalf("mkdir conventions: %v", err)
+	}
+	if err := os.WriteFile(writing, []byte("---\ntitle: Writing guide\nwhen_to_read: x\n---\n# Writing\n"), 0o644); err != nil {
+		t.Fatalf("write writing.md: %v", err)
+	}
+}
+
 func TestDoctorDAGLive(t *testing.T) {
 	repoRoot := liveClaudeRepo(t)
 	realBin(t)
 	stubGateSchema(t, manifest.CurrentSchemaVersion)
 	v := doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
+	installHygieneFiles(t, repoRoot, v)
 	outcomes, err := runChecks(doctorNodes(repoRoot, v, nil))
 	if err != nil {
 		t.Fatalf("runChecks: %v", err)

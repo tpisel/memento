@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tpisel/memento/internal/convention"
 	"github.com/tpisel/memento/internal/enforce"
 	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/vault"
@@ -73,6 +74,9 @@ const (
 	nodeGrantFresh         = "grant-fresh"
 	nodeGitRepo            = "git-repo"
 	nodePrecommitAnchor    = "precommit-anchor-live"
+	nodeConfigValid        = "config-valid"
+	nodeIgnoreCorrect      = "ignore-correct"
+	nodeToolReadFiles      = "tool-read-files-present"
 )
 
 // Canonical ADR-0032 failure tokens (the catalog table is the only source of these
@@ -80,22 +84,25 @@ const (
 // node may emit one-to-many distinct tokens. A downstream consumer branches on the
 // token, never on a node name.
 const (
-	tokGateMissing           = "gate-missing"
-	tokGateUnresolved        = "gate-unresolved"
-	tokGateMatcherPartial    = "gate-matcher-partial"
-	tokGateLocallyOverridden = "gate-locally-overridden"
-	tokPostwriteHookMissing  = "postwrite-hook-missing"
-	tokLegacyBroadDenyWired  = "legacy-broad-deny-wired"
-	tokBinaryNotOnPath       = "binary-not-on-path"
-	tokBinarySchemaTooOld    = "binary-schema-too-old"
-	tokManifestNotFound      = "manifest-not-found"
-	tokManifestSchemaUnread  = "manifest-schema-unreadable"
-	tokManifestStale         = "manifest-stale"
-	tokLiveFireNotDenied     = "live-fire-not-denied"
-	tokGrantStale            = "grant-stale"
-	tokVaultAmbiguous        = "vault-ambiguous"
-	tokVaultAbsent           = "vault-absent"
-	tokPrecommitShadowed     = "precommit-shadowed"
+	tokGateMissing            = "gate-missing"
+	tokGateUnresolved         = "gate-unresolved"
+	tokGateMatcherPartial     = "gate-matcher-partial"
+	tokGateLocallyOverridden  = "gate-locally-overridden"
+	tokPostwriteHookMissing   = "postwrite-hook-missing"
+	tokLegacyBroadDenyWired   = "legacy-broad-deny-wired"
+	tokBinaryNotOnPath        = "binary-not-on-path"
+	tokBinarySchemaTooOld     = "binary-schema-too-old"
+	tokManifestNotFound       = "manifest-not-found"
+	tokManifestSchemaUnread   = "manifest-schema-unreadable"
+	tokManifestStale          = "manifest-stale"
+	tokLiveFireNotDenied      = "live-fire-not-denied"
+	tokGrantStale             = "grant-stale"
+	tokVaultAmbiguous         = "vault-ambiguous"
+	tokVaultAbsent            = "vault-absent"
+	tokPrecommitShadowed      = "precommit-shadowed"
+	tokConfigInvalid          = "config-invalid"
+	tokGitignoreStanzaMissing = "gitignore-stanza-missing"
+	tokWritingMdAbsent        = "writing-md-absent"
 )
 
 func runDoctor(args []string, stdout, stderr io.Writer) int {
@@ -148,6 +155,10 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 // reads the manifest opportunistically, treating an absent vault as nothing to judge.
 // precommit-anchor-live depends on git-repo (no .git/hooks to reason about outside a git
 // tree), so it SKIPS (blocked-by git-repo) rather than reporting a dishonest verdict.
+// The installation-property hygiene nodes config-valid, ignore-correct, and
+// tool-read-files-present each assert something init establishes (the one-directional
+// init↔doctor symmetry) and hang off vault-discoverable, so with no vault they SKIP rather
+// than judge files that are not there.
 // (assertable-in "session,ci" and "any" both gate in both contexts and
 // so both map to ctxAny; their distinction is rationale, carried in the comments.)
 func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
@@ -213,6 +224,21 @@ func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
 			name: nodeGrantFresh, class: classLiveness, assertableIn: ctxSession,
 			preconditions: []string{nodeVaultDiscoverable},
 			run:           func() []finding { return grantFreshFindings(v) },
+		},
+		{
+			name: nodeConfigValid, class: classHygiene, assertableIn: ctxAny,
+			preconditions: []string{nodeVaultDiscoverable},
+			run:           func() []finding { return configValidFindings(v) },
+		},
+		{
+			name: nodeIgnoreCorrect, class: classHygiene, assertableIn: ctxAny,
+			preconditions: []string{nodeVaultDiscoverable},
+			run:           func() []finding { return ignoreCorrectFindings(repoRoot, v) },
+		},
+		{
+			name: nodeToolReadFiles, class: classHygiene, assertableIn: ctxSession,
+			preconditions: []string{nodeVaultDiscoverable},
+			run:           func() []finding { return toolReadFilesFindings(v) },
 		},
 	}
 }
@@ -948,6 +974,195 @@ func grantFreshFindings(v vault.Vault) []finding {
 	return []finding{{token: tokGrantStale, severity: sevWarning,
 		detail:      "stale grant(s) with no pending edit: " + strings.Join(stale, ", ") + "; commit or drop them",
 		remediation: "commit or drop the grant"}}
+}
+
+// --- config-valid --------------------------------------------------------
+
+// configFileName is the marker-dir-relative memento config. The canonical name is owned
+// by internal/setup (setup.ConfigFileName); duplicated here like preCommitSentinel rather
+// than imported, so doctor stays self-contained.
+const configFileName = "config.toml"
+
+// recognisedConfigKeys is the closed-world allowlist of top-level keys and table names
+// memento understands in .memento/config.toml. It is empty today — the default config init
+// writes is comment-only and no config key has been defined — so config-valid passes an
+// empty or comment-only file and flags any declared key as unrecognised. Extend this set as
+// config keys are introduced so doctor and the config reader stay in lockstep.
+var recognisedConfigKeys = map[string]bool{}
+
+// configValidFindings is the config-valid node: .memento/config.toml parses and every key
+// it declares is recognised. An ABSENT config is vacuously valid — presence is init's job
+// and there is no config-present node, so this node only judges a file that exists. A file
+// that does not parse, or that declares a key outside the closed-world allowlist, is
+// config-invalid: a hard error, because a vault whose config memento cannot understand is
+// unusable. Depends on vault-discoverable for the marker dir.
+func configValidFindings(v vault.Vault) []finding {
+	path := filepath.Join(v.MarkerDir, configFileName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return okFindings()
+		}
+		return []finding{{token: tokConfigInvalid, severity: sevError,
+			detail: "cannot read " + path + ": " + err.Error(), remediation: "fix .memento/config.toml"}}
+	}
+	keys, ok := scanConfigKeys(string(data))
+	if !ok {
+		return []finding{{token: tokConfigInvalid, severity: sevError,
+			detail: path + " does not parse as TOML", remediation: "fix .memento/config.toml"}}
+	}
+	var unknown []string
+	for _, k := range keys {
+		if !recognisedConfigKeys[k] {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return []finding{{token: tokConfigInvalid, severity: sevError,
+			detail:      path + " declares unrecognised key(s): " + strings.Join(unknown, ", "),
+			remediation: "fix .memento/config.toml"}}
+	}
+	return okFindings()
+}
+
+// scanConfigKeys does a minimal, dependency-free scan of a TOML config: it returns the
+// top-level keys and table names declared, and ok=false if a non-blank, non-comment line is
+// neither a `[table]`/`[[array]]` header nor a `key = value` pair. memento has no TOML
+// dependency (init writes config with string builders; readCodexHooks line-scans the codex
+// block), so this matches that line-level discipline — sufficient because the recognised
+// set is closed-world: a healthy config is comment-only and any declared key is judged
+// against the allowlist. It does not model multi-line strings or arrays; the config has
+// none.
+func scanConfigKeys(contents string) (keys []string, ok bool) {
+	for _, line := range strings.Split(contents, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			name, valid := tomlTableName(trimmed)
+			if !valid {
+				return nil, false
+			}
+			keys = append(keys, name)
+			continue
+		}
+		key, _, found := strings.Cut(trimmed, "=")
+		key = strings.TrimSpace(key)
+		if !found || key == "" {
+			return nil, false
+		}
+		keys = append(keys, strings.Trim(key, `"'`))
+	}
+	return keys, true
+}
+
+// tomlTableName extracts the top-level table name from a `[table]` or
+// `[[array.of.tables]]` header, returning valid=false when the brackets are unbalanced or
+// the name is empty. The recognised-key allowlist is keyed on the first dotted segment (the
+// top-level table).
+func tomlTableName(line string) (name string, valid bool) {
+	inner := line
+	if strings.HasPrefix(inner, "[[") {
+		if !strings.HasSuffix(inner, "]]") || len(inner) <= 4 {
+			return "", false
+		}
+		inner = inner[2 : len(inner)-2]
+	} else {
+		if !strings.HasSuffix(inner, "]") || len(inner) <= 2 {
+			return "", false
+		}
+		inner = inner[1 : len(inner)-1]
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(inner), ".")
+	first = strings.Trim(strings.TrimSpace(first), `"'`)
+	if first == "" {
+		return "", false
+	}
+	return first, true
+}
+
+// --- ignore-correct ------------------------------------------------------
+
+// memento .gitignore stanza sentinels — must match internal/setup's gitignoreStartSentinel
+// /gitignoreEndSentinel (init owns the canonical strings). Duplicated here like
+// preCommitSentinel rather than imported, so doctor stays self-contained.
+const (
+	gitignoreStartSentinel = "# memento:gitignore:start"
+	gitignoreEndSentinel   = "# memento:gitignore:end"
+)
+
+// ignoreCorrectFindings is the ignore-correct node: the memento .gitignore stanza (at the
+// repo root) and the vault's .mementoignore are present and well-formed. A missing stanza
+// or .mementoignore leaks operational files (unlock grants, the pending-write ledger, the
+// decision log, the generated brief) into version control — a hygiene warning, never an
+// enforcement error, that one `memento init` re-establishes. Depends on vault-discoverable
+// for the .mementoignore location.
+func ignoreCorrectFindings(repoRoot string, v vault.Vault) []finding {
+	var fs []finding
+	if f, ok := gitignoreStanzaFinding(repoRoot); !ok {
+		fs = append(fs, f)
+	}
+	if !fileExists(filepath.Join(v.Root, vault.IgnoreFileName)) {
+		fs = append(fs, finding{token: tokGitignoreStanzaMissing, severity: sevWarning,
+			detail:      "no " + vault.IgnoreFileName + " in the vault root " + v.Root,
+			remediation: "memento init"})
+	}
+	if len(fs) == 0 {
+		return okFindings()
+	}
+	return fs
+}
+
+// gitignoreStanzaFinding reports the memento .gitignore stanza's health. Absent (no
+// .gitignore, or no sentinels) and malformed (an incomplete or duplicated sentinel block)
+// both emit gitignore-stanza-missing — one token, distinct detail — mirroring init's own
+// sentinel-block validation (insertOrReplaceSentinelBlock) so doctor flags exactly what a
+// reinstall would repair. ok=true means the stanza is present and well-formed.
+func gitignoreStanzaFinding(repoRoot string) (finding, bool) {
+	path := filepath.Join(repoRoot, ".gitignore")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return finding{token: tokGitignoreStanzaMissing, severity: sevWarning,
+			detail:      "no memento stanza in .gitignore under " + repoRoot,
+			remediation: "memento init"}, false
+	}
+	contents := string(data)
+	start := strings.Index(contents, gitignoreStartSentinel)
+	end := strings.Index(contents, gitignoreEndSentinel)
+	startCount := strings.Count(contents, gitignoreStartSentinel)
+	endCount := strings.Count(contents, gitignoreEndSentinel)
+	switch {
+	case start == -1 && end == -1:
+		return finding{token: tokGitignoreStanzaMissing, severity: sevWarning,
+			detail:      ".gitignore has no memento stanza",
+			remediation: "memento init"}, false
+	case start == -1 || end == -1 || end < start || startCount != 1 || endCount != 1:
+		return finding{token: tokGitignoreStanzaMissing, severity: sevWarning,
+			detail:      ".gitignore has a malformed memento stanza (incomplete or duplicated sentinels)",
+			remediation: "memento init"}, false
+	}
+	return finding{}, true
+}
+
+// --- tool-read-files-present ---------------------------------------------
+
+// toolReadFilesFindings is the tool-read-files-present node. init scaffolds the bootloader,
+// the orient hook, and the convention templates; of those the ADR-0032 catalog defines
+// exactly ONE reportable token — writing-md-absent — because ADR-0010 makes writing.md's
+// PRESENCE doctor's business (init↔doctor symmetry) while its quality is not, and the
+// discriminator forbids minting new tokens for the rest. So this node reports only whether
+// _memento/conventions/writing.md exists, as a NUDGE: advisory, session-only, never gating.
+// Depends on vault-discoverable for the _memento location.
+func toolReadFilesFindings(v vault.Vault) []finding {
+	path := filepath.Join(v.Root, vault.ToolDirName, convention.DirName, "writing.md")
+	if fileExists(path) {
+		return okFindings()
+	}
+	return []finding{{token: tokWritingMdAbsent, severity: sevNudge,
+		detail:      "no writing convention at " + path + "; agents author vault notes without a writing guide",
+		remediation: "author a writing convention"}}
 }
 
 // okFindings is the single passing finding a healthy node emits (empty token, sevOK).
