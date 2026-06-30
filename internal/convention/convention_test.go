@@ -163,6 +163,34 @@ func TestListWarnsAboutInvalidFilesAndSkipsNonMarkdown(t *testing.T) {
 	}
 }
 
+func TestIsConventionKey(t *testing.T) {
+	cases := []struct {
+		key  string
+		want bool
+	}{
+		{"_memento/conventions/writing.md", true},
+		{"_memento/conventions/summarising.md", true},
+		{"_memento/conventions/beads.md", true},
+		// Rejected: wrong namespace, wrong subdir, or not a convention shape.
+		{"_memento/writing.md", false},                 // not under conventions/
+		{"_memento/skills/write.md", false},            // sibling operational subtree
+		{"conventions/writing.md", false},              // not under the operational namespace
+		{"learnings/writing.md", false},                // ordinary note
+		{"_memento/conventions/writing.txt", false},    // not markdown
+		{"_memento/conventions/writing", false},        // no extension
+		{"_memento/conventions/sub/writing.md", false}, // nested, too deep
+		{"_memento/conventions/Writing.md", false},     // not a valid lowercase stem
+		{"_memento/conventions/with space.md", false},  // invalid stem
+		{"_memento/conventions/.md", false},            // empty stem
+		{"_memento/conventions", false},                // the directory itself
+	}
+	for _, tc := range cases {
+		if got := IsConventionKey(tc.key); got != tc.want {
+			t.Errorf("IsConventionKey(%q) = %v, want %v", tc.key, got, tc.want)
+		}
+	}
+}
+
 func TestListMissingDirIsEmpty(t *testing.T) {
 	root := t.TempDir()
 	v := vault.Vault{Root: root}

@@ -158,6 +158,25 @@ func TestWriteModeRejectsMissingNote(t *testing.T) {
 	assertCLIErrorToken(t, stderr.String(), "write-mode", "key-not-found")
 }
 
+// TestWriteModeRejectsConvention pins memento-66t: the convention write
+// carve-out lets write-mode resolve a convention key, but conventions carry no
+// mode: field (ADR-0029) — write-mode would inject one — so it is rejected.
+func TestWriteModeRejectsConvention(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\ntitle: Writing guide\nwhen_to_read: before a write\n---\nbody\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"write-mode", "_memento/conventions/writing.md", "read-only"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("Run(write-mode convention) exit code = %d, want 2; stderr = %q", code, stderr.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "write-mode", "invalid-arguments")
+	if !strings.Contains(stderr.String(), "convention") {
+		t.Fatalf("stderr = %q, want it to name the convention reason", stderr.String())
+	}
+}
+
 func TestWriteModeRequiresKeyAndMode(t *testing.T) {
 	makeCLIVault(t)
 

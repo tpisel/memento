@@ -2076,6 +2076,10 @@
           {
             "source": "Architecture decision record/adr-0032-doctor-scope-and-check-model.md",
             "type": "wiki"
+          },
+          {
+            "source": "convention files are the writable exception in the operational namespace.md",
+            "type": "wiki"
           }
         ]
       }
@@ -2158,6 +2162,10 @@
         "in": [
           {
             "source": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
+            "type": "wiki"
+          },
+          {
+            "source": "convention files are the writable exception in the operational namespace.md",
             "type": "wiki"
           }
         ]
@@ -2347,6 +2355,10 @@
           },
           {
             "source": "codex-cli lifecycle hooks contract.md",
+            "type": "wiki"
+          },
+          {
+            "source": "convention files are the writable exception in the operational namespace.md",
             "type": "wiki"
           },
           {
@@ -3950,6 +3962,47 @@
       }
     },
     {
+      "key": "convention files are the writable exception in the operational namespace.md",
+      "title": "Convention files are the writable, always-living exception in the operational namespace",
+      "summary": "_memento/conventions/<stem>.md is the one writable carve-out inside the otherwise-rejected operational namespace: the write gate admits it (bypassing the blanket _memento/ and ignored-path rejections) and treats conventions as living so a committed convention can be revised. This reconciles the enforcement layer with ADR-0029/0030, which call conventions agent-/project-editable. write-mode and unlock do not apply to conventions — they carry no mode: field.",
+      "bytes": 2846,
+      "lines": 28,
+      "tags": [
+        "_memento",
+        "check-write",
+        "conventions",
+        "enforce",
+        "memento"
+      ],
+      "headings": [],
+      "mode": "living",
+      "orient": false,
+      "updated": "",
+      "body_sha": "c820422941e8d89847369b38b8f23ab4411697f9c92901b18166f4aefb438f36",
+      "summary_sha": "34da2acfb159ce0ce7981aa81c1848f0b37c05e5081d5d984bc1f7eb1aef68f0",
+      "summary_state": "current",
+      "links": {
+        "out": [
+          {
+            "target": "Architecture decision record/adr-0029-convention-files-and-convention-verb.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0030-memento-operational-namespace.md",
+            "type": "wiki",
+            "resolved": true
+          },
+          {
+            "target": "Architecture decision record/adr-0031-remove-write-verb-hook-enforced-native-writes.md",
+            "type": "wiki",
+            "resolved": true
+          }
+        ],
+        "in": []
+      }
+    },
+    {
       "key": "doctor-scoping.md",
       "title": "Doctor — scoping list",
       "summary": "Live, exploratory list of candidate checks for the future `memento doctor` verb, consolidated from the ADRs and dogfooding. Doctor owns mechanical plumbing/health (no content judgement, no agent); this note is the running inbox of candidate checks so the eventual doctor ADR doesn't re-derive them. Not a spec — see [[review-audit-doctor faculties]] for the verb-boundary carve.",
@@ -4702,7 +4755,7 @@
     }
   ],
   "tags": {
-    "_memento": 2,
+    "_memento": 3,
     "a-uat": 3,
     "adr": 2,
     "agents": 16,
@@ -4710,18 +4763,20 @@
     "beads": 2,
     "bootloader": 2,
     "brief": 5,
+    "check-write": 1,
     "cli": 3,
     "codex": 2,
     "compile": 7,
     "config": 1,
     "configuration": 1,
     "convention": 1,
-    "conventions": 4,
+    "conventions": 5,
     "design": 2,
     "design-philosophy": 1,
     "distribution": 1,
     "doctor": 3,
     "draft": 1,
+    "enforce": 1,
     "enforcement": 10,
     "format": 1,
     "freshness": 1,
@@ -4739,7 +4794,7 @@
     "manifest": 7,
     "markdown": 1,
     "mcp": 1,
-    "memento": 48,
+    "memento": 49,
     "mode": 5,
     "namespace": 3,
     "observability": 1,

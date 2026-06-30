@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tpisel/memento/internal/convention"
 	"github.com/tpisel/memento/internal/enforce"
 	"github.com/tpisel/memento/internal/markdown"
 	"github.com/tpisel/memento/internal/vault"
@@ -367,6 +368,13 @@ func brokenPrefixReason(toolName string) string {
 // mode the note already carries, not whatever the write proposes (ADR-0031:
 // mode is read from disk; a body-write may not change it).
 func effectiveMode(key string, old []byte) markdown.WriteMode {
+	if convention.IsConventionKey(key) {
+		// Conventions carry no mode: field (ADR-0029) and are project-editable
+		// workflow policy (ADR-0030), so treat them as living: a committed
+		// convention can be revised in place. The drive-by mode-change defense
+		// still runs (and blocks smuggling a mode: line into a convention).
+		return markdown.ModeLiving
+	}
 	meta, _, _ := markdown.ExtractMetadataLenient(key, old)
 	return meta.Mode
 }

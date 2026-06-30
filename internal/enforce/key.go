@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tpisel/memento/internal/convention"
 	"github.com/tpisel/memento/internal/note"
 	"github.com/tpisel/memento/internal/vault"
 )
@@ -38,6 +39,15 @@ func NormalizeWritableKey(v vault.Vault, key string) (string, error) {
 	}
 	if filepath.Ext(key) != ".md" {
 		return "", fmt.Errorf("%w: write keys must name markdown files: %s", note.ErrInvalidKey, key)
+	}
+	// Convention carve-out: conventions live in the operational namespace but are
+	// the project-editable source of workflow policy (ADR-0029/0030), so admit
+	// them ahead of the blanket _memento/ rejection and the ignored-path check —
+	// both of which would otherwise deny every gated agent edit to a convention.
+	// IsConventionKey already constrains the shape to a valid bare stem, so this
+	// cannot become a back door for misfiling a normal note into _memento/.
+	if convention.IsConventionKey(key) {
+		return key, nil
 	}
 	if key == vault.IgnoreFileName || key == vault.WritingGuideFileName {
 		return "", fmt.Errorf("%w: operational path is not writable: %s", note.ErrInvalidKey, key)

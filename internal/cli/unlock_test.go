@@ -116,6 +116,25 @@ func TestUnlockRejectsMissingNote(t *testing.T) {
 	}
 }
 
+// TestUnlockRejectsConvention pins memento-66t: conventions are already freely
+// editable (ADR-0029/0030), so there is no read-only window to thaw — unlock
+// rejects a convention key rather than writing a meaningless grant.
+func TestUnlockRejectsConvention(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\ntitle: Writing guide\nwhen_to_read: before a write\n---\nbody\n")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"unlock", "_memento/conventions/writing.md", "--justification", "reason"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("Run(unlock convention) exit code = %d, want 2; stderr = %q", code, stderr.String())
+	}
+	assertCLIErrorToken(t, stderr.String(), "unlock", "invalid-arguments")
+	if hasCLIFile(t, root, ".memento/unlock-grants.json") {
+		t.Fatalf("Run(unlock convention) wrote a grant sidecar for a convention")
+	}
+}
+
 func TestUnlockRequiresKey(t *testing.T) {
 	makeCLIVault(t)
 

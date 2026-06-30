@@ -303,6 +303,45 @@ func TestCheckWriteUnwritablePathDenied(t *testing.T) {
 	}
 }
 
+// TestCheckWriteConventionEditAllowed pins the memento-66t fix: a committed
+// convention is project-editable workflow policy (ADR-0029/0030), so a gated
+// overwrite/edit to it is allowed even though it is ratified and carries no
+// mode: field (which would otherwise default append-only and reject the
+// rewrite). Before the carve-out this write was denied as unwritable_path.
+func TestCheckWriteConventionEditAllowed(t *testing.T) {
+	root := makeCLIVault(t)
+	// Mirror the default posture: the operational namespace is ignored.
+	writeCLIFile(t, root, ".mementoignore", "_memento/\n")
+	writeCLIFile(t, root, "_memento/conventions/writing.md",
+		"---\ntitle: Writing guide\nwhen_to_read: before a write\n---\n\n# Writing guide\n\nOriginal.\n")
+	initCLIGit(t, root)
+	commitCLIGit(t, root)
+
+	target := filepath.Join(root, "_memento", "conventions", "writing.md")
+
+	// A full-file overwrite that drops the old body is allowed (living), unlike
+	// an append-only note.
+	decision, _, _, _, stderr, code := invokeCheckWrite(t,
+		checkWritePayload(t, "Write", target,
+			"---\ntitle: Writing guide\nwhen_to_read: before a write\n---\n\n# Writing guide\n\nRevised.\n"))
+	if code != 0 {
+		t.Fatalf("overwrite exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "allow" {
+		t.Fatalf("overwrite decision = %q, want allow (conventions are project-editable)", decision)
+	}
+
+	// An interior Edit is likewise allowed.
+	decision, _, _, _, stderr, code = invokeCheckWrite(t,
+		checkEditPayload(t, target, "Original.", "Rewritten interior.", false))
+	if code != 0 {
+		t.Fatalf("edit exit code = %d, want 0; stderr = %q", code, stderr)
+	}
+	if decision != "allow" {
+		t.Fatalf("edit decision = %q, want allow", decision)
+	}
+}
+
 func TestCheckWriteOutsideVaultIsInert(t *testing.T) {
 	root := makeCLIVault(t)
 	// A sibling of the vault root, outside it.

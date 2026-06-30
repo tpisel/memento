@@ -51,6 +51,25 @@ func Path(v vault.Vault, name string) string {
 	return filepath.Join(v.Root, vault.ToolDirName, DirName, name+".md")
 }
 
+// IsConventionKey reports whether a vault-relative key names a convention file:
+// _memento/conventions/<valid-stem>.md and nothing deeper. It is the writable
+// carve-out predicate for the operational namespace — conventions live under
+// _memento/ but are project-editable workflow policy (ADR-0029/0030), so the
+// write gate admits them even though the rest of _memento/ is rejected. The
+// stem must satisfy ValidateName, so this never matches a misfiled normal note
+// (uppercase, spaces, nested path) dropped into the conventions directory.
+func IsConventionKey(key string) bool {
+	parts := strings.Split(key, "/")
+	if len(parts) != 3 || parts[0] != vault.ToolDirName || parts[1] != DirName {
+		return false
+	}
+	stem := strings.TrimSuffix(parts[2], ".md")
+	if stem == parts[2] {
+		return false // no .md extension
+	}
+	return ValidateName(stem) == nil
+}
+
 // ValidateName checks that name is a bare lowercase filename stem: no slash,
 // extension, spaces, or path traversal.
 func ValidateName(name string) error {

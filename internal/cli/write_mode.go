@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tpisel/memento/internal/convention"
 	"github.com/tpisel/memento/internal/enforce"
 	"github.com/tpisel/memento/internal/markdown"
 	"github.com/tpisel/memento/internal/note"
@@ -48,6 +49,12 @@ func runWriteMode(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		printCLIError(stderr, "write-mode", err)
 		return 1
+	}
+	if convention.IsConventionKey(key) {
+		// Conventions are editable workflow policy that carry no mode: field
+		// (ADR-0029); write-mode would inject one, so it has no meaning here.
+		printCLIError(stderr, "write-mode", fmt.Errorf("%w: %s is a convention; conventions carry no write mode and are edited directly (ADR-0029)", ErrInvalidArguments, key))
+		return 2
 	}
 	path, err := enforce.ResolveWritablePath(v, key)
 	if err != nil {

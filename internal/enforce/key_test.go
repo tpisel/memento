@@ -57,6 +57,44 @@ func TestNormalizeWritableKeyRejectsInvalidKeys(t *testing.T) {
 	}
 }
 
+func TestNormalizeWritableKeyAdmitsConventions(t *testing.T) {
+	root := makeVault(t)
+	v := vaultFromRoot(root)
+	// Mirror the default posture: the whole operational namespace is ignored.
+	// The convention carve-out must still admit conventions for editing
+	// (ADR-0029/0030), bypassing both the _memento/ and ignored-path rejections.
+	writeFile(t, root, ".mementoignore", "_memento/\n")
+
+	for _, key := range []string{
+		"_memento/conventions/writing.md",
+		"_memento/conventions/summarising.md",
+	} {
+		t.Run(key, func(t *testing.T) {
+			got, err := NormalizeWritableKey(v, key)
+			if err != nil {
+				t.Fatalf("NormalizeWritableKey(%q) error = %v, want nil", key, err)
+			}
+			if got != key {
+				t.Fatalf("NormalizeWritableKey(%q) = %q, want it unchanged", key, got)
+			}
+		})
+	}
+
+	// A non-convention path under the operational namespace stays rejected, so
+	// the carve-out is not a back door for misfiling notes into _memento/.
+	for _, key := range []string{
+		"_memento/conventions/sub/deep.md", // too deep to be a convention
+		"_memento/skills/write.md",         // sibling operational subtree
+		"_memento/brief.md",                // generated artifact
+	} {
+		t.Run("rejects "+key, func(t *testing.T) {
+			if _, err := NormalizeWritableKey(v, key); !errors.Is(err, note.ErrInvalidKey) {
+				t.Fatalf("NormalizeWritableKey(%q) error = %v, want ErrInvalidKey", key, err)
+			}
+		})
+	}
+}
+
 func TestNormalizeWritableKeyRejectsIgnoredPaths(t *testing.T) {
 	root := makeVault(t)
 	v := vaultFromRoot(root)

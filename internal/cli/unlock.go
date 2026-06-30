@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tpisel/memento/internal/convention"
 	"github.com/tpisel/memento/internal/enforce"
 	"github.com/tpisel/memento/internal/note"
 )
@@ -49,6 +50,12 @@ func runUnlock(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		printCLIError(stderr, "unlock", err)
 		return 1
+	}
+	if convention.IsConventionKey(key) {
+		// Conventions are already freely editable (ADR-0029/0030); there is no
+		// read-only window to thaw, so an unlock grant would be meaningless.
+		printCLIError(stderr, "unlock", fmt.Errorf("%w: %s is a convention; conventions are already editable and need no unlock (ADR-0029)", ErrInvalidArguments, key))
+		return 2
 	}
 	path, err := enforce.ResolveWritablePath(v, key)
 	if err != nil {
