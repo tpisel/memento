@@ -40,6 +40,7 @@ date: 2026-06-26
 
 - `title`, `summary`, `tags`, `mode` are **tool-consumed** (ADR-0014): memento reads them into the manifest and enforces `mode`. Spell them exactly — unknown keys are silently ignored, so `mod:` or `tag:` fails without warning.
 - `mode` is one of `append-only`, `living`, `read-only` (ADR-0015). Absent `mode:` defaults to `append-only`. Use `living` for reference notes that evolve in place, `read-only` for frozen records, `append-only` for logs/journals.
+- `orient: true` is an optional tool-consumed flag, omitted from the template above: a note that declares it is appended to memento orient output. This means it is loaded on _every_ session and should be used judiciously and with explicit intent.
 - `status` and `date` are **convention** fields: memento parses but ignores them. They exist for human discipline and are not required by the tool. Keep `date` as `YYYY-MM-DD`.
 
 ## Shape
