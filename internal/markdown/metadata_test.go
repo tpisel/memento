@@ -430,6 +430,34 @@ mode: living
 	}
 }
 
+func TestExtractMetadataEmptyTagsKeyWithNoSequenceItems(t *testing.T) {
+	// `tags:` declared with an empty value and NO following `- ` items is the one
+	// behavioral edge the parseBlockTags -> parseBlockSequence generalization
+	// introduced: found=false routes the empty value to applyFrontmatterField
+	// (parseInlineTags("")) rather than the old empty-list path (memento-dl5).
+	// Lock in that this parses cleanly to no tags and still consumes the key so a
+	// following key (mode) is read.
+	source := []byte(`---
+title: X
+tags:
+mode: living
+---
+
+# Title
+`)
+
+	got, err := ExtractMetadata("empty-tags.md", source)
+	if err != nil {
+		t.Fatalf("ExtractMetadata() error = %v, want nil", err)
+	}
+	if len(got.Tags) != 0 {
+		t.Fatalf("Tags = %v, want empty", got.Tags)
+	}
+	if got.Mode != ModeLiving {
+		t.Fatalf("Mode = %q, want %q (empty tags key not consumed before following key)", got.Mode, ModeLiving)
+	}
+}
+
 func TestBodyHashUsesBodyExcludingFrontmatter(t *testing.T) {
 	body := []byte("# Title\n\nBody text.\n")
 	bodyHash := hashBody(body)
