@@ -451,21 +451,23 @@ func gateCommittedFinding(s gateScan) finding {
 	return finding{severity: sevOK, detail: s.family + " gate live (matcher " + s.gateMatcher + ")"}
 }
 
-// gateEffectiveLocalFindings is the gate-effective-local node: it reads the MERGED
-// Claude config (machine-local .claude/settings.local.json over the committed
-// .claude/settings.json, Claude's documented local-over-committed precedence) and fires
-// gate-locally-overridden when the committed gate is healthy but the effective one is
-// not. session-only: CI cannot see, and does not own, the dev machine's local layer.
-// codex has no machine-local layer, so there is nothing local can override.
+// gateEffectiveLocalFindings is the gate-effective-local node. Claude merges hooks across
+// settings.json/settings.local.json ADDITIVELY: a local layer can only ADD hooks (and
+// identical handlers dedup), never remove a committed one, so redefining a PreToolUse
+// array in the local layer cannot drop the committed gate. The one local vector that does
+// switch the gate off is disableAllHooks:true, which disables every hook including the
+// committed gate. This node fires gate-locally-overridden when the committed gate is
+// healthy but the effective local config sets disableAllHooks:true. session-only: CI
+// cannot see, and does not own, the dev machine's local layer. codex has no machine-local
+// layer, so there is nothing local can override.
 func gateEffectiveLocalFindings(repoRoot string) []finding {
 	if !fileExists(filepath.Join(repoRoot, ".claude", "memento-pre-write-vault-guard.sh")) {
 		return okFindings()
 	}
 	committed := scanHooks(repoRoot, "claude", readClaudeHooks(repoRoot), claudeMatcherCovers)
-	effective := scanHooks(repoRoot, "claude", readClaudeEffectiveHooks(repoRoot), claudeMatcherCovers)
-	if gateHealthy(committed) && !gateHealthy(effective) {
+	if gateHealthy(committed) && claudeHooksDisabled(repoRoot) {
 		return []finding{{token: tokGateLocallyOverridden, severity: sevError,
-			detail:      "machine-local .claude/settings.local.json overrides the committed gate; the effective gate no longer covers note writes",
+			detail:      "machine-local Claude config sets disableAllHooks:true; it switches off the committed gate along with every other hook",
 			remediation: "restore local config"}}
 	}
 	return okFindings()
@@ -1357,20 +1359,34 @@ func readClaudeHooks(repoRoot string) []wiredHook {
 	return flattenEvents(parseClaudeHooks(filepath.Join(repoRoot, ".claude", "settings.json")))
 }
 
-// readClaudeEffectiveHooks flattens the MERGED Claude config: machine-local
-// .claude/settings.local.json layered over the committed .claude/settings.json. The
-// local layer takes precedence per event (Claude's documented local-over-committed
-// precedence): if settings.local.json defines hooks for an event, its entries are the
-// effective ones for that event; otherwise the committed entries stand.
-func readClaudeEffectiveHooks(repoRoot string) []wiredHook {
-	merged := map[string][]wiredHook{}
-	for ev, hs := range parseClaudeHooks(filepath.Join(repoRoot, ".claude", "settings.json")) {
-		merged[ev] = hs
+// claudeHooksDisabled reports the EFFECTIVE disableAllHooks setting: the machine-local
+// .claude/settings.local.json value wins, falling back to the committed
+// .claude/settings.json (Claude merges this scalar local-over-committed). disableAllHooks
+// is the only local vector that can switch off the committed gate, since hook arrays
+// merge additively (see gateEffectiveLocalFindings).
+func claudeHooksDisabled(repoRoot string) bool {
+	if v, ok := parseDisableAllHooks(filepath.Join(repoRoot, ".claude", "settings.local.json")); ok {
+		return v
 	}
-	for ev, hs := range parseClaudeHooks(filepath.Join(repoRoot, ".claude", "settings.local.json")) {
-		merged[ev] = hs
+	v, _ := parseDisableAllHooks(filepath.Join(repoRoot, ".claude", "settings.json"))
+	return v
+}
+
+// parseDisableAllHooks reads the disableAllHooks boolean from a Claude settings file. The
+// present return distinguishes "explicitly set" from "absent or unreadable" so the local
+// layer can override the committed one only when it actually declares the key.
+func parseDisableAllHooks(path string) (val, present bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, false
 	}
-	return flattenEvents(merged)
+	var parsed struct {
+		DisableAllHooks *bool `json:"disableAllHooks"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil || parsed.DisableAllHooks == nil {
+		return false, false
+	}
+	return *parsed.DisableAllHooks, true
 }
 
 // readCodexHooks flattens the memento sentinel block in .codex/config.toml. memento has

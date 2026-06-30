@@ -2376,8 +2376,8 @@
       "key": "Architecture decision record/adr-0032-doctor-scope-and-check-model.md",
       "title": "memento doctor — scope, the two-axis check model, and the diagnose-only contract",
       "summary": "Defines memento doctor as a single check engine over a precondition DAG, diagnose-only in v1 (--fix deferred). The discriminator: every check output is a property of the installation or a derived artifact, never of a note — which ejects broken links, orphans, frontmatter validity, and 'pulling its weight' to compile/review. Each check carries two ORTHOGONAL axes: class (liveness vs hygiene — the faculty-region) and assertable-in {session,ci,any} (where it may gate), because they cross (core.hooksPath shadowing is liveness-class yet CI-assertable; BYO-conformer presence is hygiene-class yet fine-when-absent on a fresh runner). Severity is ok/nudge/warning/error plus skip-with-reason as a first-class exit-neutral outcome. Exit spine stays 0=clean / 1=broken / 2=usage; warnings exit 0 by default and only gate under MEMENTO_DOCTOR_STRICT (mirrors MEMENTO_STRICT_COMMIT). Liveness is behavioral not byte-match: the pre-commit anchor is checked for core.hooksPath/husky shadowing, not script identity. Manifest freshness is an authoritative side-effect-free in-buffer recompile+diff that shares brief's predicate at higher fidelity. Subsumes the liveness verb shipped in memento-aan/mbd, satisfies ADR-0031's named hard dependency, and amends ADR-0029's convention-check routing.",
-      "bytes": 28783,
-      "lines": 469,
+      "bytes": 29519,
+      "lines": 478,
       "tags": [
         "adr",
         "cli",

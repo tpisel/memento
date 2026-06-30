@@ -170,11 +170,20 @@ exception list within months. The crossings that prove it:
 - **"Gate wired"** is `class: liveness`, but it is **two checks, not one with a
   footnote**: `gate-committed-config` reads the *committed* `.claude/settings.json`
   (`assertable-in: {session, ci}` — CI sees the repo file) and `gate-effective-local`
-  reads the *merged* config including a machine-local `settings.local.json` override
+  reads the machine-local layer the committed config cannot see
   (`assertable-in: {session}` — CI cannot see, and does not own, the dev machine's
   local layer). A single "gate wired" node carrying both assertabilities cannot be
   represented in this model, and the attempt to fake it (a `ci*`-with-footnote mask)
   is the special-case the two-axis split exists to abolish. So it must be split.
+  - **The local-disable vector is `disableAllHooks`, not array replacement.** Claude
+    merges hook arrays across `settings.json`/`settings.local.json` *additively* — a
+    local layer can only ADD hooks (identical handlers dedup), never remove a committed
+    one — so a local `PreToolUse` entry cannot displace the committed gate. The only
+    machine-local switch that turns the committed gate off is `disableAllHooks:true`
+    (local value wins, else committed). `gate-effective-local` reads that scalar and
+    emits `gate-locally-overridden` when the committed gate is healthy but the effective
+    local config disables all hooks; it does **not** diff merged hook arrays, because
+    under additive semantics that diff can never show a removal.
 
 **`assertable-in` is *derived from what a check reads*, not hand-assigned** — this is
 what makes the model mechanical rather than a growing exception list. A check over

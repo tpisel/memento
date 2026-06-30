@@ -74,6 +74,17 @@ func writeClaudeLocalSettings(t *testing.T, repoRoot string, specs ...hookSpec) 
 	writeClaudeSettingsFile(t, repoRoot, "settings.local.json", specs...)
 }
 
+// writeClaudeLocalDisableAllHooks writes a .claude/settings.local.json that sets
+// disableAllHooks:true — the one machine-local vector that switches off the committed gate.
+func writeClaudeLocalDisableAllHooks(t *testing.T, repoRoot string) {
+	t.Helper()
+	data, err := json.MarshalIndent(map[string]any{"disableAllHooks": true}, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal local settings: %v", err)
+	}
+	writeDoctorScript(t, repoRoot, ".claude/settings.local.json", string(data))
+}
+
 // liveClaudeRepo builds a repo whose Claude gate is fully wired and live: a git tree with
 // the memento pre-commit anchor installed at the default .git/hooks location, so every
 // doctor node (git-repo and precommit-anchor-live included) runs and passes.
@@ -267,17 +278,29 @@ func TestGateCommittedFindingsNoFamily(t *testing.T) {
 // --- gate-effective-local ------------------------------------------------
 
 func TestGateEffectiveLocalOverride(t *testing.T) {
-	repoRoot := liveClaudeRepo(t)
-	noop := writeDoctorScript(t, repoRoot, ".claude/local-noop.sh", benignScriptBody)
-	// settings.local.json replaces the committed PreToolUse gate with a non-gate command.
-	writeClaudeLocalSettings(t, repoRoot, hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", noop})
+	// Claude merges hooks additively, so a local PreToolUse hook ADDS alongside the
+	// committed gate — it cannot replace or remove it. The local layer disables the gate
+	// only via disableAllHooks:true.
+	t.Run("local hook is additive, gate stays live", func(t *testing.T) {
+		repoRoot := liveClaudeRepo(t)
+		noop := writeDoctorScript(t, repoRoot, ".claude/local-noop.sh", benignScriptBody)
+		// An unrelated local PreToolUse hook: it runs alongside the committed gate, it
+		// does not displace it, so the effective gate stays live.
+		writeClaudeLocalSettings(t, repoRoot, hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", noop})
+		assertOK(t, gateEffectiveLocalFindings(repoRoot))
+	})
 
-	f := findToken(t, gateEffectiveLocalFindings(repoRoot), tokGateLocallyOverridden)
-	if f.severity != sevError {
-		t.Fatalf("gate-locally-overridden severity = %v, want error", f.severity)
-	}
-	// The committed-config node must stay ok: it reads settings.json only.
-	assertOK(t, gateCommittedFindings(repoRoot))
+	t.Run("disableAllHooks:true disables the gate", func(t *testing.T) {
+		repoRoot := liveClaudeRepo(t)
+		writeClaudeLocalDisableAllHooks(t, repoRoot)
+
+		f := findToken(t, gateEffectiveLocalFindings(repoRoot), tokGateLocallyOverridden)
+		if f.severity != sevError {
+			t.Fatalf("gate-locally-overridden severity = %v, want error", f.severity)
+		}
+		// The committed-config node must stay ok: it reads settings.json only.
+		assertOK(t, gateCommittedFindings(repoRoot))
+	})
 }
 
 func TestGateEffectiveLocalNoLocalOK(t *testing.T) {
