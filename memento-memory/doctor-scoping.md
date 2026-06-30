@@ -235,3 +235,42 @@ one scoping call:
 - **memento's step is recognized by behavior:** the install sentinel `# memento:start`, or
   either wired command (`memento compile` / `memento clear-grants`) — so a composed hook
   (memento folded among other steps) reads as live, matching the "liveness ≠ presence" rule.
+
+## SessionStart hot path defers the corpus-scaling checks — `doctor --session` (2026-06-30, memento-tbu.6)
+
+ADR-0032 says doctor "runs ALL reachable checks every invocation." The post-implementation
+review (FINDING 6) found that too costly on the **SessionStart hot path**: the orient hook
+shells `memento doctor` on every startup/resume/compact, paying manifest-fresh's AUTHORITATIVE
+full in-buffer recompile (`manifest.Compile` over the whole corpus) — which the hook had
+**already** just done for real via its own `memento compile` step — plus the live-fire
+temp-vault probe. Sub-second at ~55 notes, but it scales with corpus size on a path that fires
+constantly. This **amends** the ADR's "run all checks every invocation" for the session
+cadence. Decisions:
+
+- **Deferral is a per-invocation cadence choice, not a static node property.** A new
+  `--session` flag (the orient hook passes it) sets `checkNode.deferred` on the two
+  corpus-scaling leaves — `manifest-fresh` and `live-fire` — so they are SKIPPED without
+  running. The same DAG serves both cadences; manual/CI `memento doctor` (no flag) still runs
+  everything, so the deep checks keep a home. Deferral is distinct from `assertable-in`: that
+  axis governs whether a finding *gates*, this governs whether the check *runs at all*.
+- **Deferred is a first-class skip cause, rendered apart from blocked-by.** `checkOutcome`
+  gained `deferred bool`; the runner emits a deferred outcome (exit-neutral, not green, no
+  `blockedBy`) and renders `[skip] <node>: deferred to manual/CI doctor (costly on the session
+  hot path)`. Deferral takes precedence over a blocked precondition — on the hot path we never
+  intended to run the node, so "deferred" is the honest reason regardless of upstream state.
+  Both deferred nodes are DAG leaves, so deferring them cascades to nothing.
+- **The LIVE/OFF headline survives deferral.** `livenessSummary` already skips skipped nodes,
+  so the headline is still emitted from the structural liveness checks (gate wired, binary on
+  PATH, no legacy guard, anchor live). The cost: deferring `live-fire` means the ambient signal
+  no longer includes the verdict-chain proof — accepted, since live-fire is constant-cost but
+  the title scoped it in, and the chain bug it catches is rarer and caught at build/CI. The
+  scaling cost (manifest-fresh) was the real target.
+- **An old binary that does not grok `--session` degrades to the same "unavailable" fold** the
+  doctorless-binary case already uses: it errors without emitting the `vault write
+  enforcement:` marker, so the orient hook injects "memento doctor unavailable; … upgrade
+  memento" rather than a raw flag error. No new degradation path.
+- **Three orient surfaces stay in lockstep** (per the memento-mbd note above): the init
+  generator (`internal/setup/init.go`), the installed artifact
+  (`.claude/memento-orient-session-start.sh`), and the reference template
+  (`scripts/agent-hooks/orient-session-start.sh`) all gained `--session` by hand — the orient
+  script is not drift-pinned.

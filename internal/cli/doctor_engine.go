@@ -96,21 +96,34 @@ type finding struct {
 // runs), and run, which evaluates the node and returns its findings. Real checks
 // close run over the repo root / vault they read; synthetic checks close over a
 // fixed result.
+//
+// deferred is the cost escape hatch the SessionStart hot path needs: ADR-0032's "run
+// ALL reachable checks every invocation" is too costly on session-open for the
+// corpus-scaling checks (manifest-fresh's full in-buffer recompile; the live-fire
+// temp-vault probe), which the orient hook would pay on every startup/resume/compact.
+// A deferred node is NOT run — it produces an exit-neutral deferred outcome — and is
+// re-enabled at the manual/CI cadence. Deferral is decided per invocation (the
+// `--session` flag), not a static node property, so the same DAG serves both cadences.
 type checkNode struct {
 	name          string
 	class         checkClass
 	assertableIn  assertContext
 	preconditions []string
+	deferred      bool
 	run           func() []finding
 }
 
-// checkOutcome is the result of evaluating one node: either it ran (findings set) or
-// it was skipped because a precondition did not pass (skipped set, blockedBy naming
-// the precondition). skip is exit-neutral but NOT green — the v1 verb dishonestly
-// reported skipped checks as ok; this models the third state explicitly.
+// checkOutcome is the result of evaluating one node: it ran (findings set), it was
+// skipped because a precondition did not pass (skipped set, blockedBy naming the
+// precondition), or it was deferred by the invocation cadence (skipped and deferred
+// set, no blockedBy). skip — for either reason — is exit-neutral but NOT green: the v1
+// verb dishonestly reported skipped checks as ok; this models the third state
+// explicitly. deferred is a distinct skip cause so the report can say "deferred to
+// manual/CI" rather than imply a broken precondition.
 type checkOutcome struct {
 	node      checkNode
 	skipped   bool
+	deferred  bool
 	blockedBy string
 	findings  []finding
 }
@@ -174,9 +187,15 @@ func runChecks(nodes []checkNode) ([]checkOutcome, error) {
 			}
 		}
 		var o checkOutcome
-		if blocker != "" {
+		switch {
+		case n.deferred:
+			// The invocation deferred this node as too costly for its cadence. Reported
+			// over a blocked precondition: on the hot path we never intended to run it,
+			// so "deferred" is the honest cause regardless of upstream state.
+			o = checkOutcome{node: n, skipped: true, deferred: true}
+		case blocker != "":
 			o = checkOutcome{node: n, skipped: true, blockedBy: blocker}
-		} else {
+		default:
 			o = checkOutcome{node: n, findings: n.run()}
 		}
 		outcomes[name] = o
@@ -276,6 +295,8 @@ func computeExitCode(outcomes []checkOutcome, ctx assertContext, strict bool) in
 func renderEngineReport(w io.Writer, outcomes []checkOutcome) {
 	for _, o := range outcomes {
 		switch {
+		case o.deferred:
+			fmt.Fprintf(w, "  [skip] %s: deferred to manual/CI doctor (costly on the session hot path)\n", o.node.name)
 		case o.skipped:
 			fmt.Fprintf(w, "  [skip] %s: blocked-by %s\n", o.node.name, o.blockedBy)
 		case o.passed():

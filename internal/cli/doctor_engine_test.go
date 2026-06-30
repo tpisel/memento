@@ -182,6 +182,56 @@ func TestSkipIsNotGreenAndExitNeutral(t *testing.T) {
 	}
 }
 
+// TestDeferredNodeIsNotRun proves a deferred node is skipped without running, renders as
+// deferred (not blocked-by), is exit-neutral, and leaves sibling branches untouched — the
+// cost escape hatch the SessionStart hot path needs.
+func TestDeferredNodeIsNotRun(t *testing.T) {
+	var order []string
+	costly := recordingNode("costly", classHygiene, ctxAny, nil, &order, errFinding("would-fail"))
+	costly.deferred = true
+	nodes := []checkNode{
+		costly,
+		recordingNode("sibling", classLiveness, ctxAny, nil, &order),
+	}
+	outcomes, err := runChecks(nodes)
+	if err != nil {
+		t.Fatalf("runChecks: %v", err)
+	}
+
+	if contains(order, "costly") {
+		t.Fatalf("a deferred node's run must never execute; order=%v", order)
+	}
+	o := outcomeFor(t, outcomes, "costly")
+	if !o.skipped || !o.deferred {
+		t.Fatalf("costly outcome = %+v, want skipped+deferred", o)
+	}
+	if o.blockedBy != "" {
+		t.Fatalf("a deferred skip names no precondition, got blockedBy=%q", o.blockedBy)
+	}
+	if o.passed() {
+		t.Fatal("a deferred node must not count as passed (not green)")
+	}
+	if o.statusTag() != "skip" {
+		t.Fatalf("deferred status tag = %q, want skip", o.statusTag())
+	}
+
+	var buf bytes.Buffer
+	renderEngineReport(&buf, []checkOutcome{o})
+	line := buf.String()
+	if !strings.Contains(line, "[skip] costly: deferred") || strings.Contains(line, "blocked-by") {
+		t.Fatalf("deferred render = %q, want a deferred skip line with no blocked-by", line)
+	}
+
+	// Even though the deferred node WOULD have emitted an error, deferral runs nothing,
+	// so it gates nowhere; the sibling still ran.
+	if code := computeExitCode(outcomes, ctxSession, true); code != 0 {
+		t.Fatalf("a deferred node must be exit-neutral even under strict, got %d", code)
+	}
+	if !contains(order, "sibling") {
+		t.Fatalf("sibling should still run alongside a deferred node; order=%v", order)
+	}
+}
+
 // --- exit contract -------------------------------------------------------
 
 func runForExit(t *testing.T, nodes []checkNode) []checkOutcome {

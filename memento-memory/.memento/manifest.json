@@ -3953,8 +3953,8 @@
       "key": "doctor-scoping.md",
       "title": "Doctor — scoping list",
       "summary": "Live, exploratory list of candidate checks for the future `memento doctor` verb, consolidated from the ADRs and dogfooding. Doctor owns mechanical plumbing/health (no content judgement, no agent); this note is the running inbox of candidate checks so the eventual doctor ADR doesn't re-derive them. Not a spec — see [[review-audit-doctor faculties]] for the verb-boundary carve.",
-      "bytes": 19587,
-      "lines": 237,
+      "bytes": 22653,
+      "lines": 276,
       "tags": [
         "doctor",
         "memento",
@@ -4012,6 +4012,11 @@
           "level": 2,
           "text": "Pre-commit anchor liveness landed — behavioral, not byte-match (2026-06-30, memento-e3x.4)",
           "slug": "pre-commit-anchor-liveness-landed-behavioral-not-byte-match-2026-06-30-memento-e3x4"
+        },
+        {
+          "level": 2,
+          "text": "SessionStart hot path defers the corpus-scaling checks — doctor --session (2026-06-30, memento-tbu.6)",
+          "slug": "sessionstart-hot-path-defers-the-corpus-scaling-checks-doctor-session-2026-06-30-memento-tbu6"
         }
       ],
       "mode": "living",

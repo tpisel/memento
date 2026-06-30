@@ -40,13 +40,18 @@ import (
 const doctorHelpText = `memento doctor
 
 Usage:
-  memento doctor
+  memento doctor [--session]
 
 Report whether vault write enforcement is LIVE: the PreToolUse check-write gate is
 wired and executable, the memento binary the gate shells to is reachable, no legacy
 broad-deny guard bricks the vault, and a live-fire self-test confirms a read-only
 overwrite is actually denied. Alongside that, it checks vault/installation hygiene
 (manifest freshness, config validity, ignore stanzas).
+
+  --session   session cadence: defer the corpus-scaling checks (the manifest-fresh
+              recompile and the live-fire probe) to the manual/CI cadence so the
+              SessionStart orient hook stays cheap. The LIVE/OFF headline is still
+              emitted from the structural liveness checks.
 
 Each check reports one of four severities, or skips:
   error     vault unusable or enforcement off; flips the headline and gates.
@@ -118,6 +123,7 @@ const (
 
 func runDoctor(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	sessionMode := flags.Bool("session", false, "session cadence: defer the corpus-scaling checks (manifest-fresh recompile, live-fire probe) to manual/CI; the SessionStart orient hook passes this so the hot path stays cheap")
 	if ok, code := parseSubcommandFlags(flags, args, stdout, stderr, "doctor", doctorHelpText); !ok {
 		return code
 	}
@@ -134,7 +140,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 
 	v, vaultErr := resolveVault()
 
-	outcomes, err := runChecks(doctorNodes(repoRoot, v, vaultErr))
+	outcomes, err := runChecks(doctorNodes(repoRoot, v, vaultErr, *sessionMode))
 	if err != nil {
 		// A malformed DAG (duplicate node, unknown precondition, cycle) is a
 		// programming error in the node set, not a vault condition.
@@ -150,7 +156,13 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	}
 	printDoctorHeadline(stdout, outcomes, caveat)
 	renderEngineReport(stdout, outcomes)
-	return computeExitCode(outcomes, detectContext(), doctorStrict())
+	// --session declares the session cadence: CI never passes it, so gate as ctxSession
+	// rather than re-detecting; the deferred corpus-scaling checks gate nowhere anyway.
+	ctx := detectContext()
+	if *sessionMode {
+		ctx = ctxSession
+	}
+	return computeExitCode(outcomes, ctx, doctorStrict())
 }
 
 // doctorNodes assembles the ADR-0032 check DAG over a memento installation. The gate /
@@ -175,7 +187,15 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 // than judge files that are not there.
 // (assertable-in "session,ci" and "any" both gate in both contexts and
 // so both map to ctxAny; their distinction is rationale, carried in the comments.)
-func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
+//
+// hotPath (the orient hook's --session) defers the two corpus-scaling checks —
+// manifest-fresh (a full in-buffer recompile) and live-fire (a temp-vault probe) — so
+// the SessionStart hot path does not pay ADR-0032's "run all checks" cost on every
+// startup/resume/compact. Both are leaf nodes (nothing depends on them), so deferring
+// them skips nothing else; they run in full at the manual/CI cadence. The structural
+// liveness checks (gate wired, binary on PATH, no legacy guard, anchor live) still run,
+// so the LIVE/OFF headline is still emitted — only the deep chain proof is deferred.
+func doctorNodes(repoRoot string, v vault.Vault, vaultErr error, hotPath bool) []checkNode {
 	return []checkNode{
 		{
 			name: nodeVaultDiscoverable, class: classHygiene, assertableIn: ctxAny,
@@ -219,11 +239,13 @@ func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
 		{
 			name: nodeManifestFresh, class: classHygiene, assertableIn: ctxAny, // session, ci
 			preconditions: []string{nodeManifestSchemaRead},
+			deferred:      hotPath, // full-corpus recompile — too costly for the session hot path
 			run:           func() []finding { return manifestFreshFindings(v) },
 		},
 		{
 			name: nodeLiveFire, class: classLiveness, assertableIn: ctxAny,
-			run: func() []finding { return liveFireFindings() },
+			deferred: hotPath, // temp-vault probe — deferred with manifest-fresh off the hot path
+			run:      func() []finding { return liveFireFindings() },
 		},
 		{
 			name: nodeGitRepo, class: classHygiene, assertableIn: ctxAny,

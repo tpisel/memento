@@ -572,7 +572,7 @@ func TestManifestFreshSkipsWithNoManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := vault.Vault{Root: root, MarkerDir: marker, ManifestPath: filepath.Join(marker, vault.ManifestFileName)}
-	outcomes, err := runChecks(doctorNodes(t.TempDir(), v, nil))
+	outcomes, err := runChecks(doctorNodes(t.TempDir(), v, nil, false))
 	if err != nil {
 		t.Fatalf("runChecks: %v", err)
 	}
@@ -586,6 +586,53 @@ func TestManifestFreshSkipsWithNoManifest(t *testing.T) {
 	}
 	if mf.passed() {
 		t.Fatal("a skipped manifest-fresh must not count as passed")
+	}
+}
+
+// In the session cadence (the orient hook's --session), the corpus-scaling checks are
+// DEFERRED: manifest-fresh's full in-buffer recompile and the live-fire temp-vault probe
+// never run on the hot path. The proof is behavioral — a vault made stale would trip
+// manifest-stale on a recompile, so the absence of that finding under --session is direct
+// evidence the recompile was skipped; the same DAG in the full cadence still trips it.
+func TestDoctorSessionDefersCorpusRecompile(t *testing.T) {
+	v := freshVault(t)
+	// Edit a note without recompiling: the on-disk manifest is now stale, so any recompile
+	// that ran would emit manifest-stale.
+	if err := os.WriteFile(filepath.Join(v.Root, "note.md"), []byte("---\ntitle: Note\n---\n# Note\n\nEdited, never recompiled.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repoRoot := t.TempDir()
+
+	// Session cadence: manifest-fresh and live-fire are deferred (skipped without running).
+	hot, err := runChecks(doctorNodes(repoRoot, v, nil, true))
+	if err != nil {
+		t.Fatalf("runChecks (session): %v", err)
+	}
+	for _, name := range []string{nodeManifestFresh, nodeLiveFire} {
+		o := outcomeFor(t, hot, name)
+		if !o.skipped || !o.deferred {
+			t.Fatalf("%s under --session = %+v, want deferred skip", name, o)
+		}
+	}
+	for _, f := range outcomeFor(t, hot, nodeManifestFresh).findings {
+		if f.token == tokManifestStale {
+			t.Fatal("manifest-fresh emitted manifest-stale under --session; the recompile was NOT skipped")
+		}
+	}
+
+	// Full cadence: the same stale vault trips manifest-fresh, proving deferral — not a
+	// fresh manifest — is what silenced it above.
+	full, err := runChecks(doctorNodes(repoRoot, v, nil, false))
+	if err != nil {
+		t.Fatalf("runChecks (full): %v", err)
+	}
+	fmf := outcomeFor(t, full, nodeManifestFresh)
+	if fmf.skipped {
+		t.Fatalf("manifest-fresh should run in the full cadence, got %+v", fmf)
+	}
+	findToken(t, fmf.findings, tokManifestStale)
+	if o := outcomeFor(t, full, nodeLiveFire); o.skipped {
+		t.Fatalf("live-fire should run in the full cadence, got %+v", o)
 	}
 }
 
@@ -762,7 +809,7 @@ func TestPrecommitNoHookFileMissing(t *testing.T) {
 // With no .git tree, precommit-anchor-live SKIPS blocked-by git-repo rather than reporting
 // a verdict it cannot ground.
 func TestPrecommitSkipsWithNoGit(t *testing.T) {
-	outcomes, err := runChecks(doctorNodes(t.TempDir(), vault.Vault{}, vault.ErrVaultNotFound))
+	outcomes, err := runChecks(doctorNodes(t.TempDir(), vault.Vault{}, vault.ErrVaultNotFound, false))
 	if err != nil {
 		t.Fatalf("runChecks: %v", err)
 	}
@@ -943,7 +990,7 @@ func TestToolReadFilesWritingAbsentNudge(t *testing.T) {
 // The three hygiene nodes hang off vault-discoverable: with no vault they SKIP, not judge
 // files that are not there.
 func TestHygieneNodesSkipWithNoVault(t *testing.T) {
-	outcomes, err := runChecks(doctorNodes(t.TempDir(), vault.Vault{}, vault.ErrVaultNotFound))
+	outcomes, err := runChecks(doctorNodes(t.TempDir(), vault.Vault{}, vault.ErrVaultNotFound, false))
 	if err != nil {
 		t.Fatalf("runChecks: %v", err)
 	}
@@ -963,7 +1010,7 @@ func TestHygieneNodesSkipWithNoVault(t *testing.T) {
 // TestGrantFreshSkipsWithNoVault is the dishonest-OK fix: with no vault, grant-fresh
 // must SKIP blocked-by vault-discoverable, not report ok.
 func TestGrantFreshSkipsWithNoVault(t *testing.T) {
-	outcomes, err := runChecks(doctorNodes(t.TempDir(), vault.Vault{}, vault.ErrVaultNotFound))
+	outcomes, err := runChecks(doctorNodes(t.TempDir(), vault.Vault{}, vault.ErrVaultNotFound, false))
 	if err != nil {
 		t.Fatalf("runChecks: %v", err)
 	}
@@ -1010,7 +1057,7 @@ func TestDoctorDAGLive(t *testing.T) {
 	stubGateSchema(t, manifest.CurrentSchemaVersion)
 	v := doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
 	installHygieneFiles(t, repoRoot, v)
-	outcomes, err := runChecks(doctorNodes(repoRoot, v, nil))
+	outcomes, err := runChecks(doctorNodes(repoRoot, v, nil, false))
 	if err != nil {
 		t.Fatalf("runChecks: %v", err)
 	}
@@ -1041,6 +1088,32 @@ func TestRunDoctorExitLive(t *testing.T) {
 	}
 	if !strings.HasPrefix(stdout.String(), "vault write enforcement: LIVE") {
 		t.Fatalf("headline = %q, want LIVE prefix", stdout.String())
+	}
+}
+
+// --session keeps the loud LIVE headline (the whole point of the ambient signal) while
+// rendering the two corpus-scaling checks as deferred, and still exits clean.
+func TestRunDoctorSessionHeadlineAndDeferral(t *testing.T) {
+	t.Setenv("CI", "")
+	repoRoot := liveClaudeRepo(t)
+	realBin(t)
+	stubGateSchema(t, manifest.CurrentSchemaVersion)
+	doctorVault(t, repoRoot, manifest.CurrentSchemaVersion)
+	chdirCLI(t, repoRoot)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"doctor", "--session"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("doctor --session exit = %d, want 0; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	out := stdout.String()
+	if !strings.HasPrefix(out, "vault write enforcement: LIVE") {
+		t.Fatalf("headline = %q, want LIVE prefix under --session", out)
+	}
+	for _, node := range []string{nodeManifestFresh, nodeLiveFire} {
+		if want := "[skip] " + node + ": deferred"; !strings.Contains(out, want) {
+			t.Fatalf("output missing deferred line %q; got:\n%s", want, out)
+		}
 	}
 }
 

@@ -61,8 +61,10 @@ orient_output="$(cd "$repo_root" && "${mem[@]}" orient 2>&1)"
 # 'enforcement: OFF' is unmissable, not something a human must run the verb to
 # see. LIVE collapses to the headline; OFF keeps the full report so the break is
 # actionable in place. A binary too old to know the verb cannot self-check, which
-# is itself an enforcement-uncertainty signal. doctor's live-fire is in-process.
-if doctor_output="$(cd "$repo_root" && "${mem[@]}" doctor 2>&1)"; then
+# is itself an enforcement-uncertainty signal. --session defers the corpus-scaling
+# checks (manifest-fresh recompile, live-fire probe) off the hot path; a binary too old
+# for the flag has no enforcement marker, folding into the same "unavailable" branch.
+if doctor_output="$(cd "$repo_root" && "${mem[@]}" doctor --session 2>&1)"; then
   doctor_status=0
 else
   doctor_status=$?
