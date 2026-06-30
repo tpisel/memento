@@ -68,6 +68,8 @@ const (
 	nodeManifestSchemaRead = "manifest-schema-readable"
 	nodeLiveFire           = "live-fire"
 	nodeGrantFresh         = "grant-fresh"
+	nodeGitRepo            = "git-repo"
+	nodePrecommitAnchor    = "precommit-anchor-live"
 )
 
 // Canonical ADR-0032 failure tokens (the catalog table is the only source of these
@@ -88,6 +90,7 @@ const (
 	tokGrantStale            = "grant-stale"
 	tokVaultAmbiguous        = "vault-ambiguous"
 	tokVaultAbsent           = "vault-absent"
+	tokPrecommitShadowed     = "precommit-shadowed"
 )
 
 func runDoctor(args []string, stdout, stderr io.Writer) int {
@@ -134,6 +137,8 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 // resolves — never a green "not checked". binary-schema-compatible depends on
 // binary-on-path (no point asking a binary that is not there what schema it reads) and
 // reads the manifest opportunistically, treating an absent vault as nothing to judge.
+// precommit-anchor-live depends on git-repo (no .git/hooks to reason about outside a git
+// tree), so it SKIPS (blocked-by git-repo) rather than reporting a dishonest verdict.
 // (assertable-in "session,ci" and "any" both gate in both contexts and
 // so both map to ctxAny; their distinction is rationale, carried in the comments.)
 func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
@@ -175,6 +180,15 @@ func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
 		{
 			name: nodeLiveFire, class: classLiveness, assertableIn: ctxAny,
 			run: func() []finding { return liveFireFindings() },
+		},
+		{
+			name: nodeGitRepo, class: classHygiene, assertableIn: ctxAny,
+			run: func() []finding { return gitRepoFindings(repoRoot) },
+		},
+		{
+			name: nodePrecommitAnchor, class: classLiveness, assertableIn: ctxAny, // session, ci
+			preconditions: []string{nodeGitRepo},
+			run:           func() []finding { return precommitAnchorFindings(repoRoot) },
 		},
 		{
 			name: nodeGrantFresh, class: classLiveness, assertableIn: ctxSession,
@@ -614,6 +628,202 @@ func liveFireReadOnlyProbe() (denied bool, reasonCode string, err error) {
 		return false, "", fmt.Errorf("compute probe verdict: %w", err)
 	}
 	return verdict.decision == "deny" && verdict.reasonCode == enforce.ReasonReadOnly, verdict.reasonCode, nil
+}
+
+// --- git-repo & precommit-anchor-live ------------------------------------
+
+// gitRepoFindings is the git-repo precondition node: is repoRoot inside a git work tree
+// at all. It is the DAG root for the git-dependent checks (precommit-anchor-live here;
+// grant-fresh reasons about git internally). No git is SUPPORTED, not an error — the
+// ratification boundary simply does not exist to anchor against — so absence is a nudge
+// that fails the precondition (skipping dependents) without gating the exit code or
+// flipping the LIVE/OFF headline (hygiene class, never sevError).
+func gitRepoFindings(repoRoot string) []finding {
+	if _, err := gitOutput(repoRoot, "rev-parse", "--git-dir"); err != nil {
+		return []finding{{severity: sevNudge,
+			detail: "not a git repository; git-dependent checks are skipped"}}
+	}
+	return okFindings()
+}
+
+// precommit signals memento's pre-commit step is reachable by: the install sentinel that
+// brackets the memento block, or either memento command init wires into it. Matching the
+// behavior (a memento invocation is present), never the exact installed bytes, is the
+// ADR-0032 "liveness ≠ presence" rule — composition (memento's step folded into a larger
+// hook) must read as live, not as drift.
+const (
+	preCommitSentinel    = "# memento:start"
+	preCommitCompileCmd  = "memento compile"
+	preCommitClearGrants = "memento clear-grants"
+)
+
+// precommitAnchorFindings is the precommit-anchor-live node — the only liveness anchor for
+// the ratification-boundary MODE VIOLATION commit audit (ADR-0031's integrity floor). The
+// predicate is BEHAVIORAL, not byte-match: resolve the pre-commit hook git will ACTUALLY
+// run (honoring core.hooksPath and third-party managers — husky, lefthook, pre-commit) and
+// verify memento's step is reachable from it. A core.hooksPath redirect that bypasses the
+// installed .git/hooks/pre-commit makes a byte-perfect anchor DEAD: that is the
+// precommit-shadowed error. Reachable-but-content-edited is deliberately NOT a finding —
+// brittle script-identity matching is the stale-hook-detector trap the ADR rejects (it
+// fails open on a working edit and closed on a shadowed byte-identical script), so identity
+// is at most a nudge, never a gate, and we decline to reinvent it.
+func precommitAnchorFindings(repoRoot string) []finding {
+	gitDir, err := gitOutput(repoRoot, "rev-parse", "--git-dir")
+	if err != nil {
+		// git-repo guards this node; defensive only.
+		return okFindings()
+	}
+	effRel, err := gitOutput(repoRoot, "rev-parse", "--git-path", "hooks/pre-commit")
+	if err != nil {
+		return okFindings()
+	}
+	effectiveHook := resolveGitPath(repoRoot, effRel)
+	installedAnchor := resolveGitPath(repoRoot, filepath.Join(gitDir, "hooks", "pre-commit"))
+
+	if precommitReachesMemento(repoRoot, effectiveHook) {
+		return okFindings()
+	}
+	// memento's step is not reachable via the hook git runs. That is shadowing — not mere
+	// absence — only when an installed anchor at the DEFAULT location is being bypassed by
+	// a redirect. No anchor to bypass (never wired) or no redirect (effective == default)
+	// is absence, which this node does not own.
+	if !sameHookPath(effectiveHook, installedAnchor) && hookFileReachesMemento(installedAnchor) {
+		return []finding{{token: tokPrecommitShadowed, severity: sevError,
+			detail:      fmt.Sprintf("git runs %s (core.hooksPath), which never reaches memento's pre-commit step, so the installed anchor at %s is dead and the ratification-boundary audit does not run", effectiveHook, installedAnchor),
+			remediation: "unset core.hooksPath, or compose memento's step into the effective hook"}}
+	}
+	return okFindings()
+}
+
+// gitOutput runs git in repoRoot and returns trimmed stdout, or an error (e.g. not a git
+// tree). The git-repo / precommit-anchor nodes resolve paths the one way through here.
+func gitOutput(repoRoot string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// resolveGitPath makes a git-reported path absolute against repoRoot. git prints
+// core.hooksPath / git-dir relative to the working directory it ran in (repoRoot here);
+// an absolute core.hooksPath is returned unchanged.
+func resolveGitPath(repoRoot, p string) string {
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(filepath.Join(repoRoot, p))
+}
+
+// sameHookPath reports whether two resolved hook paths denote the same file.
+func sameHookPath(a, b string) bool { return filepath.Clean(a) == filepath.Clean(b) }
+
+// precommitReachesMemento reports whether memento's pre-commit step is reachable from the
+// hook git runs, following the handoffs a real installation uses: shell sourcing and the
+// third-party managers (husky's wrapper-into-.husky, lefthook's and pre-commit's
+// config-driven dispatch). It is a bounded breadth-first walk over candidate files; an
+// unreadable or absent file is simply a dead end, never an error (a diagnostic must not
+// blow up on a missing include).
+func precommitReachesMemento(repoRoot, startHook string) bool {
+	visited := map[string]bool{}
+	queue := []string{startHook}
+	for len(queue) > 0 && len(visited) < 64 {
+		path := filepath.Clean(queue[0])
+		queue = queue[1:]
+		if visited[path] {
+			continue
+		}
+		visited[path] = true
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		content := string(data)
+		if hookContentReachesMemento(content) {
+			return true
+		}
+		queue = append(queue, hookDelegations(repoRoot, path, content)...)
+	}
+	return false
+}
+
+// hookFileReachesMemento reports whether one hook file directly carries memento's step (no
+// handoff). It is the "is the installed anchor real" half of the shadowing test.
+func hookFileReachesMemento(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return hookContentReachesMemento(string(data))
+}
+
+// hookContentReachesMemento reports whether a script body invokes memento's pre-commit step
+// — by the install sentinel or either wired command.
+func hookContentReachesMemento(content string) bool {
+	return strings.Contains(content, preCommitSentinel) ||
+		strings.Contains(content, preCommitCompileCmd) ||
+		strings.Contains(content, preCommitClearGrants)
+}
+
+// hookDelegations returns the files a hook hands control to, so reachability can follow the
+// chain a manager installs rather than only the entry script. It honors: husky (hooks live
+// under a .husky dir; the wrapper git runs sources the user hook at <.husky>/pre-commit),
+// explicit shell sourcing (. / source), and the config-file dispatch of lefthook and the
+// pre-commit framework (their installed hook is a thin launcher; memento's step lives in
+// the config). Candidates that do not exist are harmless dead ends in the walk.
+func hookDelegations(repoRoot, hookPath, content string) []string {
+	var out []string
+	if husky := huskyUserHook(hookPath); husky != "" {
+		out = append(out, husky)
+	}
+	for _, p := range sourcedPaths(content) {
+		out = append(out, resolveGitPath(repoRoot, p), filepath.Join(filepath.Dir(hookPath), p))
+	}
+	if strings.Contains(content, "lefthook") {
+		for _, c := range []string{"lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".lefthook.yaml"} {
+			out = append(out, filepath.Join(repoRoot, c))
+		}
+	}
+	if strings.Contains(content, "pre-commit") { // pre-commit framework launcher
+		for _, c := range []string{".pre-commit-config.yaml", ".pre-commit-config.yml"} {
+			out = append(out, filepath.Join(repoRoot, c))
+		}
+	}
+	return out
+}
+
+// huskyUserHook maps a husky wrapper path (anything under a .husky directory, e.g.
+// .husky/_/pre-commit) to the user-authored hook husky sources, <.husky>/pre-commit.
+// Empty when the path is not husky-managed.
+func huskyUserHook(hookPath string) string {
+	parts := strings.Split(filepath.ToSlash(hookPath), "/")
+	for i, p := range parts {
+		if p == ".husky" {
+			return filepath.FromSlash(strings.Join(parts[:i+1], "/")) + string(filepath.Separator) + "pre-commit"
+		}
+	}
+	return ""
+}
+
+// sourcedPaths extracts the operands of `. X` / `source X` lines so the walk can follow a
+// composed hook into the script it sources. Quotes are stripped; an operand carrying a
+// shell variable is unresolvable and dropped (it would only produce a junk dead-end path).
+func sourcedPaths(content string) []string {
+	var out []string
+	for _, line := range strings.Split(content, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 2 || (fields[0] != "." && fields[0] != "source") {
+			continue
+		}
+		operand := strings.Trim(fields[1], `"'`)
+		if operand == "" || strings.Contains(operand, "$") {
+			continue
+		}
+		out = append(out, operand)
+	}
+	return out
 }
 
 // --- grant-fresh ---------------------------------------------------------

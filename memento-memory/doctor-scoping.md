@@ -205,3 +205,33 @@ open and one rollout choice:
   the freshly built binary `TestMain` already produces (`mementoBinary`). The in-process
   live DAG tests stub it too — invoking the *test* binary with `schema` would re-enter
   `TestMain` and re-run the whole suite (a fork bomb), so they must not exec it.
+
+## Pre-commit anchor liveness landed — behavioral, not byte-match (2026-06-30, memento-e3x.4)
+
+ADR-0032's `precommit-anchor-live` node (emits `precommit-shadowed`; liveness; session, ci;
+error) — the only liveness anchor for the ratification-boundary MODE VIOLATION commit audit
+— is implemented, with a `git-repo` precondition node it depends on (no `.git` ⇒ both `skip`
+blocked-by `git-repo`). Building it settled the reachability mechanism the ADR left open and
+one scoping call:
+
+- **Reachability is resolved through git, not by stat-ing `.git/hooks`.** The effective hook
+  is `git rev-parse --git-path hooks/pre-commit` (run with cwd = repoRoot), which honors
+  `core.hooksPath`; the installed anchor is `<git-dir>/hooks/pre-commit`. Shadowing fires
+  **only** when the effective hook differs from the installed anchor AND the installed anchor
+  reaches memento but the effective one does not — i.e. a real anchor is being bypassed.
+  No anchor (never wired) or no redirect (effective == installed) is *absence*, which this
+  node does not own (it has no `precommit-missing` token).
+- **Third-party managers are followed by handoff, not parsed.** `precommitReachesMemento` is
+  a bounded BFS over candidate files: husky (any path under a `.husky` dir → the user hook at
+  `<.husky>/pre-commit`), shell `. `/`source` operands, and the config-file dispatch of
+  lefthook (`lefthook.y[a]ml`) and the pre-commit framework (`.pre-commit-config.y[a]ml`).
+  A missing/unreadable candidate is a dead end, never an error.
+- **The content-identity drift nudge was deliberately NOT built.** ADR-0032 permits it as
+  "at most a nudge, never a gate," but reachable ⇒ `ok` with no byte-comparison at all. The
+  ADR's own rationale (byte-matching fails open on a working edit and closed on a shadowed
+  byte-identical script) argues against reviving the brittle stale-hook detector, and the
+  catalog gives the node no drift token. A future reader tempted to add expected-content
+  matching here should re-read this: the strong signal is reachability; identity is noise.
+- **memento's step is recognized by behavior:** the install sentinel `# memento:start`, or
+  either wired command (`memento compile` / `memento clear-grants`) — so a composed hook
+  (memento folded among other steps) reads as live, matching the "liveness ≠ presence" rule.

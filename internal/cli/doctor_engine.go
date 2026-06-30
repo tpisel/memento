@@ -285,8 +285,14 @@ func renderEngineReport(w io.Writer, outcomes []checkOutcome) {
 				if f.severity == sevOK {
 					continue
 				}
-				fmt.Fprintf(w, "  [%s] %s: %s (%s) — %s\n",
-					f.severity.tag(), o.node.name, f.detail, f.token, f.remediation)
+				line := fmt.Sprintf("  [%s] %s: %s", f.severity.tag(), o.node.name, f.detail)
+				if f.token != "" {
+					line += fmt.Sprintf(" (%s)", f.token)
+				}
+				if f.remediation != "" {
+					line += " — " + f.remediation
+				}
+				fmt.Fprintln(w, line)
 			}
 		}
 	}

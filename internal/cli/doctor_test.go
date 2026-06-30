@@ -74,7 +74,9 @@ func writeClaudeLocalSettings(t *testing.T, repoRoot string, specs ...hookSpec) 
 	writeClaudeSettingsFile(t, repoRoot, "settings.local.json", specs...)
 }
 
-// liveClaudeRepo builds a repo whose Claude gate is fully wired and live.
+// liveClaudeRepo builds a repo whose Claude gate is fully wired and live: a git tree with
+// the memento pre-commit anchor installed at the default .git/hooks location, so every
+// doctor node (git-repo and precommit-anchor-live included) runs and passes.
 func liveClaudeRepo(t *testing.T) string {
 	t.Helper()
 	repoRoot := t.TempDir()
@@ -84,7 +86,19 @@ func liveClaudeRepo(t *testing.T) string {
 		hookSpec{"PreToolUse", "Write|Edit|MultiEdit|Bash", pre},
 		hookSpec{"PostToolUse", "Write|Edit|MultiEdit|Bash", post},
 	)
+	initCLIGit(t, repoRoot)
+	writeMementoPreCommitHook(t, repoRoot)
 	return repoRoot
+}
+
+// mementoPreCommitBody is a pre-commit hook carrying memento's sentinel-bracketed step,
+// shaped like what init writes.
+const mementoPreCommitBody = "#!/bin/sh\nset -eu\n\n# memento:start\nif command -v memento >/dev/null 2>&1; then\nmemento compile\nmemento clear-grants\nfi\n# memento:end\n"
+
+// writeMementoPreCommitHook installs the memento anchor at the default .git/hooks location.
+func writeMementoPreCommitHook(t *testing.T, repoRoot string) {
+	t.Helper()
+	writeDoctorScript(t, repoRoot, ".git/hooks/pre-commit", mementoPreCommitBody)
 }
 
 // codexRepo builds a repo whose codex gate is fully wired and live.
@@ -458,6 +472,124 @@ func TestActiveGrantWithEditNotStale(t *testing.T) {
 
 func TestNoGrantsOK(t *testing.T) {
 	assertOK(t, grantFreshFindings(doctorVault(t, t.TempDir(), manifest.CurrentSchemaVersion)))
+}
+
+// --- git-repo & precommit-anchor-live ------------------------------------
+
+func TestGitRepoFindingsPresent(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	assertOK(t, gitRepoFindings(repoRoot))
+}
+
+func TestGitRepoFindingsAbsent(t *testing.T) {
+	fs := gitRepoFindings(t.TempDir())
+	f := sole(t, fs)
+	if f.severity != sevNudge {
+		t.Fatalf("no-git git-repo severity = %v, want nudge", f.severity)
+	}
+	// A nudge fails the precondition (not sevOK) so dependents skip, yet never gates.
+	o := checkOutcome{findings: fs}
+	if o.passed() {
+		t.Fatal("a no-git git-repo node must not pass (so precommit-anchor skips)")
+	}
+}
+
+// The installed anchor at the default .git/hooks location, with no core.hooksPath
+// redirect, is the hook git runs — reachable, so live.
+func TestPrecommitAnchorDefaultLive(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	writeMementoPreCommitHook(t, repoRoot)
+	assertOK(t, precommitAnchorFindings(repoRoot))
+}
+
+// memento's step folded in among other steps reads as live, not as drift.
+func TestPrecommitAnchorComposedLive(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	composed := "#!/bin/sh\nset -eu\nnpm test\nmemento compile\nmemento clear-grants\n./other-step.sh\n"
+	writeDoctorScript(t, repoRoot, ".git/hooks/pre-commit", composed)
+	assertOK(t, precommitAnchorFindings(repoRoot))
+}
+
+// A core.hooksPath redirect to a dir whose pre-commit never reaches memento makes the
+// byte-perfect installed anchor dead: precommit-shadowed (error).
+func TestPrecommitShadowedByHooksPath(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	writeMementoPreCommitHook(t, repoRoot) // installed anchor at .git/hooks
+	writeDoctorScript(t, repoRoot, "alt-hooks/pre-commit", benignScriptBody)
+	runCLIGit(t, repoRoot, "config", "core.hooksPath", "alt-hooks")
+
+	f := findToken(t, precommitAnchorFindings(repoRoot), tokPrecommitShadowed)
+	if f.severity != sevError {
+		t.Fatalf("precommit-shadowed severity = %v, want error", f.severity)
+	}
+}
+
+// A husky-managed hooks dir (core.hooksPath into .husky/_) whose wrapper hands off to the
+// user hook at .husky/pre-commit, which reaches memento, is live — not shadowed.
+func TestPrecommitHuskyReachesMemento(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	writeMementoPreCommitHook(t, repoRoot) // an installed anchor exists, but is bypassed
+	writeDoctorScript(t, repoRoot, ".husky/_/pre-commit", "#!/usr/bin/env sh\n. \"${0%/*}/husky.sh\"\n")
+	writeDoctorScript(t, repoRoot, ".husky/pre-commit", "#!/usr/bin/env sh\nmemento compile\n")
+	runCLIGit(t, repoRoot, "config", "core.hooksPath", ".husky/_")
+
+	assertOK(t, precommitAnchorFindings(repoRoot))
+}
+
+// A lefthook-managed redirect whose launcher dispatches into lefthook.yml, where memento's
+// step lives, is reachable — live, not shadowed.
+func TestPrecommitLefthookReachesMemento(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	writeMementoPreCommitHook(t, repoRoot)
+	writeDoctorScript(t, repoRoot, "lhooks/pre-commit", "#!/bin/sh\nlefthook run pre-commit\n")
+	writeDoctorScript(t, repoRoot, "lefthook.yml", "pre-commit:\n  commands:\n    memento:\n      run: memento compile\n")
+	runCLIGit(t, repoRoot, "config", "core.hooksPath", "lhooks")
+
+	assertOK(t, precommitAnchorFindings(repoRoot))
+}
+
+// Content edited but still reachable is at most a nudge, never an error — script-identity
+// drift is not a gate.
+func TestPrecommitEditedButReachableNotError(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	edited := "#!/bin/sh\n# locally tweaked by a maintainer\nset -euo pipefail\nmemento compile\n"
+	writeDoctorScript(t, repoRoot, ".git/hooks/pre-commit", edited)
+	for _, f := range precommitAnchorFindings(repoRoot) {
+		if f.severity == sevError {
+			t.Fatalf("edited-but-reachable emitted an error: %+v", f)
+		}
+	}
+}
+
+// No memento anchor and no redirect is absence, not shadowing — this node does not own it.
+func TestPrecommitNoAnchorNoRedirectOK(t *testing.T) {
+	repoRoot := t.TempDir()
+	initCLIGit(t, repoRoot)
+	writeDoctorScript(t, repoRoot, ".git/hooks/pre-commit", benignScriptBody)
+	assertOK(t, precommitAnchorFindings(repoRoot))
+}
+
+// With no .git tree, precommit-anchor-live SKIPS blocked-by git-repo rather than reporting
+// a verdict it cannot ground.
+func TestPrecommitSkipsWithNoGit(t *testing.T) {
+	outcomes, err := runChecks(doctorNodes(t.TempDir(), vault.Vault{}, vault.ErrVaultNotFound))
+	if err != nil {
+		t.Fatalf("runChecks: %v", err)
+	}
+	pc := outcomeFor(t, outcomes, nodePrecommitAnchor)
+	if !pc.skipped || pc.blockedBy != nodeGitRepo {
+		t.Fatalf("precommit-anchor outcome = %+v, want skipped blocked-by %s", pc, nodeGitRepo)
+	}
+	if pc.passed() {
+		t.Fatal("a skipped precommit-anchor must not count as passed")
+	}
 }
 
 // --- vault-discoverable --------------------------------------------------
