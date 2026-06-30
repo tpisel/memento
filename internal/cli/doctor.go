@@ -45,14 +45,24 @@ Usage:
 Report whether vault write enforcement is LIVE: the PreToolUse check-write gate is
 wired and executable, the memento binary the gate shells to is reachable, no legacy
 broad-deny guard bricks the vault, and a live-fire self-test confirms a read-only
-overwrite is actually denied.
+overwrite is actually denied. Alongside that, it checks vault/installation hygiene
+(manifest freshness, config validity, ignore stanzas).
+
+Each check reports one of four severities, or skips:
+  error     vault unusable or enforcement off; flips the headline and gates.
+  warning   degraded but usable; gates only under MEMENTO_DOCTOR_STRICT.
+  nudge     advisory; never gates.
+  ok        passed.
+  skip      a precondition failed, so the check did not run — exit-neutral, not green.
+
+Environment:
+  MEMENTO_DOCTOR_STRICT   truthy promotes warnings to gating findings (CI opt-in;
+                          parsed like MEMENTO_STRICT_COMMIT).
 
 Exit status:
   0   no gating finding in this context.
   1   a gating finding (an error, or a warning under MEMENTO_DOCTOR_STRICT).
   2   usage error.
-
-No flags.
 
 For the deeper picture, run: memento orient
 `
@@ -249,8 +259,9 @@ func doctorNodes(repoRoot string, v vault.Vault, vaultErr error) []checkNode {
 // printDoctorHeadline keeps the loud `vault write enforcement: LIVE / OFF` line as the
 // liveness-class summary (ADR-0032 token-retrofit boundary). It reflects only
 // liveness-class errors: a hygiene error (e.g. no vault) can still gate the exit code
-// while enforcement itself is LIVE. (Headline/help wording is retrofitted further in a
-// dependent bead.)
+// while enforcement itself is LIVE. This is the line the SessionStart orient hook
+// projects when doctor exits clean — the hook simply INVOKES the engine, it is not a
+// separate verb (ADR-0032: one engine, the cadences are assertable-in masks).
 func printDoctorHeadline(stdout io.Writer, outcomes []checkOutcome, caveat string) {
 	// A failed vault root is the dominant fact: run outside a project (no vault) or with
 	// ambiguous markers, "enforcement OFF" is a look-alike of "no usable vault here", so

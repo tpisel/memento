@@ -120,6 +120,26 @@ func TestSubcommandHelp(t *testing.T) {
 				"memento orient",
 			},
 		},
+		{
+			verb: "doctor",
+			want: []string{
+				"Usage:",
+				"memento doctor",
+				"vault write enforcement is LIVE",
+				// Four-state severity plus skip (ADR-0032 contract).
+				"error",
+				"warning",
+				"nudge",
+				"ok",
+				"skip",
+				// The strict opt-in and the 0/1/2 exit spine.
+				"MEMENTO_DOCTOR_STRICT",
+				"0   no gating finding",
+				"1   a gating finding",
+				"2   usage error",
+				"memento orient",
+			},
+		},
 	}
 
 	for _, tt := range tests {
