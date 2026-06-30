@@ -67,8 +67,11 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 
 	fmt.Fprintf(stderr, "compiled: %d entries\n", count)
 	if violations > 0 && strictCommit() {
-		// MITIGATION mode: a non-zero exit makes the pre-commit hook (set -eu) abort
-		// the commit, holding the unauthorised change out of ratified state.
+		// MITIGATION mode: a non-zero exit makes the pre-commit hook abort the commit,
+		// holding the unauthorised change out of ratified state. The composed hook block
+		// self-propagates this exit (`memento compile || exit $?`), so the mitigation no
+		// longer depends on the host hook's `set -e` — it survives composition into a
+		// foreign hook that lacks it (memento-5dn).
 		return 1
 	}
 	return 0

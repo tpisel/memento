@@ -77,17 +77,17 @@ violating the model. See [[adr-0031-remove-write-verb-hook-enforced-native-write
 - **`git commit --no-verify` skips it** — fine for honest-agent + signal, not tamper-proof.
 - **Only fires on commit** — uncommitted unauthorised edits linger until then (the
   PostToolUse tier catches earlier where it fires).
-- **Mitigation rides on the host hook's `set -e`** — when another tool owns
-  `core.hooksPath` (e.g. beads' `.beads/hooks`), init composes memento's step into the
-  *effective* hook git runs rather than the dead `.git/hooks/pre-commit` (memento-42o).
-  memento's own default hook ships `#!/bin/sh` + `set -eu`, so a non-zero `memento
-  compile` aborts the commit; a foreign host hook without `set -e` (beads' generated
-  hook has none) runs the appended block and *swallows* the non-zero exit. So in the
-  composed case DETECTION still alarms but the optional commit-block MITIGATION
-  (`MEMENTO_STRICT_COMMIT`) silently no-ops. doctor's `precommit-anchor-live` confirms
-  reachability (detection live), not exit-propagation (mitigation live) — to make
-  mitigation robust the composed block would need to self-propagate compile's exit
-  (`memento compile || exit $?`) rather than rely on the host's shell options.
+- **Mitigation no longer rides on the host hook's `set -e`** (memento-5dn, fixed) — when
+  another tool owns `core.hooksPath` (e.g. beads' `.beads/hooks`), init composes memento's
+  step into the *effective* hook git runs rather than the dead `.git/hooks/pre-commit`
+  (memento-42o). The composed block self-propagates compile's exit with `memento compile
+  || exit $?`, so a non-zero `memento compile` (an ungated MODE VIOLATION under
+  `MEMENTO_STRICT_COMMIT`) aborts the commit even when the foreign host hook lacks `set
+  -e` (beads' generated hook has none, which previously *swallowed* the exit and silently
+  no-op'd the mitigation). Detection and mitigation now both survive composition. doctor's
+  `precommit-anchor-live` still confirms only reachability (detection live), not
+  exit-propagation; the substring reachability match (`memento compile`) is unaffected by
+  the trailing `|| exit $?`.
 
 ## Posture shift
 

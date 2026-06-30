@@ -1130,10 +1130,18 @@ func preCommitHookBlock(repoRoot string, v vault.Vault) string {
 	// ADR-0031 2026-06-28 addendum). This replaces the retired prepare-commit-msg
 	// trailer-lift hook — unlock justifications are no longer lifted into a commit
 	// trailer; loosening audit lives in the gitignored decision log.
+	// `|| exit $?` self-propagates compile's exit so the optional commit-block
+	// mitigation (MEMENTO_STRICT_COMMIT: compile exits non-zero on an ungated MODE
+	// VIOLATION) survives composition. memento's own default hook ships `set -eu`, but
+	// when another tool owns core.hooksPath (e.g. beads' .beads/hooks) our step is
+	// appended to a foreign host hook that may lack `set -e` (beads' generated hook
+	// does), which would otherwise swallow the non-zero exit and silently no-op the
+	// mitigation (memento-5dn; see memento-42o for the composition path). Propagating
+	// the exit here makes mitigation independent of the host hook's shell options.
 	return strings.Join([]string{
 		hookStartSentinel,
 		"if command -v memento >/dev/null 2>&1; then",
-		"memento compile",
+		"memento compile || exit $?",
 		"git add -- " + shellQuote(manifestPath),
 		"memento clear-grants",
 		"else",

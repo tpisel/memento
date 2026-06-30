@@ -1395,7 +1395,7 @@ func TestInitCreatesPreCommitHookWhenAbsent(t *testing.T) {
 	for _, want := range []string{
 		"# memento:start",
 		"if command -v memento >/dev/null 2>&1; then",
-		"memento compile",
+		"memento compile || exit $?",
 		`git add -- 'memory/.memento/manifest.json'`,
 		"else",
 		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
@@ -1457,7 +1457,7 @@ func TestInitReplacesExistingMementoBlockInPreCommitHook(t *testing.T) {
 		"#!/bin/sh\nset -eu\n\n",
 		"\n\necho keep\n",
 		"if command -v memento >/dev/null 2>&1; then",
-		"memento compile",
+		"memento compile || exit $?",
 		`git add -- 'project-memory/.memento/manifest.json'`,
 		"else",
 		"echo 'warn: memento not on PATH; skipping vault compile' >&2",
@@ -1546,6 +1546,69 @@ func TestInitComposesIntoForeignHooksPathIdempotently(t *testing.T) {
 	}
 	if count := strings.Count(second, "# memento:start"); count != 1 {
 		t.Fatalf("foreign pre-commit start sentinel count = %d, want 1; contents = %q", count, second)
+	}
+}
+
+// TestComposedBlockBlocksStrictCommitWithoutHostSetE is the memento-5dn regression: the
+// commit-block mitigation (MEMENTO_STRICT_COMMIT) must hold even when memento's step is
+// composed into a foreign host hook that lacks `set -e`. The beads-like hook has no
+// `set -e`, so without `memento compile || exit $?` a non-zero compile would be swallowed
+// and the unauthorised change would ratify silently. Here a read-only note is mutated on
+// disk after ratification, and the commit through the foreign hook must fail.
+func TestComposedBlockBlocksStrictCommitWithoutHostSetE(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pre-commit hook is a POSIX shell script")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not found: %v", err)
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skipf("go not found: %v", err)
+	}
+
+	repo := t.TempDir()
+	runSetupGit(t, repo, "init")
+	// Sanity: the host hook we compose into genuinely lacks `set -e`.
+	if strings.Contains(beadsLikePreCommit, "set -e") {
+		t.Fatalf("test fixture beadsLikePreCommit unexpectedly carries set -e: %q", beadsLikePreCommit)
+	}
+	writeSetupFile(t, repo, ".beads/hooks/pre-commit", beadsLikePreCommit)
+	runSetupGit(t, repo, "config", "core.hooksPath", ".beads/hooks")
+
+	binDir := t.TempDir()
+	buildSetupMementoBinary(t, binDir)
+	pathEnv := append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if _, err := Init(repo, "memory"); err != nil {
+		t.Fatalf("Init() error = %v, want nil", err)
+	}
+
+	// Ratify a read-only note so any on-disk edit is an ungated MODE VIOLATION.
+	writeSetupFile(t, repo, "memory/note.md", "---\nmode: read-only\n---\n\n# Note\n\nFrozen body.\n")
+	runSetupGit(t, repo, "add", "AGENTS.md", ".gitignore", "memory")
+	commitWithMemento(t, repo, pathEnv, "ratify read-only note")
+
+	// Mutate the frozen body and stage it: the ratification-boundary audit must alarm.
+	writeSetupFile(t, repo, "memory/note.md", "---\nmode: read-only\n---\n\n# Note\n\nTampered body.\n")
+	runSetupGit(t, repo, "add", "memory/note.md")
+
+	cmd := exec.Command(
+		"git",
+		"-c", "user.name=Memento Test",
+		"-c", "user.email=memento@example.invalid",
+		"commit", "--no-gpg-sign", "-m", "attempt to ratify a read-only violation",
+	)
+	cmd.Dir = repo
+	cmd.Env = append(pathEnv, "MEMENTO_STRICT_COMMIT=1")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatalf("git commit succeeded, want it blocked by the composed strict-commit mitigation; stderr:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "MODE VIOLATION") {
+		t.Fatalf("commit stderr = %q, want a MODE VIOLATION alarm", stderr.String())
 	}
 }
 
@@ -1737,7 +1800,7 @@ func assertHookCommandsInsideMementoGuard(t *testing.T, got string) {
 	t.Helper()
 
 	start := strings.Index(got, "if command -v memento >/dev/null 2>&1; then")
-	compile := strings.Index(got, "\nmemento compile\n")
+	compile := strings.Index(got, "\nmemento compile || exit $?\n")
 	add := strings.Index(got, "git add -- ")
 	elseIdx := strings.Index(got, "\nelse\n")
 	fi := strings.Index(got, "\nfi\n")
