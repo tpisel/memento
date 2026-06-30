@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/tpisel/memento/internal/manifest"
 	"github.com/tpisel/memento/internal/vault"
 )
 
@@ -126,5 +128,93 @@ func TestBriefLazyRecompileSkipsAudits(t *testing.T) {
 	}
 	if strings.Contains(stderr, "DRIFT ALARM") {
 		t.Fatalf("brief lazy recompile must not raise a DRIFT ALARM; stderr = %q", stderr)
+	}
+}
+
+// TestWriteCompileArtifactsSurfacesBriefWriteError: a failure writing the brief
+// artifact must propagate as an error rather than be swallowed as a nil-error
+// warning. Otherwise the lazy-compile path on 'brief' would go on to serve the
+// stale on-disk brief with no signal (memento-tbu.8). The error is forced by
+// turning the brief artifact into a directory so the atomic rename onto it fails.
+func TestWriteCompileArtifactsSurfacesBriefWriteError(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "---\nsummary: A summary.\n---\n# Note\n\nBody.\n")
+	if _, code := runCLICompile(t); code != 0 {
+		t.Fatalf("initial compile exit = %d", code)
+	}
+
+	v, err := vault.Open(root)
+	if err != nil {
+		t.Fatalf("vault.Open() error = %v, want nil", err)
+	}
+	briefPath := vault.BriefPath(v)
+	if err := os.Remove(briefPath); err != nil {
+		t.Fatalf("remove brief artifact: %v", err)
+	}
+	if err := os.Mkdir(briefPath, 0o755); err != nil {
+		t.Fatalf("replace brief artifact with directory: %v", err)
+	}
+
+	if _, _, err := writeCompileArtifacts(v); err == nil {
+		t.Fatal("writeCompileArtifacts() error = nil; brief write failure must surface, not be swallowed")
+	}
+}
+
+// TestWriteCompileArtifactsConcurrentWritesStayWhole: parallel recompiles racing
+// on the same manifest/brief artifact (the lazy-compile path two 'brief' calls can
+// hit at once) must never leave a corrupt or partial file. The atomic write-temp +
+// rename means each artifact lands whole; this asserts every invocation succeeds,
+// the final artifacts parse as the complete projection, and no temp debris is left
+// behind (memento-tbu.8).
+func TestWriteCompileArtifactsConcurrentWritesStayWhole(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "note.md", "---\nsummary: Concurrent summary.\n---\n# Note\n\nBody.\n")
+	if _, code := runCLICompile(t); code != 0 {
+		t.Fatalf("initial compile exit = %d", code)
+	}
+	v, err := vault.Open(root)
+	if err != nil {
+		t.Fatalf("vault.Open() error = %v, want nil", err)
+	}
+
+	const workers = 16
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			_, _, errs[i] = writeCompileArtifacts(v)
+		}(i)
+	}
+	wg.Wait()
+	for i, e := range errs {
+		if e != nil {
+			t.Fatalf("worker %d writeCompileArtifacts() error = %v, want nil", i, e)
+		}
+	}
+
+	// The manifest must still load and the brief must render the full projection —
+	// a torn write would fail to parse or drop the entry.
+	if _, err := manifest.Load(v); err != nil {
+		t.Fatalf("manifest.Load after concurrent writes: %v", err)
+	}
+	briefData, err := os.ReadFile(vault.BriefPath(v))
+	if err != nil {
+		t.Fatalf("read brief after concurrent writes: %v", err)
+	}
+	if !strings.Contains(string(briefData), "Concurrent summary.") {
+		t.Fatalf("brief is incomplete after concurrent writes:\n%s", briefData)
+	}
+
+	// No temp files should survive a clean run.
+	entries, err := os.ReadDir(filepath.Join(root, vault.ToolDirName))
+	if err != nil {
+		t.Fatalf("read tool dir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp-") {
+			t.Fatalf("leftover temp file in tool dir: %s", e.Name())
+		}
 	}
 }

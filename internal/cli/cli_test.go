@@ -476,32 +476,25 @@ func TestNonInitVerbsDoNotRefreshAgentInstructionsBootloader(t *testing.T) {
 	}
 }
 
-func TestCompileWritesManifestAndWarnsWhenBriefWriteFails(t *testing.T) {
+// TestCompileFailsWhenBriefWriteFails: a brief-write failure is a coherence
+// failure, not a cosmetic warning. compile must surface it as a non-zero exit with
+// the error on stderr rather than swallowing it and exiting 0, so a stale on-disk
+// brief is never silently left in place (memento-tbu.8).
+func TestCompileFailsWhenBriefWriteFails(t *testing.T) {
 	root := makeCLIVault(t)
 	writeCLIFile(t, root, "note.md", "# Note\n\nSummary.\n")
 	writeCLIFile(t, root, "_memento", "not a directory\n")
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"compile"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("Run(compile) exit code = %d, want 0; stderr = %q", code, stderr.String())
+	if code != 1 {
+		t.Fatalf("Run(compile) exit code = %d, want 1; stderr = %q", code, stderr.String())
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("Run(compile) stdout = %q, want empty", stdout.String())
 	}
-
-	manifestPath := filepath.Join(root, ".memento", "manifest.json")
-	manifest, err := os.ReadFile(manifestPath)
-	if err != nil {
-		t.Fatalf("read manifest: %v", err)
-	}
-	if !strings.Contains(string(manifest), `"key": "note.md"`) {
-		t.Fatalf("manifest contents = %q, want note entry", string(manifest))
-	}
-	for _, want := range []string{"warning", "_memento/brief.md"} {
-		if !strings.Contains(stderr.String(), want) {
-			t.Fatalf("Run(compile) stderr = %q, want %q", stderr.String(), want)
-		}
+	if !strings.Contains(stderr.String(), "brief") {
+		t.Fatalf("Run(compile) stderr = %q, want it to name the brief write failure", stderr.String())
 	}
 }
 

@@ -217,12 +217,16 @@ func writeCompileArtifacts(v vault.Vault) ([]manifest.Warning, int, error) {
 	if err := os.MkdirAll(v.MarkerDir, 0o755); err != nil {
 		return nil, 0, fmt.Errorf("create marker directory: %w", err)
 	}
-	if err := os.WriteFile(v.ManifestPath, data, 0o644); err != nil {
+	if err := writeFileAtomic(v.ManifestPath, data, 0o644); err != nil {
 		return nil, 0, fmt.Errorf("write manifest: %w", err)
 	}
 
+	// A brief-write failure is a coherence failure, not a cosmetic warning. Swallowing
+	// it (as a nil-error warning) let the lazy-compile path on 'brief' go on to serve
+	// the STALE on-disk brief with no signal. Surface it like the manifest write so
+	// every caller — compile, write-mode, and ensureBriefFresh — sees it (memento-tbu.8).
 	if err := writeBriefArtifact(v, m); err != nil {
-		warnings = append(warnings, manifest.Warning{Path: filepath.ToSlash(filepath.Join(vault.ToolDirName, vault.BriefFileName)), Err: err})
+		return nil, 0, err
 	}
 	return warnings, len(m.Entries), nil
 }
@@ -232,8 +236,41 @@ func writeBriefArtifact(v vault.Vault, m manifest.Manifest) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create brief directory: %w", err)
 	}
-	if err := os.WriteFile(path, brief.Render(m), 0o644); err != nil {
+	if err := writeFileAtomic(path, brief.Render(m), 0o644); err != nil {
 		return fmt.Errorf("write brief: %w", err)
+	}
+	return nil
+}
+
+// writeFileAtomic writes data to a temp file in path's directory and renames it
+// into place, so a concurrent reader — or a parallel lazy recompile from another
+// 'brief' invocation racing on the same manifest/brief artifact — never observes a
+// half-written file. The rename is atomic within a filesystem; the temp file shares
+// path's directory to keep both sides on one. The temp is removed on any failure
+// before the rename lands (memento-tbu.8).
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	removeTmp := func() { _ = os.Remove(tmpName) }
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		removeTmp()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		removeTmp()
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		removeTmp()
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		removeTmp()
+		return err
 	}
 	return nil
 }
