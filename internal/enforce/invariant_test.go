@@ -57,6 +57,31 @@ func TestEvaluatePrefixInvariant(t *testing.T) {
 	}
 }
 
+func TestEvaluatePrefixInvariantUnparsedIsReadOnly(t *testing.T) {
+	const key = "notes/n.md"
+
+	// A note whose frontmatter does not parse resolves to ModeUnparsed and must be
+	// held to the most-restrictive read-only treatment, never the append-only
+	// default that would silently keep it writable-by-append (memento-o0a).
+	deny := EvaluatePrefixInvariant(key, markdown.ModeUnparsed, []byte("head"), []byte("head\nmore"), ReasonAppendOnlyOverwrite)
+	if deny.Allow {
+		t.Fatalf("Allow = true, want deny: an unparsed note must be held read-only, not append-only")
+	}
+	if deny.ReasonCode != ReasonUnparsedMode {
+		t.Fatalf("ReasonCode = %q, want %q", deny.ReasonCode, ReasonUnparsedMode)
+	}
+	for _, want := range []string{key, "does not parse", "denied again", "Fix the frontmatter"} {
+		if !strings.Contains(deny.Message, want) {
+			t.Fatalf("Message = %q, want it to contain %q", deny.Message, want)
+		}
+	}
+
+	// An identical-bytes no-op is still allowed (read-only ≡ new == old).
+	if allow := EvaluatePrefixInvariant(key, markdown.ModeUnparsed, []byte("head"), []byte("head"), ReasonAppendOnlyOverwrite); !allow.Allow {
+		t.Fatalf("identical-bytes write on unparsed note denied (%+v), want allow", allow)
+	}
+}
+
 func TestEvaluatePrefixInvariantBrokenReason(t *testing.T) {
 	got := EvaluatePrefixInvariant("notes/n.md", markdown.ModeAppendOnly, []byte("head\nbody"), []byte("head\nBODY"), ReasonAppendOnlyInterior)
 	if got.Allow || got.ReasonCode != ReasonAppendOnlyInterior {

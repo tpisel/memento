@@ -2764,8 +2764,8 @@
       "key": "Note states.md",
       "title": "Note states",
       "summary": "The four-dimensional state space every memento note inhabits — exists × ratified × declared_mode × summary_state — with the cells named, the legal-vs-degenerate distinctions called out, and the projections used by write enforcement, staleness signalling, and the future review verb. Reference for review/staleness/write design conversations.",
-      "bytes": 9760,
-      "lines": 132,
+      "bytes": 10775,
+      "lines": 133,
       "tags": [
         "conventions",
         "frontmatter",
@@ -2833,7 +2833,7 @@
       "updated": "",
       "body_sha": "b21edaf7ea9ebe208a0226154b6c5a89b21309f1be7f8a4c32d6c4f01b1f97f7",
       "summary_sha": "d0fa66d98eb5ef9117a3e535ed8d37a03598a4761e7e4958f349e68522eebeee",
-      "summary_state": "current",
+      "summary_state": "stale",
       "links": {
         "out": [
           {

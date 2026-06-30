@@ -763,6 +763,11 @@ Fallback summary.
 	if entry.Summary != "Fallback summary." {
 		t.Fatalf("Summary = %q, want fallback paragraph", entry.Summary)
 	}
+	// The malformed frontmatter must surface as the unparsed sentinel, never the
+	// append-only default that would silently lock the note (memento-o0a).
+	if entry.Mode != markdown.ModeUnparsed {
+		t.Fatalf("Mode = %q, want %q (never silently %q)", entry.Mode, markdown.ModeUnparsed, markdown.ModeAppendOnly)
+	}
 
 	if _, err := Compile(vaultFromRoot(root)); err != nil {
 		t.Fatalf("Compile() error = %v, want nil despite malformed frontmatter", err)

@@ -66,12 +66,14 @@ func runCompile(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintf(stderr, "compiled: %d entries\n", count)
-	if violations > 0 && strictCommit() {
+	if (violations > 0 || len(warnings) > 0) && strictCommit() {
 		// MITIGATION mode: a non-zero exit makes the pre-commit hook abort the commit,
 		// holding the unauthorised change out of ratified state. The composed hook block
 		// self-propagates this exit (`memento compile || exit $?`), so the mitigation no
 		// longer depends on the host hook's `set -e` — it survives composition into a
-		// foreign hook that lacks it (memento-5dn).
+		// foreign hook that lacks it (memento-5dn). Malformed frontmatter gates the same
+		// way: a parse error silently holds the note read-only (memento-o0a), so under
+		// strict it must block the commit rather than ratify the broken state.
 		return 1
 	}
 	return 0
@@ -164,6 +166,8 @@ func modeViolationReason(reasonCode string) string {
 	switch reasonCode {
 	case enforce.ReasonReadOnly:
 		return "read-only note's ratified content was changed on disk"
+	case enforce.ReasonUnparsedMode:
+		return "note's frontmatter does not parse, so it is held read-only, and its ratified content was changed on disk"
 	default:
 		// append_only_interior / append_only_overwrite — the prefix was broken.
 		return "append-only note's ratified content was dropped or rewritten (not a pure append)"
@@ -275,8 +279,16 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
+// printCompileWarnings raises each malformed-frontmatter warning as a loud
+// MALFORMED FRONTMATTER alarm naming the consequence: the parse error discarded
+// the whole frontmatter, so the note is held read-only until fixed (memento-o0a).
+// It is its own alarm class, distinct from the MODE VIOLATION and DRIFT ALARM
+// backstops, and gates the commit under MEMENTO_STRICT_COMMIT like they do.
 func printCompileWarnings(stderr io.Writer, warnings []manifest.Warning) {
 	for _, warning := range warnings {
-		fmt.Fprintf(stderr, "memento compile: warning: %v\n", warning)
+		fmt.Fprintf(stderr,
+			"memento compile: MALFORMED FRONTMATTER: %s — %v. "+
+				"The parse error discards the whole frontmatter (including any declared mode), so this note is held read-only until it is fixed; its declared mode is NOT in force. Fix the frontmatter and recompile.\n",
+			warning.Path, warning.Err)
 	}
 }

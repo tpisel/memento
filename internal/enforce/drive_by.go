@@ -39,6 +39,14 @@ func EvaluateDriveByModeChange(key string, old, new []byte, exists, ratified boo
 	}
 
 	oldMode := effectiveModeOf(key, old)
+	if oldMode == markdown.ModeUnparsed {
+		// The committed baseline's frontmatter does not parse, so there is no known
+		// declared mode for this defense to protect. Defer to the prefix-invariant
+		// verdict (which holds an unparsed note read-only) and to any explicit unlock
+		// grant, so a broken note can be repaired rather than locked out: the new
+		// bytes parse here, so this write is fixing the frontmatter (memento-o0a).
+		return Decision{Allow: true}
+	}
 	if oldMode == newMeta.Mode {
 		return Decision{Allow: true}
 	}
@@ -51,10 +59,11 @@ func EvaluateDriveByModeChange(key string, old, new []byte, exists, ratified boo
 	}
 }
 
-// effectiveModeOf returns the note's effective parsed mode (default applied),
-// matching the verdict's read-mode-from-disk rule. A parse failure falls back to
-// the default, since the old bytes are the committed baseline, not the write
-// under scrutiny.
+// effectiveModeOf returns the note's effective mode as the verdict reads it from
+// disk (the append-only default applied for an absent mode). Unparseable
+// frontmatter resolves to the markdown.ModeUnparsed sentinel rather than the
+// default, so callers can fail closed to read-only instead of silently treating a
+// broken note as append-only (memento-o0a).
 func effectiveModeOf(key string, source []byte) markdown.WriteMode {
 	meta, _, _ := markdown.ExtractMetadataLenient(key, source)
 	return meta.Mode

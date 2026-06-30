@@ -494,6 +494,40 @@ func TestExtractMetadataRejectsMalformedFrontmatter(t *testing.T) {
 	}
 }
 
+func TestExtractMetadataLenientFlagsUnparsedMode(t *testing.T) {
+	// A note that declares mode: living but carries a malformed line. The whole
+	// frontmatter fails to parse; lenient extraction must NOT silently fall back to
+	// the append-only default (that would invert the author's intent and lock the
+	// note tighter than written — memento-o0a). It resolves to the unparsed sentinel.
+	src := []byte("---\nmode: living\ntitle\n---\n# Title\n\nBody.\n")
+
+	meta, errs, err := ExtractMetadataLenient("notes/broken.md", src)
+	if err != nil {
+		t.Fatalf("ExtractMetadataLenient() error = %v, want nil", err)
+	}
+	if len(errs) != 1 {
+		t.Fatalf("ExtractMetadataLenient() parse errors = %d, want 1: %v", len(errs), errs)
+	}
+	if meta.Mode != ModeUnparsed {
+		t.Fatalf("Mode = %q, want %q (never silently %q)", meta.Mode, ModeUnparsed, ModeAppendOnly)
+	}
+	// The fallback title/summary still come through so the brief can render the note.
+	if meta.Title != "Title" {
+		t.Fatalf("Title = %q, want fallback H1 %q", meta.Title, "Title")
+	}
+}
+
+func TestUnparsedModeIsNotDeclarable(t *testing.T) {
+	// The sentinel must never be a value an author can write: declaring it is a
+	// plain invalid mode, and the strict extractor rejects the whole note.
+	if validMode(ModeUnparsed) {
+		t.Fatalf("validMode(%q) = true, want false: the unparsed sentinel must not be declarable", ModeUnparsed)
+	}
+	if _, err := ExtractMetadata("bad.md", []byte("---\nmode: unparsed\n---\n# T\n")); !errors.Is(err, ErrInvalidMode) {
+		t.Fatalf("ExtractMetadata() error = %v, want ErrInvalidMode for a declared unparsed mode", err)
+	}
+}
+
 func TestFrontmatterScalar(t *testing.T) {
 	source := []byte("---\ntitle: Plain value\nquoted: \"double quoted\"\nsingle: 'single quoted'\n# comment: ignored\nempty:   \nwhen_to_read: before a write\n---\nbody\n")
 	front, _, ok := SplitFrontmatter(source)

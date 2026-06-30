@@ -35,11 +35,18 @@ type Decision struct {
 // EvaluateMode applies the three-mode lattice (ADR-0015) to op against a note's
 // declared mode. It is pure: ratification, the unlock grant, and force/justify
 // affordances are composed by the caller. living always allows; read-only denies
-// every write; append-only denies overwrite but allows append. An unrecognised/
-// retired mode fails closed to the append-only default (markdown.DefaultWriteMode),
-// never living: bad mode DATA must not unlock a note (ADR-0031).
+// every write; append-only denies overwrite but allows append. The
+// markdown.ModeUnparsed sentinel (unparseable frontmatter) fails closed to
+// read-only; any other unrecognised/retired token fails closed to the append-only
+// default (markdown.DefaultWriteMode), never living: bad mode DATA must not unlock
+// a note (ADR-0031, memento-o0a).
 func EvaluateMode(key string, mode markdown.WriteMode, op Operation) Decision {
 	switch mode {
+	case markdown.ModeUnparsed:
+		// Frontmatter that does not parse has no readable mode; fail closed to
+		// read-only — deny every write — so a parser failure cannot leave a note
+		// more writable than its author declared (memento-o0a).
+		return Decision{ReasonCode: ReasonUnparsedMode, Message: unparsedFrontmatterMessage(key)}
 	case markdown.ModeReadOnly:
 		return Decision{
 			ReasonCode: ReasonReadOnly,

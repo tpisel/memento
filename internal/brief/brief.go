@@ -109,7 +109,7 @@ func Render(m manifest.Manifest) []byte {
 func entryMetadata(entry manifest.Entry) string {
 	parts := []string{
 		fmt.Sprintf("key: `%s`", entry.Key),
-		fmt.Sprintf("mode: `%s`", entry.Mode),
+		modeMarker(entry.Mode),
 	}
 	if len(entry.Tags) > 0 {
 		parts = append(parts, "tags: "+inlineTags(entry.Tags))
@@ -122,6 +122,17 @@ func entryMetadata(entry manifest.Entry) string {
 		parts = append(parts, "[unsummarised]")
 	}
 	return strings.Join(parts, " | ")
+}
+
+// modeMarker renders the entry's mode line. An unparseable frontmatter (the
+// markdown.ModeUnparsed sentinel) gets a loud ⚠ marker so a note silently held
+// read-only by a parse error is visible in the brief, not mistaken for a declared
+// mode (memento-o0a).
+func modeMarker(mode markdown.WriteMode) string {
+	if mode == markdown.ModeUnparsed {
+		return "mode: ⚠ unparsed (frontmatter parse error — held read-only)"
+	}
+	return fmt.Sprintf("mode: `%s`", mode)
 }
 
 func suffixSummaryWikiLinks(summary, currentKey string, resolver *manifest.WikiLinkResolver, numberByKey map[string]int) string {

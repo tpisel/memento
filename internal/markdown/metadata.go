@@ -30,6 +30,15 @@ const (
 	ModeLiving     WriteMode = "living"
 	ModeReadOnly   WriteMode = "read-only"
 
+	// ModeUnparsed is the sentinel an unparseable frontmatter resolves to. It is
+	// NOT a declarable mode (validMode rejects it) and NEVER the append-only
+	// default: a parse error must not quietly make a note more locked-down — nor
+	// invert a declared `mode: living` — than its author wrote (memento-o0a).
+	// Enforcement treats it as the most-restrictive read-only so a note of unknown
+	// intent cannot be edited or lost until its frontmatter is fixed, while brief
+	// and compile surface it loudly rather than burying it behind a green compile.
+	ModeUnparsed WriteMode = "unparsed"
+
 	DefaultWriteMode = ModeAppendOnly
 )
 
@@ -84,7 +93,14 @@ func ExtractMetadata(relPath string, source []byte) (Metadata, error) {
 func ExtractMetadataLenient(relPath string, source []byte) (Metadata, []error, error) {
 	fm, body, err := splitAndParseFrontmatter(source)
 	if err != nil {
-		return metadataFromParts(relPath, frontmatter{}, body), []error{err}, nil
+		// A parse error discards the entire frontmatter, including any declared
+		// mode. Do NOT let metadataFromParts apply the append-only default: that
+		// silently tightens (or inverts) the author's intent and couples a parser
+		// bug to the enforcement layer (memento-o0a). Flag the mode unparsed so the
+		// verdict engine fails closed to read-only and brief/compile surface it.
+		meta := metadataFromParts(relPath, frontmatter{}, body)
+		meta.Mode = ModeUnparsed
+		return meta, []error{err}, nil
 	}
 
 	return metadataFromParts(relPath, fm, body), nil, nil

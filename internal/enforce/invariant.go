@@ -13,6 +13,24 @@ import (
 // invariant; they differ only in the recovery the denial message offers.
 const ReasonAppendOnlyInterior = "append_only_interior"
 
+// ReasonUnparsedMode names a denial where the note's frontmatter does not parse,
+// so memento cannot read the mode the author declared. The note is held to the
+// most-restrictive read-only treatment until the frontmatter is fixed — a parse
+// error must never quietly make a note MORE writable than the author intended,
+// and the recovery is to fix the frontmatter, not to loosen the mode (memento-o0a).
+const ReasonUnparsedMode = "unparsed_mode"
+
+// unparsedFrontmatterMessage is the shared denial copy for a note whose
+// frontmatter fails to parse, used by both the prefix invariant and the
+// operation lattice so the two surfaces cannot drift. The recovery is to repair
+// the frontmatter — not `unlock`/`write-mode`, which presume a known mode.
+func unparsedFrontmatterMessage(key string) string {
+	return fmt.Sprintf(
+		"note %s: its frontmatter does not parse, so memento cannot tell the mode its author declared and holds it read-only until that is fixed — this write is denied and the identical write will be denied again. "+
+			"Fix the frontmatter so it parses (then the declared mode applies); do not self-authorise around this.",
+		key)
+}
+
 // EvaluatePrefixInvariant applies ADR-0031's prefix invariant to a write already
 // derived to concrete new-bytes against a note's declared mode:
 //
@@ -24,11 +42,21 @@ const ReasonAppendOnlyInterior = "append_only_interior"
 // the unlock grant (the mutability predicate) are composed by EvaluateVaultWrite.
 // brokenReason is the reason code to attach when append-only's prefix is broken:
 // a whole-file Write/truncate passes ReasonAppendOnlyOverwrite, an in-place Edit
-// passes ReasonAppendOnlyInterior. An unrecognised/unparseable mode fails closed to
-// the append-only default (markdown.DefaultWriteMode), never living: it must not be
-// possible to bypass the prefix invariant with bad mode DATA (ADR-0031).
+// passes ReasonAppendOnlyInterior. The markdown.ModeUnparsed sentinel (frontmatter
+// that does not parse) fails closed to read-only; any other unrecognised token
+// fails closed to the append-only default (markdown.DefaultWriteMode), never
+// living: it must not be possible to bypass the prefix invariant with bad mode
+// DATA (ADR-0031, memento-o0a).
 func EvaluatePrefixInvariant(key string, mode markdown.WriteMode, old, new []byte, brokenReason string) Decision {
 	switch mode {
+	case markdown.ModeUnparsed:
+		// Frontmatter that does not parse has no readable mode; fail closed to
+		// read-only (deny any change) so a parser failure cannot leave a note more
+		// writable than its author declared (memento-o0a).
+		if bytes.Equal(old, new) {
+			return Decision{Allow: true}
+		}
+		return Decision{ReasonCode: ReasonUnparsedMode, Message: unparsedFrontmatterMessage(key)}
 	case markdown.ModeReadOnly:
 		if bytes.Equal(old, new) {
 			return Decision{Allow: true}

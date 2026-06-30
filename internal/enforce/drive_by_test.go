@@ -29,6 +29,11 @@ func TestEvaluateDriveByModeChange(t *testing.T) {
 		{name: "dropping frontmatter changes effective mode, denied", old: roOld, new: noFrontmatter, exists: true, ratified: true, wantAllow: false, wantReason: ReasonDriveByModeChange},
 		{name: "default-mode note staying default allowed", old: aoOld, new: aoOld + "More.\n", exists: true, ratified: true, wantAllow: true},
 		{name: "unparseable new frontmatter denied", old: roOld, new: badFrontmatter, exists: true, ratified: true, wantAllow: false, wantReason: ReasonDriveByModeChange},
+		// Repairing a note whose committed frontmatter does not parse is not a
+		// drive-by mode change: there is no known prior mode to protect, so the
+		// defense defers to the prefix invariant (which holds it read-only) and to
+		// any unlock grant, rather than locking the note out of repair (memento-o0a).
+		{name: "repairing unparseable baseline is not a drive-by change", old: badFrontmatter, new: livingNew, exists: true, ratified: true, wantAllow: true},
 		{name: "new note may set mode freely (carve-out)", old: "", new: livingNew, exists: false, ratified: false, wantAllow: true},
 		{name: "unratified note may set mode freely (carve-out)", old: roOld, new: livingNew, exists: true, ratified: false, wantAllow: true},
 	}

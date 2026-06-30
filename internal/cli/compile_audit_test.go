@@ -165,6 +165,41 @@ func TestCompileStrictCommitBlocks(t *testing.T) {
 	}
 }
 
+// TestCompileMalformedFrontmatterLoudButZero: a note with malformed frontmatter
+// no longer compiles green-with-a-quiet-warning. Default posture is detection —
+// a loud MALFORMED FRONTMATTER alarm naming the consequence, exit 0 (memento-o0a).
+func TestCompileMalformedFrontmatterLoudButZero(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "broken.md", "---\nmode: living\ntitle\n---\n# Broken\n\nBody.\n")
+
+	stderr, code := runCLICompile(t)
+	if code != 0 {
+		t.Fatalf("compile exit = %d, want 0 (detection default); stderr = %q", code, stderr)
+	}
+	for _, want := range []string{"MALFORMED FRONTMATTER", "broken.md", "held read-only"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr = %q, want it to contain %q", stderr, want)
+		}
+	}
+}
+
+// TestCompileMalformedFrontmatterStrictCommitBlocks: under MEMENTO_STRICT_COMMIT a
+// malformed-frontmatter note flips compile to a non-zero exit so the pre-commit
+// hook holds the silently-locked note out of ratified state (memento-o0a).
+func TestCompileMalformedFrontmatterStrictCommitBlocks(t *testing.T) {
+	root := makeCLIVault(t)
+	writeCLIFile(t, root, "broken.md", "---\nmode: living\ntitle\n---\n# Broken\n\nBody.\n")
+
+	t.Setenv("MEMENTO_STRICT_COMMIT", "1")
+	stderr, code := runCLICompile(t)
+	if code == 0 {
+		t.Fatalf("compile exit = 0, want non-zero under MEMENTO_STRICT_COMMIT; stderr = %q", stderr)
+	}
+	if !strings.Contains(stderr, "MALFORMED FRONTMATTER") {
+		t.Fatalf("stderr = %q, want the MALFORMED FRONTMATTER alarm even when blocking", stderr)
+	}
+}
+
 // TestCompileStrictCommitCleanStaysZero: strict mode must not block a compile
 // with no violations.
 func TestCompileStrictCommitCleanStaysZero(t *testing.T) {

@@ -364,9 +364,11 @@ func brokenPrefixReason(toolName string) string {
 }
 
 // effectiveMode reads the note's current declared mode from its on-disk bytes,
-// defaulting append-only when absent or unparseable. The verdict enforces the
-// mode the note already carries, not whatever the write proposes (ADR-0031:
-// mode is read from disk; a body-write may not change it).
+// defaulting append-only when the mode is absent and resolving to the
+// markdown.ModeUnparsed sentinel (held read-only by the verdict) when the
+// frontmatter does not parse — never silently append-only (memento-o0a). The
+// verdict enforces the mode the note already carries, not whatever the write
+// proposes (ADR-0031: mode is read from disk; a body-write may not change it).
 func effectiveMode(key string, old []byte) markdown.WriteMode {
 	if convention.IsConventionKey(key) {
 		// Conventions carry no mode: field (ADR-0029) and are project-editable

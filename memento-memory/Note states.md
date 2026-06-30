@@ -27,14 +27,14 @@ The shape is one paragraph of ADR commitments stacked. Each axis was introduced 
 |---|---|---|---|
 | `exists` | yes / no | filesystem | vault walk |
 | `ratified` | yes / no | git working tree vs `HEAD` | `git ls-files --error-unmatch` |
-| `declared_mode` | `append-only` / `living` / `read-only` | frontmatter `mode:`, default `append-only` | parsed at read/write time |
+| `declared_mode` | `append-only` / `living` / `read-only` (+ `unparsed` sentinel) | frontmatter `mode:`, default `append-only` | parsed at read/write time |
 | `summary_state` | `current` / `stale` / `missing` | ledger `body_sha` × `summary_sha` comparison | `.memento/manifest.json` per-entry |
 
 ADR origins:
 
 - `exists` — spec §4 (the manifest is rebuilt full each compile; presence is the existence of a markdown file under the vault walk).
 - `ratified` — [[adr-0017-pre-commit-edit-window]]. The edit-window concept lives entirely on this axis: `ratified = no` *is* the edit window.
-- `declared_mode` — [[adr-0015-write-mode-taxonomy]]. Tier 1 frontmatter ([[adr-0014-canonical-frontmatter-vocabulary]]).
+- `declared_mode` — [[adr-0015-write-mode-taxonomy]]. Tier 1 frontmatter ([[adr-0014-canonical-frontmatter-vocabulary]]). A fourth value, `unparsed` (`markdown.ModeUnparsed`), is a derived sentinel rather than a declarable mode: when a note's frontmatter fails to parse, the whole block is discarded and the mode resolves to `unparsed`, **not** the `append-only` default. A parse error must never quietly make a note more locked-down — or invert a declared `mode: living` — than its author wrote (memento-o0a). It is held read-only by the gate, surfaced with a `⚠ unparsed` marker in brief, and raised as a `MALFORMED FRONTMATTER` alarm on compile that gates the commit under `MEMENTO_STRICT_COMMIT`.
 - `summary_state` — [[adr-0023-summary-staleness-in-ledger]]. The three-state model (current / stale / missing) replaces the prior boolean and moves storage out of frontmatter into the ledger.
 
 Together these give a 2 × 2 × 3 × 3 = 36-cell grid. Most cells are legal; a handful are degenerate or vacuous; only a small projection drives any given consumer.
@@ -63,8 +63,9 @@ The write verb projects on `ratified × declared_mode` only. `summary_state` and
 | yes | `append-only` | accept | reject (`mode-rejects-write`) |
 | yes | `living` | accept | accept |
 | yes | `read-only` | reject | reject (`mode-rejects-write`) |
+| yes | `unparsed` | reject | reject (`unparsed_mode`) |
 
-The `ratified = no` row is the edit window. The whole purpose of [[adr-0017-pre-commit-edit-window]] is to make pre-commit iteration cheap while keeping post-commit binding strict.
+The `unparsed` row fails closed to the same lattice as `read-only`: with no readable declared mode, the safest treatment is to deny every write until the frontmatter is fixed. Repairing the frontmatter is *not* a drive-by mode change (an unparsed baseline has no known prior mode to protect), so that defense allows it and defers to the gate/grant. The `ratified = no` row is the edit window. The whole purpose of [[adr-0017-pre-commit-edit-window]] is to make pre-commit iteration cheap while keeping post-commit binding strict.
 
 ### Brief render
 

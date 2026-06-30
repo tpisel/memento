@@ -273,6 +273,32 @@ func TestRenderMarksMissingFallbackSummaryAndOmitsZeroStalenessFooter(t *testing
 	}
 }
 
+func TestRenderMarksUnparsedModeVisibly(t *testing.T) {
+	// A note whose frontmatter failed to parse carries the ModeUnparsed sentinel.
+	// The brief must surface it with a loud ⚠ marker so an author can see the note
+	// is silently held read-only by a parse error, not mistake it for a declared
+	// mode (memento-o0a).
+	m := manifest.Manifest{
+		SchemaVersion: manifest.CurrentSchemaVersion,
+		Entries: []manifest.Entry{
+			{
+				Key:          "broken.md",
+				Title:        "Broken",
+				Mode:         markdown.ModeUnparsed,
+				SummaryState: markdown.SummaryMissing,
+			},
+		},
+	}
+	got := string(Render(m))
+	if !strings.Contains(got, "mode: ⚠ unparsed") {
+		t.Fatalf("Render() =\n%s\nwant a ⚠ unparsed mode marker", got)
+	}
+	// The bare sentinel token must not render as if it were a declared mode.
+	if strings.Contains(got, "mode: `unparsed`") {
+		t.Fatalf("Render() =\n%s\nrendered the sentinel as a declared mode, want the ⚠ marker", got)
+	}
+}
+
 func TestNumberedEntriesArePureAndDeterministic(t *testing.T) {
 	m := manifest.Manifest{
 		Entries: []manifest.Entry{
