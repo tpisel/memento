@@ -266,7 +266,7 @@ asterisked.)
 | `manifest-fresh` | `manifest-stale` | hygiene | session, ci | warning | `memento compile` |
 | `config-valid` | `config-invalid` | hygiene | any | warning / error | fix `.memento/config.toml` |
 | `vault-discoverable` | `vault-ambiguous`, `vault-absent` | hygiene | any | error | set `MEMENTO_VAULT_ROOT` |
-| `ignore-correct` | `gitignore-stanza-missing` | hygiene | any | warning | `memento init` |
+| `ignore-correct` | `gitignore-stanza-missing`, `mementoignore-missing` | hygiene | any | warning | `memento init` |
 | `tool-read-files-present` | `writing-md-absent` | hygiene | session | nudge | author a writing convention |
 | `byo-conformer-resolvable` | `byo-conformer-unresolved` | hygiene | session | warning | fix conformer path |
 | `grant-fresh` | `grant-stale` | liveness | session | warning | commit or drop the grant |

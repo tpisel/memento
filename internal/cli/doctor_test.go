@@ -1123,7 +1123,7 @@ func TestIgnoreCorrectMissingMementoignore(t *testing.T) {
 	repoRoot := t.TempDir()
 	v := hygieneVault(t) // no .mementoignore
 	writeGitignoreStanza(t, repoRoot)
-	f := findToken(t, ignoreCorrectFindings(repoRoot, v), tokGitignoreStanzaMissing)
+	f := findToken(t, ignoreCorrectFindings(repoRoot, v), tokMementoignoreMissing)
 	if f.severity != sevWarning {
 		t.Fatalf("missing .mementoignore severity = %v, want warning", f.severity)
 	}

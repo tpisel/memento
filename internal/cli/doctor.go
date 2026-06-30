@@ -118,6 +118,7 @@ const (
 	tokPrecommitMissing       = "precommit-anchor-missing"
 	tokConfigInvalid          = "config-invalid"
 	tokGitignoreStanzaMissing = "gitignore-stanza-missing"
+	tokMementoignoreMissing   = "mementoignore-missing"
 	tokWritingMdAbsent        = "writing-md-absent"
 )
 
@@ -1329,15 +1330,17 @@ const (
 // repo root) and the vault's .mementoignore are present and well-formed. A missing stanza
 // or .mementoignore leaks operational files (unlock grants, the pending-write ledger, the
 // decision log, the generated brief) into version control — a hygiene warning, never an
-// enforcement error, that one `memento init` re-establishes. Depends on vault-discoverable
-// for the .mementoignore location.
+// enforcement error, that one `memento init` re-establishes. The two halves emit distinct
+// tokens — gitignore-stanza-missing for the repo-root stanza, mementoignore-missing for the
+// vault ignore file — so the wire value names the file actually at fault. Depends on
+// vault-discoverable for the .mementoignore location.
 func ignoreCorrectFindings(repoRoot string, v vault.Vault) []finding {
 	var fs []finding
 	if f, ok := gitignoreStanzaFinding(repoRoot); !ok {
 		fs = append(fs, f)
 	}
 	if !fileExists(filepath.Join(v.Root, vault.IgnoreFileName)) {
-		fs = append(fs, finding{token: tokGitignoreStanzaMissing, severity: sevWarning,
+		fs = append(fs, finding{token: tokMementoignoreMissing, severity: sevWarning,
 			detail:      "no " + vault.IgnoreFileName + " in the vault root " + v.Root,
 			remediation: "memento init"})
 	}
